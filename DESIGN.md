@@ -113,6 +113,98 @@ entry becomes a published npm/git source. CLI-first, generic naming, from day on
 
 ---
 
+## §Library — cross-project session access (designed 2025-08-25, not implemented)
+
+### The problem
+
+Multi-session, multi-project work: while in a session for project A, the work
+often needs the history of project B — "what did we decide in webmail?",
+"how did the pi-clone spike go?" Today each project's store is an island.
+The model *could* read raw JSONL via bash/read, but that is token-hostile
+(tool results, thinking blocks, images), has no discovery, and no identity.
+Sessions must be first-class: addressable, inspectable, and loadable from
+any session in any project.
+
+### Principles
+
+1. **Read-only across boundaries by default.** Reading another project's
+   store never writes anything — not their sessions, not the registry, not
+   trust. The only cross-store write is an explicit `fork` that lands in
+   YOUR store (never theirs).
+2. **No new state.** The registry and stores already exist. This layer is a
+   query vocabulary on top (`src/core/library.ts` + an extension). Nothing
+   to migrate, nothing to sync, nothing to corrupt.
+3. **Extracts, not dumps.** Session files are context bombs. Every read is a
+   rendered view (summary/tree/messages) with byte budgets, never raw JSONL.
+4. **Symmetric.** If project A can read B, B can read A. No per-project
+   visibility config (single-user distribution; revisit if that changes).
+
+### Addressing
+
+`<project>/<selector>` where selector keeps the existing grammar:
+index (1-based, newest first), uuid prefix (≥4), exact name.
+Examples: `webmail/3`, `blueberry/api-redesign`, `aspen/01a02d`.
+A bare selector defaults to the current project (back-compat with `bb sessions`).
+Ambiguity (duplicate names across projects) resolves by refusing and listing candidates.
+
+### Views (the read contract)
+
+- **summary**: header (name, id, dates, msg count, model history from
+  model_change entries) — a few hundred bytes.
+- **tree**: entry tree with labels, compaction markers, branch points — the
+  /tree view in text form.
+- **messages**: rendered conversation, paginated (`offset`/`limit` on message
+  index). User text verbatim; assistant text verbatim; thinking omitted;
+  toolCalls → one line (`tool bash → ok`); toolResults → one line with size;
+  images → `[image]`; bashExecution `!!` (`excludeFromContext`) omitted.
+  Budget: pi conventions (50KB / 2000 lines, truncateTail, sidecar file).
+
+### Surfaces
+
+**CLI (humans):**
+- `bb sessions show <addr> [--view summary|tree|messages] [--offset --limit]`
+- `bb sessions search <text> [--all]` — streaming scan v1 (no index); the
+  §Search SQLite engine can host a sessions FTS table later without API change.
+
+**Extension `extensions/library/` (the model — this is the first-class part):**
+- Tool `bb_library` with actions: `projects` (list), `sessions` (list per
+  project), `show` (any view, paginated). One tool, not three — keeps the
+  prompt small and the model chooses granularity.
+- `promptGuidelines`: prefer bb_library over raw file reads when the user
+  references other projects' work; always start with `summary`, drill down
+  only as needed.
+
+**Fork (the only write):**
+- `bb sessions fork <addr>` — copies the source into the CURRENT project's
+  store via the existing `moveSession` copy mode: header cwd rewritten to the
+  current canonical, `parentSession` cleared per surgery rules (it would be
+  dangling), name gets `fork:` prefix via pi-native session_info append.
+  Source store untouched. Resulting session opens with `bb sessions open`.
+
+### Explicitly deferred
+
+- **@session: editor expansion** (input-event sugar over the same views) —
+  nice, later; tool surface covers the need first.
+- **Replay/eval harness** ("test" in the load-and-test sense: re-running a
+  session's prompts against a model) — separate feature, its own design doc;
+  the fork primitive is its natural input, which is why fork ships here.
+- **Cross-index** (FTS over all sessions) — v2, inside §Search's engine.
+- **Remote/multi-machine federation** — violates single-root; out of scope.
+
+### Open questions
+
+- [ ] bb_library tool shape: single tool with `action` enum, or separate tools?
+  (Single proposed above; happy to flip if prompt measurements say otherwise.)
+- [ ] Should `messages` view include tool RESULTS on demand (`--tools` flag)
+  or only call lines, ever?
+- [ ] Fork naming: `fork:<origname>` vs `<origname>@<project>`? Cosmetic but
+  sticky once names accumulate.
+- [ ] Is replay/eval actually wanted soon? If yes, fork's output format should
+  be designed for it (e.g., no name mutation, keep provenance in a custom
+  entry... which requires a session-load — revisit).
+
+---
+
 ## §Plan — plan mode, rewritten
 
 Upstream reference: `vendored/pi-plan-mode/` (@narumitw/pi-plan-mode v0.52.0)
