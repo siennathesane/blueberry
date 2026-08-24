@@ -252,38 +252,84 @@ Upstream reference: `vendored/pi-plan-mode/` (@narumitw/pi-plan-mode v0.52.0)
 
 ---
 
-## §Todo — todos that are actually useful
+## §Todo — attention manager for long-horizon work (design round 2, 2025-08-25)
 
-Upstream reference: `vendored/rpiv-todo/` (@juicesharp/rpiv-todo v2.7.0)
+Upstream reference: `vendored/rpiv-todo/` (@juicesharp/rpiv-todo v2.7.0) — superseded by this design.
 
-### What "useful" has to mean
+### The reframe
 
-- **The model calls it.** One tool, flat API, zero ceremony. If the tool
-  signature is annoying the model stops using it and todos rot.
-- **The user sees it.** Always-visible surface while work is in flight,
-  not a command you run to check.
-- **Branch-correct.** State reconstructed from tool-result `details` on the
-  session branch (pi's documented pattern), so `/tree` navigation and forks
-  don't corrupt the list.
-- **It drives behavior, not just tracks it.** Next-action semantics: exactly
-  one task in_progress, the model is nudged toward it via prompt guidelines.
+Not a to-do list — an **attention manager** shaped like how principal engineers
+actually work: small working set, explicit waits, deferred trust, re-orientation
+rituals. Loops (agentic hype) have no waits and no memory; principals work in
+**episodes** — re-orient, act, checkpoint — and the tool must serve the episode.
 
-### Proposed shape
+### Storage (decided 2025-08-25)
 
-- Tool `todo` with `action: list|create|update|complete|delete` (StringEnum),
-  minimal fields: `subject`, `description?`, `status`, `blockedBy?` (ids).
-- Rendering: `renderResult` compact list with markers; persistent widget
-  above editor while any task is pending (TUI only, guarded by `ctx.mode`).
-- Status line segment (e.g. `▢ 2/7 done · 1 blocked`) always.
-- Session persistence via `details` reconstruction + `appendEntry` for
-  TUI-only snapshots.
-- Integration: `/plan` approval seeds the todo list from plan steps.
+- **SQLite per project** (`todos.db`), not JSON. Reason: the event log is the
+  point — `events(task_id, kind, ts, session_id, note)` alongside `tasks` and
+  `deps` tables enables replay, WIP age, cycle time, stuck detection, and the
+  future "dreaming" consolidation pass. Current-state JSON can't do any of that.
+- **Never in git.** Central store under the agent dir (consistent with session
+  store policy): `~/.blueberry/todos/<slug>.db` (location open, see questions).
+- **Session log as audit trail:** `bb_todo` tool calls land in session JSONL as
+  normal tool entries (automatic); tool-result `details` carry a state digest so
+  `/tree` navigation stays renderable. **Todo state is project truth in SQLite**;
+  session loading (`bb sessions open`, resume) rehydrates the pane from the DB.
+
+### Model: DAG is truth, kanban is the lens
+
+- Node: `id`, `title`, `track?`, `stage` (todo|doing|review|done), `deps[]`, ages.
+- **Stage is stored** (kanban lifecycle); **ready/blocked is derived** from
+  `deps ∪ done`. No drift: the DAG constrains legality (can't enter doing with
+  incomplete deps; can't complete with incomplete deps; cycles rejected at write).
+- Two lenses over one DAG: **kanban** (default — lifecycle/attention) and
+  **closure graph** (`g` on a node — dependency reasoning, ≤15 nodes).
+
+### Rendering (researched 2025-08-25)
+
+No turnkey JS library renders a DAG pane inside a host TUI. Composition:
+- **pi-tui** for components (we live inside pi; ink/blessed would fight the host).
+- **Kanban mode needs no graph layout** — columns are stage, cards are one line.
+- **Closure mode layout math**: `d3-dag` (maintained TS Sugiyama layering; ranks
+  map to terminal rows) or `@dagrejs/dagre` (older, same idea). Layout only — we
+  render the characters. Reference impls: `terminal-graphs` (JS, closest),
+  `ascii-dag` (Rust, zero-dep — candidate for the future binary distribution).
+- Cycle detection/topo sort: hand-rolled (deps sets, <1k nodes, ~30 lines) —
+  graphlib optional later.
+
+### The pane (mini-kanban, bounded height)
+
+Four columns: `todo · doing · review · done`. **Height is bounded (~10 rows)
+regardless of task count** — density is managed by focus+fringe: TODO shows the
+ready frontier + blocked summary (backlog collapsed to counts), DOING is capped
+(WIP limit — principals hold 3–5), REVIEW is the waiting-on-human queue with age
+oldest-first, DONE shows recent + count. Mockups in the conversation log;
+final polish happens live against a real terminal.
+
+- Strip (always on, above editor): `⬡ 3/15 · ◉ t1 dag core 4h · review ◧2 · next ▣ s1`
+- Pane (`/todo` overlay): 4 columns, one-line cards, ~10 rows total
+- Detail card (enter): why/waiting-on/unlocks/context links (session id, DESIGN §)
+- Closure graph (g): box-drawing edges over the node's dependency closure only
+
+### Lifecycle integration (the core fix)
+
+- **Session start** = re-orientation: strip + pane state are the "where was I".
+- **During**: `bb_todo` tool (single tool, action enum — house style), stage
+  moves legality-checked against the DAG.
+- **Session end** = checkpoint: auto-append an event (what moved, notes) —
+  sqlite row + session log entry. No ceremony, always captured.
+- **Dreaming (future §Goals)**: idle/nightly consolidation over the event log +
+  session library: refresh priorities, surface rot ("s3 ready for 12 days"),
+  distill context, propose splits/merges. The event log is shaped for this now.
 
 ### Open questions
 
-- [ ] Where should the live list live — widget above editor, status line, or overlay (rpiv-todo uses an overlay)?
-- [ ] Do todos persist across sessions for the same project (a `.blueberry/todos.json`), or per-session only?
-- [ ] Should blockedBy support chains and cycle detection? (pi's subagent todo tool does this; worth copying?)
+- [ ] REVIEW semantics: model-work awaiting user verification, external waits
+      (PRs, sleep-on-it), or both under one gate?
+- [ ] WIP limit on DOING: hard cap (5?) or soft warn?
+- [ ] todos.db location: central `~/.blueberry/todos/<slug>.db` vs in-repo
+      gitignored `<root>/.blueberry/todos.db`?
+- [ ] DONE column: recent-N or count-only?
 
 ---
 
