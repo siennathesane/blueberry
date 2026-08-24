@@ -17,17 +17,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function getVersion(): string {
-	const env = (process.env as Record<string, string | undefined>)["BLUEBERRY_VERSION"];
-	if (env !== undefined && env.trim() !== "") {
-		return env.trim();
-	}
-	try {
-		const here = dirname(fileURLToPath(import.meta.url));
-		const pkg = JSON.parse(
-			readFileSync(join(here, "..", "..", "package.json"), "utf8"),
-		) as { version?: string };
-		return pkg.version ?? "dev";
-	} catch {
-		return "dev";
-	}
+  const env = (process.env as Record<string, string | undefined>)[
+    "BLUEBERRY_VERSION"
+  ];
+  if (env !== undefined && env.trim() !== "") {
+    return env.trim();
+  }
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(
+      readFileSync(join(here, "..", "..", "package.json"), "utf8"),
+    ) as { version?: string };
+    return pkg.version ?? "dev";
+  } catch {
+    return "dev";
+  }
 }

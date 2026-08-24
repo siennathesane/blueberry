@@ -39,7 +39,20 @@ function lastSegment(path: string): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	const applyIdentity = (ctx: Parameters<Parameters<typeof pi.on>[1]>[1], reason: string) => {
+	// /exit — the muscle-memory command pi never shipped. Graceful: defers
+	// until the agent is idle (queued messages drain first) and emits
+	// session_shutdown, so every cleanup hook runs.
+	pi.registerCommand("exit", {
+		description: "Quit blueberry",
+		handler: async (_args, ctx) => {
+			ctx.shutdown();
+		},
+	});
+
+	const applyIdentity = (
+		ctx: Parameters<Parameters<typeof pi.on>[1]>[1],
+		reason: string,
+	) => {
 		const cwd = resolve(ctx.cwd);
 		const boundary = findProjectBoundary(cwd);
 		const root = boundary ? boundary.root : cwd;
@@ -60,7 +73,10 @@ export default function (pi: ExtensionAPI) {
 					segments.push(`session ${sessionId}`);
 					if (resumed) segments.push("resumed");
 					const line2 = theme.fg("muted", segments.join(" · "));
-					const line3 = theme.fg("dim", "esc interrupt · / commands · ctrl+o everything else");
+					const line3 = theme.fg(
+						"dim",
+						"esc interrupt · / commands · ctrl+o everything else",
+					);
 					return [line1, line2, line3];
 				},
 				invalidate() {},
@@ -98,7 +114,9 @@ export default function (pi: ExtensionAPI) {
 		if (ctx.mode === "tui") {
 			const cwd = resolve(ctx.cwd);
 			const boundary = findProjectBoundary(cwd);
-			ctx.ui.setTitle(`blueberry — ${lastSegment(boundary ? boundary.root : cwd)}`);
+			ctx.ui.setTitle(
+				`blueberry — ${lastSegment(boundary ? boundary.root : cwd)}`,
+			);
 		}
 	});
 }

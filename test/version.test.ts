@@ -4,7 +4,9 @@ import { getVersion } from "../src/core/version.ts";
 import { readFileSync } from "node:fs";
 import { tmpAgentDir, cleanup } from "./helpers.ts";
 
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+const pkg = JSON.parse(
+	readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as {
 	version: string;
 };
 
