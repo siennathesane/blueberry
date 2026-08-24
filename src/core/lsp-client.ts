@@ -51,7 +51,9 @@ export function parseFrame(buffer: Buffer): ParsedFrame {
 	if (buffer.length < bodyStart + contentLength) {
 		return { message: null, rest: buffer };
 	}
-	const body = buffer.subarray(bodyStart, bodyStart + contentLength).toString("utf8");
+	const body = buffer
+		.subarray(bodyStart, bodyStart + contentLength)
+		.toString("utf8");
 	return { message: body, rest: buffer.subarray(bodyStart + contentLength) };
 }
 
@@ -74,7 +76,12 @@ interface Pending {
 export const CLIENT_CAPABILITIES = {
 	processId: null,
 	textDocument: {
-		synchronization: { dynamicRegistration: false, didSave: false, willSave: false, willSaveWaitUntil: false },
+		synchronization: {
+			dynamicRegistration: false,
+			didSave: false,
+			willSave: false,
+			willSaveWaitUntil: false,
+		},
 		hover: { contentFormat: ["markdown", "plaintext"] },
 		completion: {
 			contextSupport: true,
@@ -83,9 +90,13 @@ export const CLIENT_CAPABILITIES = {
 				documentationFormat: ["markdown", "plaintext"],
 				resolveSupport: { properties: ["documentation", "detail"] },
 			},
-			completionItemKind: { valueSet: Array.from({ length: 25 }, (_, i) => i + 1) },
+			completionItemKind: {
+				valueSet: Array.from({ length: 25 }, (_, i) => i + 1),
+			},
 		},
-		signatureHelp: { signatureInformation: { documentationFormat: ["markdown", "plaintext"] } },
+		signatureHelp: {
+			signatureInformation: { documentationFormat: ["markdown", "plaintext"] },
+		},
 		definition: { linkSupport: false },
 		typeDefinition: { linkSupport: false },
 		implementation: { linkSupport: false },
@@ -97,7 +108,18 @@ export const CLIENT_CAPABILITIES = {
 		},
 		codeAction: {
 			codeActionLiteralSupport: {
-				codeActionKind: { valueSet: ["", "quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite", "source", "source.organizeImports"] },
+				codeActionKind: {
+					valueSet: [
+						"",
+						"quickfix",
+						"refactor",
+						"refactor.extract",
+						"refactor.inline",
+						"refactor.rewrite",
+						"source",
+						"source.organizeImports",
+					],
+				},
 			},
 			isPreferredSupport: true,
 		},
@@ -123,8 +145,14 @@ export const CLIENT_CAPABILITIES = {
 	},
 	workspace: {
 		applyEdit: true,
-		workspaceEdit: { documentChanges: true, resourceOperations: ["create", "rename", "delete"], failureHandling: "textOnlyTransactional" },
-		symbol: { symbolKind: { valueSet: Array.from({ length: 26 }, (_, i) => i + 1) } },
+		workspaceEdit: {
+			documentChanges: true,
+			resourceOperations: ["create", "rename", "delete"],
+			failureHandling: "textOnlyTransactional",
+		},
+		symbol: {
+			symbolKind: { valueSet: Array.from({ length: 26 }, (_, i) => i + 1) },
+		},
 		workspaceFolders: true,
 		configuration: false,
 	},
@@ -152,10 +180,16 @@ export class LspClient {
 	private buffer: Buffer = Buffer.alloc(0);
 	private nextId = 1;
 	private readonly pending = new Map<number, Pending>();
-	private readonly notificationHandlers = new Map<string, (params: unknown) => void>();
+	private readonly notificationHandlers = new Map<
+		string,
+		(params: unknown) => void
+	>();
 	private readonly requestHandlers = new Map<
 		string,
-		(params: unknown, respond: (result: unknown, error?: RpcError) => void) => void
+		(
+			params: unknown,
+			respond: (result: unknown, error?: RpcError) => void,
+		) => void
 	>();
 	private disposed = false;
 	private exitHandler: ((code: number | null) => void) | null = null;
@@ -178,8 +212,12 @@ export class LspClient {
 		}
 		this.reader.on("data", (chunk: Buffer) => this.onData(chunk));
 		if (this.proc) {
-			this.proc.on("error", () => this.rejectAll(new Error("server process error")));
-			this.proc.on("exit", (code) => this.rejectAll(new Error(`server exited (code ${code ?? "null"})`)));
+			this.proc.on("error", () =>
+				this.rejectAll(new Error("server process error")),
+			);
+			this.proc.on("exit", (code) =>
+				this.rejectAll(new Error(`server exited (code ${code ?? "null"})`)),
+			);
 		}
 	}
 
@@ -215,18 +253,25 @@ export class LspClient {
 	/** Register a handler for server→client requests (e.g. applyEdit). */
 	handleRequest(
 		method: string,
-		handler: (params: unknown, respond: (result: unknown, error?: RpcError) => void) => void,
+		handler: (
+			params: unknown,
+			respond: (result: unknown, error?: RpcError) => void,
+		) => void,
 	): void {
 		this.requestHandlers.set(method, handler);
 	}
 
 	/** Respond to a server→client request we received. */
 	respond(id: number | string, result: unknown, error?: RpcError): void {
-		if (error === undefined) this.send({ jsonrpc: "2.0", id, result }); else this.send({ jsonrpc: "2.0", id, error });
+		if (error === undefined) this.send({ jsonrpc: "2.0", id, result });
+		else this.send({ jsonrpc: "2.0", id, error });
 	}
 
 	/** The initialize handshake. Resolves with the server's InitializeResult. */
-	async initialize(rootPath: string, initializationOptions?: unknown): Promise<unknown> {
+	async initialize(
+		rootPath: string,
+		initializationOptions?: unknown,
+	): Promise<unknown> {
 		const rootUri = pathToFileURL(rootPath).href;
 		const result = await this.request("initialize", {
 			processId: process.pid,
@@ -312,7 +357,9 @@ export class LspClient {
 			// server→client request
 			const handler = this.requestHandlers.get(method);
 			if (handler) {
-				handler(msg["params"], (result, error) => this.respond(id as number | string, result, error));
+				handler(msg["params"], (result, error) =>
+					this.respond(id as number | string, result, error),
+				);
 			} else {
 				this.respond(id as number | string, undefined, {
 					code: -32601,

@@ -253,3 +253,28 @@ test("hex6Of: last six hex chars of the uuid", () => {
 	assert.equal(hex6Of("01234567-89ab-cdef-0123-456789abcdef"), "abcdef");
 	assert.equal(hex6Of("ffffffff-ffff-ffff-ffff-ffffffffff12"), "ffff12");
 });
+
+// --- uuid factory exhaustion (branch closure) -----------------------------------
+
+test("newTodoId: exhaustion after 50 collisions throws; retry-after-collision succeeds", () => {
+	const db = openDb(agentDir);
+	const pid = "uuid-proj";
+	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'u', '/u', ?, ?)").run(
+		pid,
+		new Date().toISOString(),
+		new Date().toISOString(),
+	);
+	const first = createTodo(db, pid, "occupier", {});
+	assert.ok(first.ok && first.todo);
+
+	// factory that always collides → 50 attempts → throw
+	const alwaysCollide = () => first.todo!.id;
+	assert.throws(() => newTodoId(db, pid, alwaysCollide), /50 attempts/);
+
+	// factory: collide once, then unique → succeeds on retry
+	let calls = 0;
+	const collideOnce = () => (calls++ === 0 ? first.todo!.id : "11111111-2222-4333-8444-5555666677aabb");
+	const won = newTodoId(db, pid, collideOnce);
+	assert.equal(won.hex6, "77aabb", "second attempt wins");
+	db.close();
+});

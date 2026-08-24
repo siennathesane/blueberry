@@ -12,7 +12,13 @@
  * - clangd: strict UTF-16 offset validation
  */
 import { LspClient } from "./lsp-client.ts";
-import { existsSync, readFileSync, readdirSync, watch, type FSWatcher } from "node:fs";
+import {
+	existsSync,
+	readFileSync,
+	readdirSync,
+	watch,
+	type FSWatcher,
+} from "node:fs";
 import { join, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -26,12 +32,23 @@ function fileUri(path: string): string {
 // --- language detection ------------------------------------------------------------
 
 const EXT_TO_LANG: Record<string, string> = {
-	".ts": "typescript", ".tsx": "typescriptreact", ".mts": "typescript", ".cts": "typescript",
-	".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript",
+	".ts": "typescript",
+	".tsx": "typescriptreact",
+	".mts": "typescript",
+	".cts": "typescript",
+	".js": "javascript",
+	".jsx": "javascriptreact",
+	".mjs": "javascript",
+	".cjs": "javascript",
 	".go": "go",
 	".rs": "rust",
-	".c": "c", ".h": "c",
-	".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
+	".c": "c",
+	".h": "c",
+	".cpp": "cpp",
+	".cc": "cpp",
+	".cxx": "cpp",
+	".hpp": "cpp",
+	".hh": "cpp",
 	".py": "python",
 	".zig": "zig",
 };
@@ -54,16 +71,18 @@ export interface ServerSpec {
 }
 
 /** Resolve the real rust-analyzer binary (rustup shim → toolchain path). */
-export function resolveRustAnalyzer(): string {
-	const shim = join(homedir(), ".cargo", "bin", "rust-analyzer");
+export function resolveRustAnalyzer(home: string = homedir()): string {
+	const shim = join(home, ".cargo", "bin", "rust-analyzer");
 	if (existsSync(shim)) {
 		try {
 			// check if it's a real binary or a rustup shim (shims are shell scripts)
 			const head = readFileSync(shim);
 			if (!head.includes("#!/bin/sh")) return shim; // real binary
-		} catch { /* fall through */ }
+		} catch {
+			/* fall through */
+		}
 		// find in toolchains
-		const toolchains = join(homedir(), ".rustup", "toolchains");
+		const toolchains = join(home, ".rustup", "toolchains");
 		if (existsSync(toolchains)) {
 			for (const tc of readdirSync(toolchains)) {
 				const candidate = join(toolchains, tc, "bin", "rust-analyzer");
@@ -74,7 +93,8 @@ export function resolveRustAnalyzer(): string {
 	return "rust-analyzer"; // hope it's on PATH as a real binary
 }
 
-function bin(name: string): string | null {
+/** Look up an executable on PATH (null when absent). Exported for tests. */
+export function whichBin(name: string): string | null {
 	try {
 		return execFileSync("which", [name], { encoding: "utf8" }).trim() || null;
 	} catch {
@@ -83,10 +103,15 @@ function bin(name: string): string | null {
 }
 
 /** Resolve bundled typescript-language-server from node_modules. */
-function resolveTsServer(): string | null {
-	const local = join(process.cwd(), "node_modules", ".bin", "typescript-language-server");
+export function resolveTsServer(cwd: string = process.cwd()): string | null {
+	const local = join(
+		cwd,
+		"node_modules",
+		".bin",
+		"typescript-language-server",
+	);
 	if (existsSync(local)) return local;
-	return bin("typescript-language-server");
+	return whichBin("typescript-language-server");
 }
 
 export function defaultServers(): ServerSpec[] {
@@ -98,14 +123,19 @@ export function defaultServers(): ServerSpec[] {
 			name: "typescript-language-server",
 			command: ts,
 			args: ["--stdio"],
-			languageIds: ["typescript", "typescriptreact", "javascript", "javascriptreact"],
+			languageIds: [
+				"typescript",
+				"typescriptreact",
+				"javascript",
+				"javascriptreact",
+			],
 			warmupMs: 2000,
 		});
 	}
-	if (bin("gopls")) {
+	if (whichBin("gopls")) {
 		specs.push({
 			name: "gopls",
-			command: bin("gopls")!,
+			command: whichBin("gopls")!,
 			args: [],
 			languageIds: ["go"],
 			initializationOptions: { semanticTokens: true, noSemanticString: true },
@@ -122,19 +152,19 @@ export function defaultServers(): ServerSpec[] {
 			warmupMs: 5000,
 		});
 	}
-	if (bin("clangd")) {
+	if (whichBin("clangd")) {
 		specs.push({
 			name: "clangd",
-			command: bin("clangd")!,
+			command: whichBin("clangd")!,
 			args: [],
 			languageIds: ["c", "cpp"],
 			warmupMs: 2000,
 		});
 	}
-	if (bin("deno")) {
+	if (whichBin("deno")) {
 		specs.push({
 			name: "deno lsp",
-			command: bin("deno")!,
+			command: whichBin("deno")!,
 			args: ["lsp"],
 			languageIds: [], // opt-in only: would conflict with typescript server
 			warmupMs: 2000,
@@ -168,13 +198,26 @@ export class LspManager {
 	private readonly servers = new Map<string, ManagedServer>(); // languageId → server
 	private readonly specs: ServerSpec[];
 	private readonly watchers = new Map<string, FSWatcher>();
-	private diagnostics = new Map<string, Array<{ severity: number; message: string; range: { start: { line: number; character: number }; end: { line: number; character: number } } }>>();
+	private diagnostics = new Map<
+		string,
+		Array<{
+			severity: number;
+			message: string;
+			range: {
+				start: { line: number; character: number };
+				end: { line: number; character: number };
+			};
+		}>
+	>();
 	private disposed = false;
 	private idleTimer: NodeJS.Timeout | null = null;
 	private readonly maxServers: number;
 	private readonly idleMs: number;
 
-	constructor(root: string, opts: { specs?: ServerSpec[]; maxServers?: number; idleMs?: number } = {}) {
+	constructor(
+		root: string,
+		opts: { specs?: ServerSpec[]; maxServers?: number; idleMs?: number; reapIntervalMs?: number } = {},
+	) {
 		this.root = root;
 		this.specs = opts.specs ?? defaultServers();
 		this.maxServers = opts.maxServers ?? 3;
@@ -187,7 +230,7 @@ export class LspManager {
 					void this.stopServer(lang);
 				}
 			}
-		}, 60_000);
+		}, opts.reapIntervalMs ?? 60_000);
 		this.idleTimer.unref?.();
 	}
 
@@ -219,7 +262,10 @@ export class LspManager {
 		return this.spawnServer(spec, languageId);
 	}
 
-	private async spawnServer(spec: ServerSpec, languageId: string): Promise<ManagedServer | null> {
+	private async spawnServer(
+		spec: ServerSpec,
+		languageId: string,
+	): Promise<ManagedServer | null> {
 		const client = new LspClient({
 			command: spec.command,
 			args: spec.args,
@@ -239,7 +285,8 @@ export class LspManager {
 		// diagnostics handler
 		client.handleNotification("textDocument/publishDiagnostics", (params) => {
 			const uri = String((params as Record<string, unknown>)["uri"] ?? "");
-			const diags = ((params as Record<string, unknown>)["diagnostics"] ?? []) as Array<Record<string, unknown>>;
+			const diags = ((params as Record<string, unknown>)["diagnostics"] ??
+				[]) as Array<Record<string, unknown>>;
 			if (diags.length === 0) {
 				this.diagnostics.delete(uri);
 			} else {
@@ -248,7 +295,12 @@ export class LspManager {
 					diags.map((d) => ({
 						severity: Number(d["severity"] ?? 1),
 						message: String(d["message"] ?? ""),
-						range: d["range"] as ManagedServer["openDocs"] extends never ? never : { start: { line: number; character: number }; end: { line: number; character: number } },
+						range: d["range"] as ManagedServer["openDocs"] extends never
+							? never
+							: {
+									start: { line: number; character: number };
+									end: { line: number; character: number };
+								},
 					})),
 				);
 			}
@@ -256,11 +308,18 @@ export class LspManager {
 
 		// applyEdit handler (Tier 3: accept + report, never auto-apply)
 		client.handleRequest("workspace/applyEdit", (_params, respond) => {
-			respond({ applied: false, failureReason: "blueberry: preview only — use bb_lsp rename/codeAction to apply" });
+			respond({
+				applied: false,
+				failureReason:
+					"blueberry: preview only — use bb_lsp rename/codeAction to apply",
+			});
 		});
 
 		try {
-			managed.initializeResult = await client.initialize(this.root, spec.initializationOptions);
+			managed.initializeResult = await client.initialize(
+				this.root,
+				spec.initializationOptions,
+			);
 			if (spec.warmupMs) await new Promise((r) => setTimeout(r, spec.warmupMs));
 		} catch {
 			client.dispose();
@@ -277,7 +336,9 @@ export class LspManager {
 		this.servers.delete(languageId);
 		try {
 			await s.client.shutdown();
-		} catch { /* already gone */ }
+		} catch {
+			/* already gone */
+		}
 		s.client.dispose();
 	}
 
@@ -357,7 +418,11 @@ export class LspManager {
 	}
 
 	/** Run a request against the server for a file's language. */
-	async request(method: string, params: unknown, filePath: string): Promise<unknown> {
+	async request(
+		method: string,
+		params: unknown,
+		filePath: string,
+	): Promise<unknown> {
 		const languageId = languageIdForFile(filePath);
 		if (!languageId) throw new Error(`no lsp language for ${filePath}`);
 		const server = await this.serverFor(languageId);
@@ -367,7 +432,9 @@ export class LspManager {
 	}
 
 	/** Get current diagnostics (pushed, not pulled). */
-	getDiagnostics(uri?: string): Map<string, Array<{ severity: number; message: string; range: unknown }>> {
+	getDiagnostics(
+		uri?: string,
+	): Map<string, Array<{ severity: number; message: string; range: unknown }>> {
 		if (uri !== undefined) {
 			const filtered = new Map();
 			if (this.diagnostics.has(uri)) filtered.set(uri, this.diagnostics.get(uri));
@@ -379,11 +446,21 @@ export class LspManager {
 	/** Status for bb_lsp status / CLI. */
 	status(): LspStatusEntry[] {
 		return this.specs.map((spec) => {
-			const running = [...this.servers.values()].find((s) => s.spec.name === spec.name);
+			const running = [...this.servers.values()].find(
+				(s) => s.spec.name === spec.name,
+			);
 			if (!running) {
-				return { name: spec.name, running: false, languages: spec.languageIds, openDocs: 0, restarts: 0 };
+				return {
+					name: spec.name,
+					running: false,
+					languages: spec.languageIds,
+					openDocs: 0,
+					restarts: 0,
+				};
 			}
-			const info = running.initializeResult as { serverInfo?: { name?: string } } | null;
+			const info = running.initializeResult as {
+				serverInfo?: { name?: string };
+			} | null;
 			return {
 				name: spec.name,
 				running: true,
@@ -398,7 +475,8 @@ export class LspManager {
 	/** Friendly error mapping — server quirks to human/model-readable messages. */
 	static friendlyError(method: string, err: Error): string {
 		const msg = err.message;
-		if (msg.includes("no type definition")) return "no type definition at this position (methods don't have one)";
+		if (msg.includes("no type definition"))
+			return "no type definition at this position (methods don't have one)";
 		if (msg.includes("not possible because") && msg.includes("has errors")) {
 			return `rename blocked: the workspace has diagnostics errors. fix them first, then rename.`;
 		}
@@ -421,7 +499,7 @@ export class LspManager {
 		for (const [, w] of this.watchers) w.close();
 		this.watchers.clear();
 		for (const [, s] of this.servers) {
-			try { s.client.dispose(); } catch { /* gone */ }
+			s.client.dispose(); // never throws (swallows internally)
 		}
 		this.servers.clear();
 	}

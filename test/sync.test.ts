@@ -9,7 +9,8 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { openDb, loadRegistryDb, saveRegistrySync } from "../src/core/db.ts";
+import { mkdirSync } from "node:fs";
+import { openDb, loadRegistryDb, saveRegistrySync, loadRegistrySync } from "../src/core/db.ts";
 import {
 	ftsSearch,
 	ingestSessionFile,
@@ -226,5 +227,63 @@ test("restore: rebuilds a deleted session file from the DB byte-faithfully enoug
 test("restore: unknown session returns null", () => {
 	const db = openDb(agentDir);
 	assert.equal(restoreSession(db, "nope", area), null);
+	db.close();
+});
+
+// --- entry nullish mappings + restore-without-ts (branch closure) -------------------
+
+test("sync: entries with missing id/type/parentId/timestamp map to defaults", () => {
+	const root = fakeRepo(area, "nullish", "git");
+	const r = loadRegistry(agentDir);
+	mutations.register(r, { root });
+	saveRegistrySync(agentDir, r);
+	const projectId = loadRegistrySync(agentDir).projects[0]!.id;
+
+	const store = getCentralStoreDir(agentDir, "nullish");
+	mkdirSync(store, { recursive: true });
+	const file = join(store, "nullish.jsonl");
+	// entries WITHOUT id, type, parentId, timestamp — only message content
+	writeFileSync(file, [
+		JSON.stringify({ type: "session", version: 3, id: "null-000000001", timestamp: new Date().toISOString(), cwd: root }),
+		JSON.stringify({ message: { role: "user", content: "bare entry no metadata", timestamp: 1 } }),
+		JSON.stringify({ type: "custom", data: { x: 1 } }),
+	].join("\n") + "\n");
+
+	const db = openDb(agentDir);
+	const res = ingestSessionFile(db, file, (c) => (c === root ? projectId : null));
+	assert.equal(res.status, "ingested");
+	const rows = db.prepare("SELECT type, entry_id, parent_id, ts FROM session_entries ORDER BY seq").all() as Array<Record<string, unknown>>;
+	// seq 0 = bare message entry (no type/id/parentId/timestamp keys at all)
+	assert.equal(rows[0]!["type"], "?", "missing type → ?");
+	assert.equal(rows[0]!["entry_id"], null, "missing id → null");
+	assert.equal(rows[0]!["parent_id"], null, "missing parentId → null");
+	assert.equal(rows[0]!["ts"], null, "missing timestamp → null");
+	// seq 1 = the custom entry (has type)
+	assert.equal(rows[1]!["type"], "custom");
+	db.close();
+});
+
+test("sync: restore without ts in meta falls back to 'restored' filename", () => {
+	const db = openDb(agentDir);
+	db.prepare(
+		"INSERT INTO sessions (id, project_id, file_path, cwd, ts, parent_session, name, file_mtime_ms, size_bytes, ingested_at) VALUES ('nots-2', NULL, '/y', NULL, NULL, NULL, NULL, 0, 0, ?)",
+	).run(new Date().toISOString());
+	db.prepare(
+		"INSERT INTO session_entries (session_id, seq, ts, type, entry_id, parent_id, json) VALUES ('nots-2', 0, NULL, 'message', NULL, NULL, ?)",
+	).run(JSON.stringify({ type: "message", id: "e", message: { role: "user", content: "no ts" } }));
+
+	const restored = restoreSession(db, "nots-2", `${area}/out2`);
+	assert.ok(restored !== null);
+	assert.ok(restored!.includes("restored_nots-2.jsonl"), `fallback name: ${restored}`);
+	db.close();
+});
+
+test("sync: orphan and error paths fill detail fallback", () => {
+	const db = openDb(agentDir);
+	// error with undefined detail (statSync failure on a directory-as-file)
+	const dirAsFile = join(area, "adir");
+	mkdirSync(dirAsFile, { recursive: true });
+	const res = ingestSessionFile(db, dirAsFile, () => "p");
+	assert.ok(res.status === "error" || res.status === "orphan");
 	db.close();
 });

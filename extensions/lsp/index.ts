@@ -21,20 +21,44 @@ function fileUri(path: string): string {
 }
 
 const Action = StringEnum([
-	"status", "diagnostics", "definition", "typeDefinition", "implementation",
-	"references", "hover", "documentSymbol", "workspaceSymbol", "completion",
-	"signatureHelp", "foldingRange", "semanticTokens", "rename", "formatting",
-	"codeAction", "codeActionExecute", "codeLens", "callHierarchy", "typeHierarchy",
-	"selectionRange", "documentHighlight", "documentLink",
+	"status",
+	"diagnostics",
+	"definition",
+	"typeDefinition",
+	"implementation",
+	"references",
+	"hover",
+	"documentSymbol",
+	"workspaceSymbol",
+	"completion",
+	"signatureHelp",
+	"foldingRange",
+	"semanticTokens",
+	"rename",
+	"formatting",
+	"codeAction",
+	"codeActionExecute",
+	"codeLens",
+	"callHierarchy",
+	"typeHierarchy",
+	"selectionRange",
+	"documentHighlight",
+	"documentLink",
 ] as const);
 
-function pos(line1: number, char1: number): { line: number; character: number } {
+function pos(
+	line1: number,
+	char1: number,
+): { line: number; character: number } {
 	return { line: line1 - 1, character: char1 - 1 };
 }
 
 function fmtLocation(loc: unknown): string {
 	if (!loc || typeof loc !== "object") return "(none)";
-	const l = loc as { uri?: string; range?: { start?: { line?: number; character?: number } } };
+	const l = loc as {
+		uri?: string;
+		range?: { start?: { line?: number; character?: number } };
+	};
 	const file = l.uri ? l.uri.split("/").pop() : "?";
 	const p = l.range?.start;
 	return `${file}:${(p?.line ?? 0) + 1}:${(p?.character ?? 0) + 1}`;
@@ -42,8 +66,21 @@ function fmtLocation(loc: unknown): string {
 
 function fmtDiagnostic(d: unknown): string {
 	if (!d || typeof d !== "object") return "?";
-	const dd = d as { severity?: number; message?: string; range?: { start?: { line?: number } } };
-	const sev = dd.severity === 1 ? "error" : dd.severity === 2 ? "warn" : dd.severity === 3 ? "info" : dd.severity === 4 ? "hint" : "?";
+	const dd = d as {
+		severity?: number;
+		message?: string;
+		range?: { start?: { line?: number } };
+	};
+	const sev =
+		dd.severity === 1
+			? "error"
+			: dd.severity === 2
+				? "warn"
+				: dd.severity === 3
+					? "info"
+					: dd.severity === 4
+						? "hint"
+						: "?";
 	const line = (dd.range?.start?.line ?? 0) + 1;
 	return `[${sev}] L${line}: ${(dd.message ?? "").split("\n")[0]}`;
 }
@@ -95,7 +132,10 @@ export default function (pi: ExtensionAPI) {
 		description: "LSP server status",
 		handler: async (_args, ctx) => {
 			if (!manager) {
-				ctx.ui.notify("lsp: no servers started yet (they spawn on first use)", "info");
+				ctx.ui.notify(
+					"lsp: no servers started yet (they spawn on first use)",
+					"info",
+				);
 				return;
 			}
 			const status = manager.status();
@@ -118,7 +158,8 @@ export default function (pi: ExtensionAPI) {
 			"completion (discovery), signatureHelp, foldingRange, semanticTokens, rename (preview→apply), formatting, " +
 			"codeAction (list quickfixes), codeActionExecute (apply one), codeLens, callHierarchy, typeHierarchy, " +
 			"selectionRange, documentHighlight, documentLink. After edits, check diagnostics.",
-		promptSnippet: "Language-server diagnostics, navigation, types, rename, formatting for the project's languages",
+		promptSnippet:
+			"Language-server diagnostics, navigation, types, rename, formatting for the project's languages",
 		promptGuidelines: [
 			"Use bb_lsp diagnostics after editing files to verify correctness before claiming done.",
 			"Use bb_lsp definition/references/hover to understand unfamiliar code precisely instead of guessing from text.",
@@ -126,19 +167,39 @@ export default function (pi: ExtensionAPI) {
 		],
 		parameters: Type.Object({
 			action: Action,
-			path: Type.Optional(Type.String({ description: "file path (relative to project root)" })),
-			line: Type.Optional(Type.Integer({ minimum: 1, description: "1-based line" })),
-			char: Type.Optional(Type.Integer({ minimum: 1, description: "1-based character" })),
+			path: Type.Optional(
+				Type.String({ description: "file path (relative to project root)" }),
+			),
+			line: Type.Optional(
+				Type.Integer({ minimum: 1, description: "1-based line" }),
+			),
+			char: Type.Optional(
+				Type.Integer({ minimum: 1, description: "1-based character" }),
+			),
 			query: Type.Optional(Type.String({ description: "workspaceSymbol query" })),
-			newName: Type.Optional(Type.String({ description: "rename: new symbol name" })),
-			apply: Type.Optional(Type.Boolean({ description: "rename/formatting/codeActionExecute: apply (default: preview)" })),
-			title: Type.Optional(Type.String({ description: "codeActionExecute: action title from the codeAction list" })),
+			newName: Type.Optional(
+				Type.String({ description: "rename: new symbol name" }),
+			),
+			apply: Type.Optional(
+				Type.Boolean({
+					description:
+						"rename/formatting/codeActionExecute: apply (default: preview)",
+				}),
+			),
+			title: Type.Optional(
+				Type.String({
+					description: "codeActionExecute: action title from the codeAction list",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const root = resolve(ctx.cwd);
 			const mgr = getManager(root);
 			const absPath = params.path ? resolve(root, params.path) : null;
-			const position = params.line !== undefined && params.char !== undefined ? pos(params.line, params.char) : undefined;
+			const position =
+				params.line !== undefined && params.char !== undefined
+					? pos(params.line, params.char)
+					: undefined;
 
 			try {
 				switch (params.action) {
@@ -149,7 +210,10 @@ export default function (pi: ExtensionAPI) {
 								? `● ${s.name} — ${s.openDocs} docs, ${s.restarts} restarts [${s.languages.join(",")}]`
 								: `○ ${s.name} — not started [${s.languages.join(",")}]`,
 						);
-						return { content: [{ type: "text", text: lines.join("\n") }], details: { status } };
+						return {
+							content: [{ type: "text", text: lines.join("\n") }],
+							details: { status },
+						};
 					}
 
 					case "diagnostics": {
@@ -160,7 +224,10 @@ export default function (pi: ExtensionAPI) {
 							const uri = new URL(`file://${absPath}`).href;
 							const diags = mgr.getDiagnostics(uri).get(uri) ?? [];
 							if (diags.length === 0) {
-								return { content: [{ type: "text", text: `no diagnostics in ${params.path}` }], details: { count: 0 } };
+								return {
+									content: [{ type: "text", text: `no diagnostics in ${params.path}` }],
+									details: { count: 0 },
+								};
 							}
 							return {
 								content: [{ type: "text", text: diags.map(fmtDiagnostic).join("\n") }],
@@ -179,7 +246,12 @@ export default function (pi: ExtensionAPI) {
 							total += diags.length;
 						}
 						return {
-							content: [{ type: "text", text: lines.length > 0 ? lines.join("\n") : "no diagnostics" }],
+							content: [
+								{
+									type: "text",
+									text: lines.length > 0 ? lines.join("\n") : "no diagnostics",
+								},
+							],
 							details: { count: total },
 						};
 					}
@@ -187,43 +259,68 @@ export default function (pi: ExtensionAPI) {
 					case "definition":
 					case "typeDefinition":
 					case "implementation": {
-						if (!absPath || !position) throw new Error(`${params.action} requires path + line + char`);
-						const method = params.action === "definition" ? "textDocument/definition"
-							: params.action === "typeDefinition" ? "textDocument/typeDefinition"
-							: "textDocument/implementation";
-						const result = await mgr.request(method, { textDocument: { uri: new URL(`file://${absPath}`).href }, position }, absPath);
+						if (!absPath || !position)
+							throw new Error(`${params.action} requires path + line + char`);
+						const method =
+							params.action === "definition"
+								? "textDocument/definition"
+								: params.action === "typeDefinition"
+									? "textDocument/typeDefinition"
+									: "textDocument/implementation";
+						const result = await mgr.request(
+							method,
+							{ textDocument: { uri: new URL(`file://${absPath}`).href }, position },
+							absPath,
+						);
 						const locs = Array.isArray(result) ? result : [result];
 						return {
-							content: [{ type: "text", text: locs.map(fmtLocation).join("\n") || "(none)" }],
+							content: [
+								{ type: "text", text: locs.map(fmtLocation).join("\n") || "(none)" },
+							],
 							details: { locations: locs },
 						};
 					}
 
 					case "references": {
-						if (!absPath || !position) throw new Error("references requires path + line + char");
+						if (!absPath || !position)
+							throw new Error("references requires path + line + char");
 						const result = await mgr.request(
 							"textDocument/references",
-							{ textDocument: { uri: new URL(`file://${absPath}`).href }, position, context: { includeDeclaration: true } },
+							{
+								textDocument: { uri: new URL(`file://${absPath}`).href },
+								position,
+								context: { includeDeclaration: true },
+							},
 							absPath,
 						);
-						const locs = (Array.isArray(result) ? result : [result]) as Array<Record<string, unknown>>;
+						const locs = (Array.isArray(result) ? result : [result]) as Array<
+							Record<string, unknown>
+						>;
 						return {
-							content: [{ type: "text", text: locs.map(fmtLocation).join("\n") || "(none)" }],
+							content: [
+								{ type: "text", text: locs.map(fmtLocation).join("\n") || "(none)" },
+							],
 							details: { count: locs.length },
 						};
 					}
 
 					case "hover": {
-						if (!absPath || !position) throw new Error("hover requires path + line + char");
+						if (!absPath || !position)
+							throw new Error("hover requires path + line + char");
 						const result = (await mgr.request(
 							"textDocument/hover",
 							{ textDocument: { uri: new URL(`file://${absPath}`).href }, position },
 							absPath,
-						)) as { contents?: { value?: string } | Array<{ value?: string }> } | null;
+						)) as {
+							contents?: { value?: string } | Array<{ value?: string }>;
+						} | null;
 						const text = Array.isArray(result?.contents)
 							? result!.contents.map((c) => c.value ?? "").join("\n")
-							: result?.contents?.value ?? "(empty)";
-						return { content: [{ type: "text", text: text || "(empty)" }], details: {} };
+							: (result?.contents?.value ?? "(empty)");
+						return {
+							content: [{ type: "text", text: text || "(empty)" }],
+							details: {},
+						};
 					}
 
 					case "documentSymbol": {
@@ -233,9 +330,16 @@ export default function (pi: ExtensionAPI) {
 							{ textDocument: { uri: new URL(`file://${absPath}`).href } },
 							absPath,
 						);
-						const symbols = (Array.isArray(result) ? result : []) as Array<Record<string, unknown>>;
-						const lines = symbols.map((s) => `${s["kind"]}:${s["name"]} @${fmtLocation(s["location"])}`);
-						return { content: [{ type: "text", text: lines.join("\n") || "(none)" }], details: { count: symbols.length } };
+						const symbols = (Array.isArray(result) ? result : []) as Array<
+							Record<string, unknown>
+						>;
+						const lines = symbols.map(
+							(s) => `${s["kind"]}:${s["name"]} @${fmtLocation(s["location"])}`,
+						);
+						return {
+							content: [{ type: "text", text: lines.join("\n") || "(none)" }],
+							details: { count: symbols.length },
+						};
 					}
 
 					case "workspaceSymbol": {
@@ -246,50 +350,94 @@ export default function (pi: ExtensionAPI) {
 							{ query: params.query },
 							absPath ?? root,
 						);
-						const symbols = (Array.isArray(result) ? result : []) as Array<Record<string, unknown>>;
+						const symbols = (Array.isArray(result) ? result : []) as Array<
+							Record<string, unknown>
+						>;
 						return {
-							content: [{ type: "text", text: symbols.map((s) => `${s["name"]} @${fmtLocation(s["location"])}`).join("\n") || "(none)" }],
+							content: [
+								{
+									type: "text",
+									text:
+										symbols
+											.map((s) => `${s["name"]} @${fmtLocation(s["location"])}`)
+											.join("\n") || "(none)",
+								},
+							],
 							details: { count: symbols.length },
 						};
 					}
 
 					case "completion": {
-						if (!absPath || !position) throw new Error("completion requires path + line + char");
+						if (!absPath || !position)
+							throw new Error("completion requires path + line + char");
 						const result = await mgr.request(
 							"textDocument/completion",
 							{ textDocument: { uri: new URL(`file://${absPath}`).href }, position },
 							absPath,
 						);
-						const items = (Array.isArray(result) ? result : (result as { items?: unknown[] })?.items ?? []) as Array<Record<string, unknown>>;
+						const items = (
+							Array.isArray(result)
+								? result
+								: ((result as { items?: unknown[] })?.items ?? [])
+						) as Array<Record<string, unknown>>;
 						return {
-							content: [{ type: "text", text: items.map((i) => String(i["label"] ?? "")).join(", ") || "(none)" }],
+							content: [
+								{
+									type: "text",
+									text:
+										items.map((i) => String(i["label"] ?? "")).join(", ") || "(none)",
+								},
+							],
 							details: { count: items.length },
 						};
 					}
 
 					case "signatureHelp": {
-						if (!absPath || !position) throw new Error("signatureHelp requires path + line + char");
+						if (!absPath || !position)
+							throw new Error("signatureHelp requires path + line + char");
 						const result = await mgr.request(
 							"textDocument/signatureHelp",
 							{ textDocument: { uri: new URL(`file://${absPath}`).href }, position },
 							absPath,
 						);
-						const sigs = (result as { signatures?: Array<{ label?: string }> })?.signatures ?? [];
-						return { content: [{ type: "text", text: sigs.map((s) => s.label ?? "").join("\n") || "(none)" }], details: {} };
+						const sigs =
+							(result as { signatures?: Array<{ label?: string }> })?.signatures ?? [];
+						return {
+							content: [
+								{
+									type: "text",
+									text: sigs.map((s) => s.label ?? "").join("\n") || "(none)",
+								},
+							],
+							details: {},
+						};
 					}
 
 					case "rename": {
-						if (!absPath || !position || !params.newName) throw new Error("rename requires path + line + char + newName");
+						if (!absPath || !position || !params.newName)
+							throw new Error("rename requires path + line + char + newName");
 						const edit = await mgr.request(
 							"textDocument/rename",
-							{ textDocument: { uri: new URL(`file://${absPath}`).href }, position, newName: params.newName },
+							{
+								textDocument: { uri: new URL(`file://${absPath}`).href },
+								position,
+								newName: params.newName,
+							},
 							absPath,
 						);
-						const changes = (edit as { changes?: Record<string, unknown[]> })?.changes ?? {};
+						const changes =
+							(edit as { changes?: Record<string, unknown[]> })?.changes ?? {};
 						const files = Object.keys(changes);
-						const summary = files.map((f) => `${f.split("/").pop()}: ${changes[f]!.length} edits`);
+						const summary = files.map(
+							(f) => `${f.split("/").pop()}: ${changes[f]!.length} edits`,
+						);
 						return {
-							content: [{ type: "text", text: `rename preview (${files.length} files):\n${summary.join("\n")}\n\nPass apply:true to execute.` }],
+							content: [
+								{
+									type: "text",
+									text: `rename preview (${files.length} files):\n${summary.join("\n")}\n\nPass apply:true to execute.`,
+								},
+							],
 							details: { files, edit },
 						};
 					}
@@ -298,17 +446,26 @@ export default function (pi: ExtensionAPI) {
 						if (!absPath) throw new Error("formatting requires path");
 						const edits = await mgr.request(
 							"textDocument/formatting",
-							{ textDocument: { uri: new URL(`file://${absPath}`).href }, options: { tabSize: 2, insertSpaces: true } },
+							{
+								textDocument: { uri: new URL(`file://${absPath}`).href },
+								options: { tabSize: 2, insertSpaces: true },
+							},
 							absPath,
 						);
 						return {
-							content: [{ type: "text", text: `formatting: ${Array.isArray(edits) ? edits.length : 0} edits (apply via edit tool or apply:true)` }],
+							content: [
+								{
+									type: "text",
+									text: `formatting: ${Array.isArray(edits) ? edits.length : 0} edits (apply via edit tool or apply:true)`,
+								},
+							],
 							details: { edits },
 						};
 					}
 
 					case "codeAction": {
-						if (!absPath || !position) throw new Error("codeAction requires path + line + char");
+						if (!absPath || !position)
+							throw new Error("codeAction requires path + line + char");
 						const actions = await mgr.request(
 							"textDocument/codeAction",
 							{
@@ -318,9 +475,17 @@ export default function (pi: ExtensionAPI) {
 							},
 							absPath,
 						);
-						const list = (Array.isArray(actions) ? actions : []) as Array<Record<string, unknown>>;
+						const list = (Array.isArray(actions) ? actions : []) as Array<
+							Record<string, unknown>
+						>;
 						return {
-							content: [{ type: "text", text: list.map((a, i) => `${i + 1}. ${a["title"]}`).join("\n") || "(none)" }],
+							content: [
+								{
+									type: "text",
+									text:
+										list.map((a, i) => `${i + 1}. ${a["title"]}`).join("\n") || "(none)",
+								},
+							],
 							details: { actions: list },
 						};
 					}
@@ -332,20 +497,29 @@ export default function (pi: ExtensionAPI) {
 					case "documentHighlight":
 					case "documentLink": {
 						if (!absPath) throw new Error(`${params.action} requires path`);
-						const method = `textDocument/${params.action}` +
+						const method =
+							`textDocument/${params.action}` +
 							(params.action === "semanticTokens" ? "/full" : "");
-						const reqParams: Record<string, unknown> = { textDocument: { uri: new URL(`file://${absPath}`).href } };
+						const reqParams: Record<string, unknown> = {
+							textDocument: { uri: new URL(`file://${absPath}`).href },
+						};
 						if (position) reqParams["position"] = position;
 						const result = await mgr.request(method, reqParams, absPath);
 						return {
-							content: [{ type: "text", text: JSON.stringify(result)?.slice(0, 2000) ?? "(empty)" }],
+							content: [
+								{
+									type: "text",
+									text: JSON.stringify(result)?.slice(0, 2000) ?? "(empty)",
+								},
+							],
 							details: { result },
 						};
 					}
 
 					case "callHierarchy":
 					case "typeHierarchy": {
-						if (!absPath || !position) throw new Error(`${params.action} requires path + line + char`);
+						if (!absPath || !position)
+							throw new Error(`${params.action} requires path + line + char`);
 						const prepareMethod = `textDocument/prepare${params.action === "callHierarchy" ? "CallHierarchy" : "TypeHierarchy"}`;
 						const items = await mgr.request(
 							prepareMethod,
@@ -353,17 +527,27 @@ export default function (pi: ExtensionAPI) {
 							absPath,
 						);
 						return {
-							content: [{ type: "text", text: JSON.stringify(items)?.slice(0, 2000) ?? "(none)" }],
+							content: [
+								{
+									type: "text",
+									text: JSON.stringify(items)?.slice(0, 2000) ?? "(none)",
+								},
+							],
 							details: { items },
 						};
 					}
 
 					// deferred: codeActionExecute (needs the edit-apply machinery)
 					case "codeActionExecute": {
-							return {
-								content: [{ type: "text", text: `codeActionExecute: coming soon — use codeAction to list, then apply manually` }],
-								details: {},
-							};
+						return {
+							content: [
+								{
+									type: "text",
+									text: `codeActionExecute: coming soon — use codeAction to list, then apply manually`,
+								},
+							],
+							details: {},
+						};
 					}
 				}
 			} catch (err) {

@@ -25,7 +25,13 @@ const SERVERS = [
 		command: "gopls",
 		args: [],
 		// 1-based line/char of `Greet` definition site usage: g.Greet() at line 14
-		probe: { line: 17, char: 11, symbol: "Greet", renameLine: 17, renameChar: 11 },
+		probe: {
+			line: 17,
+			char: 11,
+			symbol: "Greet",
+			renameLine: 17,
+			renameChar: 11,
+		},
 		warmupMs: 2500,
 	},
 	{
@@ -34,9 +40,16 @@ const SERVERS = [
 		root: `${LAB}/rust`,
 		file: "src/main.rs",
 		languageId: "rust",
-		command: "/Users/sienna/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/rust-analyzer",
+		command:
+			"/Users/sienna/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/rust-analyzer",
 		args: [],
-		probe: { line: 17, char: 24, symbol: "describe", renameLine: 10, renameChar: 11 },
+		probe: {
+			line: 17,
+			char: 24,
+			symbol: "describe",
+			renameLine: 10,
+			renameChar: 11,
+		},
 		warmupMs: 6000,
 	},
 	{
@@ -47,7 +60,13 @@ const SERVERS = [
 		languageId: "c",
 		command: "clangd",
 		args: [],
-		probe: { line: 8, char: 5, symbol: "point_sum", renameLine: 18, renameChar: 16 },
+		probe: {
+			line: 8,
+			char: 5,
+			symbol: "point_sum",
+			renameLine: 18,
+			renameChar: 16,
+		},
 		warmupMs: 3000,
 	},
 	{
@@ -91,8 +110,15 @@ function loc(location) {
 }
 
 async function probeServer(spec) {
-	console.log(`\n${"=".repeat(70)}\n${spec.name} (${spec.command} ${spec.args.join(" ")})\n${"=".repeat(70)}`);
-	const client = new LspClient({ command: spec.command, args: spec.args, cwd: spec.root, requestTimeoutMs: 20_000 });
+	console.log(
+		`\n${"=".repeat(70)}\n${spec.name} (${spec.command} ${spec.args.join(" ")})\n${"=".repeat(70)}`,
+	);
+	const client = new LspClient({
+		command: spec.command,
+		args: spec.args,
+		cwd: spec.root,
+		requestTimeoutMs: 20_000,
+	});
 	const diagnostics = [];
 	client.handleNotification("textDocument/publishDiagnostics", (params) => {
 		diagnostics.push(params);
@@ -120,13 +146,17 @@ async function probeServer(spec) {
 		const uri = new URL(`file://${filePath}`).href;
 		const doc = { uri, languageId: spec.languageId, version: 1, text };
 
-		await step("didOpen", () => client.notify("textDocument/didOpen", { textDocument: doc }));
+		await step("didOpen", () =>
+			client.notify("textDocument/didOpen", { textDocument: doc }),
+		);
 
 		// wait for diagnostics to arrive
 		await sleep(spec.warmupMs);
 		await step("diagnostics", async () => {
 			const d = diagnostics.find((x) => x.uri === uri);
-			return (d?.diagnostics ?? []).map((x) => `${x.severity ?? "?"}: ${x.message?.split("\n")[0]}`);
+			return (d?.diagnostics ?? []).map(
+				(x) => `${x.severity ?? "?"}: ${x.message?.split("\n")[0]}`,
+			);
 		});
 
 		const p = spec.probe;
@@ -146,27 +176,45 @@ async function probeServer(spec) {
 			return v ? String(v).slice(0, 120) : "(empty)";
 		});
 		await step("references", async () => {
-			const r = await client.request("textDocument/references", { ...posParams, context: { includeDeclaration: true } });
+			const r = await client.request("textDocument/references", {
+				...posParams,
+				context: { includeDeclaration: true },
+			});
 			return Array.isArray(r) ? r.map(loc) : loc(r);
 		});
 		await step("documentSymbol", async () => {
-			const r = await client.request("textDocument/documentSymbol", { textDocument: { uri } });
+			const r = await client.request("textDocument/documentSymbol", {
+				textDocument: { uri },
+			});
 			const names = Array.isArray(r) ? r.map((s) => `${s.kind}:${s.name}`) : [];
 			return names;
 		});
 		await step("workspaceSymbol", async () => {
-			const r = await client.request("workspace/symbol", { query: spec.probe.symbol });
-			return Array.isArray(r) ? r.slice(0, 5).map((s) => `${s.name} @${loc(s.location)}`) : "(none)";
+			const r = await client.request("workspace/symbol", {
+				query: spec.probe.symbol,
+			});
+			return Array.isArray(r)
+				? r.slice(0, 5).map((s) => `${s.name} @${loc(s.location)}`)
+				: "(none)";
 		});
 		await step("completion", async () => {
 			const r = await client.request("textDocument/completion", posParams);
-			const items = Array.isArray(r) ? r : r?.items ?? [];
-			return { count: items.length, sample: items.slice(0, 3).map((i) => i.label) };
+			const items = Array.isArray(r) ? r : (r?.items ?? []);
+			return {
+				count: items.length,
+				sample: items.slice(0, 3).map((i) => i.label),
+			};
 		});
-		await step("signatureHelp", () => client.request("textDocument/signatureHelp", posParams));
-		await step("foldingRange", () => client.request("textDocument/foldingRange", { textDocument: { uri } }));
+		await step("signatureHelp", () =>
+			client.request("textDocument/signatureHelp", posParams),
+		);
+		await step("foldingRange", () =>
+			client.request("textDocument/foldingRange", { textDocument: { uri } }),
+		);
 		await step("semanticTokens", async () => {
-			const r = await client.request("textDocument/semanticTokens/full", { textDocument: { uri } });
+			const r = await client.request("textDocument/semanticTokens/full", {
+				textDocument: { uri },
+			});
 			return { dataLength: r?.data?.length ?? 0 };
 		});
 
@@ -210,7 +258,9 @@ async function probeServer(spec) {
 
 	console.log(`\n--- ${spec.name} summary ---`);
 	for (const [k, v] of Object.entries(results)) {
-		const val = v?.__error ? `ERROR: ${v.__error}` : JSON.stringify(v)?.slice(0, 100);
+		const val = v?.__error
+			? `ERROR: ${v.__error}`
+			: JSON.stringify(v)?.slice(0, 100);
 		console.log(`  ${v?.__error ? "✗" : "✓"} ${k.padEnd(18)} ${val}`);
 	}
 	return results;
@@ -232,7 +282,24 @@ for (const spec of wanted) {
 }
 
 console.log(`\n${"=".repeat(70)}\nFULL MATRIX\n${"=".repeat(70)}`);
-const surfaces = ["initialize", "diagnostics", "definition", "typeDefinition", "hover", "references", "documentSymbol", "workspaceSymbol", "completion", "signatureHelp", "foldingRange", "semanticTokens", "rename (preview)", "formatting", "codeAction", "shutdown"];
+const surfaces = [
+	"initialize",
+	"diagnostics",
+	"definition",
+	"typeDefinition",
+	"hover",
+	"references",
+	"documentSymbol",
+	"workspaceSymbol",
+	"completion",
+	"signatureHelp",
+	"foldingRange",
+	"semanticTokens",
+	"rename (preview)",
+	"formatting",
+	"codeAction",
+	"shutdown",
+];
 for (const surface of surfaces) {
 	const marks = wanted.map((s) => {
 		const r = all[s.name]?.[surface];

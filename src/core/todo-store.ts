@@ -36,6 +36,7 @@ export function hex6Of(id: string): string {
 export function newTodoId(
 	db: DatabaseSync,
 	projectId: string,
+	uuidFactory: () => string = randomUUID,
 ): { id: string; hex6: string } {
 	const existing = new Set(
 		(
@@ -45,7 +46,7 @@ export function newTodoId(
 		).map((r) => hex6Of(String(r["id"]))),
 	);
 	for (let i = 0; i < 50; i++) {
-		const id = randomUUID();
+		const id = uuidFactory();
 		const hex6 = hex6Of(id);
 		if (!existing.has(hex6)) return { id, hex6 };
 	}
