@@ -10,9 +10,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (_pi: ExtensionAPI) {
-  // Intentionally empty. See DESIGN.md §Todo for the target design:
-  // - one dead-simple tool the model will actually call
-  // - branch-correct state via tool-result details (see pi docs "State Management")
-  // - visible surface: status line / widget (placement TBD)
-  // - integration point for plan-mode execution tracking
+ // Intentionally empty. See DESIGN.md §Todo for the target design:
+ // - one dead-simple tool the model will actually call
+ // - branch-correct state via tool-result details (see pi docs "State Management")
+ // - visible surface: status line / widget (placement TBD)
+ // - integration point for plan-mode execution tracking
 }

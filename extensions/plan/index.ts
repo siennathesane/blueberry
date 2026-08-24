@@ -10,9 +10,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (_pi: ExtensionAPI) {
-  // Intentionally empty. See DESIGN.md §Plan for the target design:
-  // - plan as durable artifact (PLAN.md in repo)
-  // - read-only tool restriction while planning
-  // - explicit approval gate before execution
-  // - execution tracking wired to blueberry todo
+ // Intentionally empty. See DESIGN.md §Plan for the target design:
+ // - plan as durable artifact (PLAN.md in repo)
+ // - read-only tool restriction while planning
+ // - explicit approval gate before execution
+ // - execution tracking wired to blueberry todo
 }

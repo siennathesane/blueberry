@@ -13,6 +13,6 @@
     "noUnusedParameters": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["extensions/**/*.ts"],
+  "include": ["extensions/**/*.ts", "src/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules", "vendored"]
 }

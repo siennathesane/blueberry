@@ -7,7 +7,15 @@
   "type": "module",
   "scripts": {
     "setup": "bash bin/setup.sh",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/cli/entry.ts' --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=90"
+  },
+  "bin": {
+    "blueberry": "./bin/blueberry"
+  },
+  "engines": {
+    "node": ">=23.6"
   },
   "pi": {
     "extensions": [

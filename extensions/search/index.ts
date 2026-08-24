@@ -12,8 +12,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (_pi: ExtensionAPI) {
-  // Intentionally empty. See DESIGN.md §Search for the target design:
-  // - node:sqlite (built into Node 22.5+) with FTS5 — on-disk, BM25-ranked
-  // - incremental indexing by mtime; index stored under the agent dir
-  // - tools: content search (grep-like), path/symbol search, refresh
+ // Intentionally empty. See DESIGN.md §Search for the target design:
+ // - node:sqlite (built into Node 22.5+) with FTS5 — on-disk, BM25-ranked
+ // - incremental indexing by mtime; index stored under the agent dir
+ // - tools: content search (grep-like), path/symbol search, refresh
 }
