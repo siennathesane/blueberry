@@ -11,7 +11,7 @@
  * rewritten to absolute paths against the ORIGINAL cwd first.
  */
 import type { Registry } from "./registry.ts";
-import { loadRegistry, saveRegistry } from "./registry.ts";
+import { loadRegistrySync, saveRegistrySync, syncConfigsAtLaunch } from "./db.ts";
 import { resolveProject, storeDirFor } from "./resolution.ts";
 import { trustPaths } from "./trust.ts";
 import { getAgentDir } from "./agent-dir.ts";
@@ -111,7 +111,11 @@ export interface LaunchOptions {
 /** Compute the full launch plan without spawning anything. */
 export async function prepareLaunch(opts: LaunchOptions): Promise<LaunchPlan> {
 	const agentDir = opts.agentDir ?? getAgentDir();
-	const registry = opts.registry ?? loadRegistry(agentDir);
+	const registry = opts.registry ?? loadRegistrySync(agentDir);
+	// §Data: materialize settings.json/auth.json from (or into) blueberry.db
+	if (opts.persist !== false) {
+		syncConfigsAtLaunch(agentDir);
+	}
 
 	let plan: LaunchPlan;
 	if (opts.projectSlug) {
@@ -201,7 +205,7 @@ async function finalizeResolution(
 	trusted: boolean,
 ): Promise<void> {
 	if (mutated && opts.persist !== false) {
-		await saveRegistry(agentDir, registry);
+		saveRegistrySync(agentDir, registry);
 	}
 	if (trusted && opts.persist !== false) {
 		await trustPaths(agentDir, [root]);

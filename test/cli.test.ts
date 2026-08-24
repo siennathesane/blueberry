@@ -2,7 +2,8 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { main, defaultDeps, type CliDeps } from "../src/cli/main.ts";
-import { loadRegistry, findBySlug } from "../src/core/registry.ts";
+import { findBySlug } from "../src/core/registry.ts";
+import { loadRegistrySync } from "../src/core/db.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { readSessionHeader, listSessions } from "../src/core/sessions.ts";
 import { encodeCwdToDirName } from "../src/core/util.ts";
@@ -94,12 +95,12 @@ test("cli: projects list / rename / forget", async () => {
 		await main(["projects", "rename", "proj-a", "proj-b"], deps(area)),
 		0,
 	);
-	const r = loadRegistry(agentDir);
+	const r = loadRegistrySync(agentDir);
 	assert.ok(findBySlug(r, "proj-b"));
 	assert.ok(!findBySlug(r, "proj-a"));
 
 	assert.equal(await main(["projects", "forget", "proj-b"], deps(area)), 0);
-	assert.equal(loadRegistry(agentDir).projects.length, 0);
+	assert.equal(loadRegistrySync(agentDir).projects.length, 0);
 });
 
 test("cli: projects nest/unnest guardrails and messaging", async () => {
@@ -213,7 +214,7 @@ test("cli: adopt imports pi history from a source dir", async () => {
 
 	assert.equal(await main(["adopt", piSource], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("imported 1 sessions -> historic")));
-	const r = loadRegistry(agentDir);
+	const r = loadRegistrySync(agentDir);
 	assert.ok(findBySlug(r, "historic"));
 	assert.equal(listSessions(getCentralStoreDir(agentDir, "historic")).length, 1);
 });
@@ -226,14 +227,14 @@ test("cli: fix applies, doctor is read-only", async () => {
 	assert.equal(await main(["doctor"], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("would register")));
 	assert.equal(
-		loadRegistry(agentDir).projects.length,
+		loadRegistrySync(agentDir).projects.length,
 		0,
 		"doctor mutated nothing",
 	);
 
 	assert.equal(await main(["fix"], deps(area)), 0);
 	assert.ok(
-		loadRegistry(agentDir).projects.length === 1,
+		loadRegistrySync(agentDir).projects.length === 1,
 		"fix registered the orphan",
 	);
 });
@@ -400,10 +401,10 @@ test("cli: fix and doctor via dispatch with --dry-run flag", async () => {
 
 	assert.equal(await main(["fix", "--dry-run"], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("would register")));
-	assert.equal(loadRegistry(agentDir).projects.length, 0);
+	assert.equal(loadRegistrySync(agentDir).projects.length, 0);
 
 	assert.equal(await main(["fix"], deps(area)), 0);
-	assert.equal(loadRegistry(agentDir).projects.length, 1);
+	assert.equal(loadRegistrySync(agentDir).projects.length, 1);
 });
 
 test("cli: adopt with unresolvable dir reports skip", async () => {

@@ -6,7 +6,8 @@ import {
 	rewriteArgsForCwd,
 	defaultSpawnPi,
 } from "../src/core/launcher.ts";
-import { loadRegistry, findBySlug } from "../src/core/registry.ts";
+import { findBySlug } from "../src/core/registry.ts";
+import { loadRegistrySync } from "../src/core/db.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { readTrust } from "../src/core/trust.ts";
 import { tmpAgentDir, tmpDir, fakeRepo, cleanup } from "./helpers.ts";
@@ -66,7 +67,7 @@ test("prepareLaunch: canonicalizes to project root, sets env, creates store", as
 		cwd: root + "/deep/sub",
 		argv: ["hello"],
 		agentDir,
-		registry: loadRegistry(agentDir),
+		registry: loadRegistrySync(agentDir),
 		persist: false,
 		gitRemoteReader: () => null,
 	});
@@ -87,7 +88,7 @@ test("prepareLaunch: registry persisted and trust written when persist enabled",
 		gitRemoteReader: () => null,
 	});
 
-	const r = loadRegistry(agentDir);
+	const r = loadRegistrySync(agentDir);
 	assert.ok(findBySlug(r, "persisted"));
 	assert.equal(
 		readTrust(agentDir)[root],
@@ -166,7 +167,7 @@ test("prepareLaunch: bare-dir launch mints a plain project at cwd", async () => 
 		cwd: solo,
 		argv: [],
 		agentDir,
-		registry: loadRegistry(agentDir),
+		registry: loadRegistrySync(agentDir),
 		persist: false,
 		gitRemoteReader: () => null,
 	});
@@ -181,7 +182,7 @@ test("prepareLaunch: nested project follows merge to parent root and store", asy
 	const inner = fakeRepo(outer, "cabin", "git");
 
 	// register both (persist: false, single registry)
-	const registry = loadRegistry(agentDir);
+	const registry = loadRegistrySync(agentDir);
 	await prepareLaunch({
 		cwd: outer,
 		argv: [],

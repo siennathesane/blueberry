@@ -10,12 +10,8 @@
  * main() is dependency-injected (cwd, io, spawn) so the command layer is
  * fully testable; bin/blueberry supplies the real process bindings.
  */
-import {
-	loadRegistry,
-	saveRegistry,
-	mutations,
-	findBySlug,
-} from "../core/registry.ts";
+import { mutations, findBySlug } from "../core/registry.ts";
+import { loadRegistrySync, saveRegistrySync } from "../core/db.ts";
 import { getAgentDir, getTrashDir } from "../core/agent-dir.ts";
 import { resolveProject, storeDirFor } from "../core/resolution.ts";
 import {
@@ -166,7 +162,7 @@ async function launchMode(
 // --- current project helper ---------------------------------------------------
 
 async function currentProject(deps: CliDeps, slugOverride?: string) {
-	const registry = loadRegistry(deps.agentDir);
+	const registry = loadRegistrySync(deps.agentDir);
 	if (slugOverride) {
 		const p = findBySlug(registry, slugOverride);
 		if (!p) throw new Error(`no project '${slugOverride}'`);
@@ -187,7 +183,7 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 	try {
 		switch (sub) {
 			case "list": {
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const json = args.includes("--json");
 				if (json) {
 					deps.out(JSON.stringify(registry.projects, null, 2));
@@ -212,9 +208,9 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const [slug, newName] = args;
 				if (!slug || !newName)
 					return usageErr(deps, "projects rename <slug> <new>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				mutations.renameSlug(deps.agentDir, registry, slug, newName);
-				await saveRegistry(deps.agentDir, registry);
+				saveRegistrySync(deps.agentDir, registry);
 				deps.out(`renamed '${slug}' -> '${newName}' (store moved)`);
 				return 0;
 			}
@@ -224,14 +220,14 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const into = intoIdx >= 0 ? args[intoIdx + 1] : undefined;
 				if (!from || !into)
 					return usageErr(deps, "projects merge <from> --into <to>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const { survivor, moved } = mutations.merge(
 					deps.agentDir,
 					registry,
 					from,
 					into,
 				);
-				await saveRegistry(deps.agentDir, registry);
+				saveRegistrySync(deps.agentDir, registry);
 				deps.out(
 					`merged '${from}' into '${survivor.slug}' (${moved} sessions moved)`,
 				);
@@ -241,11 +237,11 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const slug = args[0];
 				if (!slug) return usageErr(deps, "projects forget <slug> [--purge]");
 				const purge = args.includes("--purge");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const { storeDir } = mutations.forget(deps.agentDir, registry, slug, {
 					purge,
 				});
-				await saveRegistry(deps.agentDir, registry);
+				saveRegistrySync(deps.agentDir, registry);
 				deps.out(
 					storeDir
 						? `forgot '${slug}' (sessions kept at ${storeDir})`
@@ -259,9 +255,9 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const parent = intoIdx >= 0 ? args[intoIdx + 1] : undefined;
 				if (!child || !parent)
 					return usageErr(deps, "projects nest <child> --into <parent>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				mutations.setNested(registry, child, parent);
-				await saveRegistry(deps.agentDir, registry);
+				saveRegistrySync(deps.agentDir, registry);
 				deps.out(
 					`sessions of '${child}' now belong to '${parent}' (existing sessions: move with 'sessions move')`,
 				);
@@ -270,9 +266,9 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			case "unnest": {
 				const child = args[0];
 				if (!child) return usageErr(deps, "projects unnest <child>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				mutations.setNested(registry, child, null);
-				await saveRegistry(deps.agentDir, registry);
+				saveRegistrySync(deps.agentDir, registry);
 				deps.out(`'${child}' has its own sessions again`);
 				return 0;
 			}
@@ -281,14 +277,14 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				if (mode !== "central" && mode !== "repo")
 					return usageErr(deps, "projects sessions <central|repo> <slug>");
 				if (!slug) return usageErr(deps, "projects sessions <central|repo> <slug>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				mutations.setStoreMode(
 					deps.agentDir,
 					registry,
 					slug,
 					mode === "repo" ? "in-repo" : "central",
 				);
-				await saveRegistry(deps.agentDir, registry);
+				saveRegistrySync(deps.agentDir, registry);
 				deps.out(
 					`'${slug}' sessions now ${mode === "repo" ? "live in the repo (.blueberry/sessions)" : "centralized"}`,
 				);
@@ -317,7 +313,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const all = rest.includes("--all");
 				const json = rest.includes("--json");
 				if (all) {
-					const registry = loadRegistry(deps.agentDir);
+					const registry = loadRegistrySync(deps.agentDir);
 					const lines: unknown[] = [];
 					for (const p of registry.projects) {
 						for (const s of listSessions(storeDirFor(deps.agentDir, p))) {
@@ -356,7 +352,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const [sel, targetSlug] = args;
 				if (!sel || !targetSlug)
 					return usageErr(deps, "sessions move <sel> <project-slug>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const { project } = await currentProject(deps, projectFlag);
 				const target = findBySlug(registry, targetSlug);
 				if (!target) return deps.err(`no project '${targetSlug}'`), 1;
@@ -403,7 +399,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 						"sessions show <project/selector> [--view summary|tree|messages|message] [--offset N] [--limit N] [--message N]",
 					);
 				const view = (extractValue(rest, "--view") ?? "summary") as ViewKind;
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const { project: current } = await currentProject(deps, projectFlag);
 				const resolved = resolveAddress(
 					registry,
@@ -444,7 +440,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			case "search": {
 				const text = positionals(rest, "search").join(" ");
 				if (!text) return usageErr(deps, "sessions search <text> [--all]");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const { project: current } = await currentProject(deps, projectFlag);
 				const hits = searchSessions(registry, deps.agentDir, text, {
 					all: rest.includes("--all"),
@@ -456,7 +452,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			case "fork": {
 				const addr = positionals(rest, "fork")[0];
 				if (!addr) return usageErr(deps, "sessions fork <project/selector>");
-				const registry = loadRegistry(deps.agentDir);
+				const registry = loadRegistrySync(deps.agentDir);
 				const { project: current } = await currentProject(deps, projectFlag);
 				const resolved = resolveAddress(
 					registry,
@@ -523,12 +519,12 @@ async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 			if (k && v) map[k] = v;
 		}
 
-		const registry = loadRegistry(deps.agentDir);
+		const registry = loadRegistrySync(deps.agentDir);
 		const copy = rest.includes("--copy");
 		const adoptOpts: AdoptOptions = { sourceDir, agentDir: deps.agentDir, map };
 		if (copy) adoptOpts.copy = true;
 		const report = adoptSessions(registry, adoptOpts);
-		await saveRegistry(deps.agentDir, registry);
+		saveRegistrySync(deps.agentDir, registry);
 
 		for (const line of report.imported)
 			deps.out(
@@ -560,13 +556,13 @@ async function fixCmd(
 	deps: CliDeps,
 ): Promise<number> {
 	try {
-		const registry = loadRegistry(deps.agentDir);
+		const registry = loadRegistrySync(deps.agentDir);
 		const report =
 			dryRun || rest.includes("--dry-run")
 				? runDoctor(registry, deps.agentDir)
 				: runFix(registry, deps.agentDir);
 		if (!dryRun && !rest.includes("--dry-run"))
-			await saveRegistry(deps.agentDir, registry);
+			saveRegistrySync(deps.agentDir, registry);
 
 		if (report.findings.length === 0) {
 			deps.out("all clear — registry, stores, and sessions consistent");
