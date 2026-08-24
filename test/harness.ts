@@ -73,12 +73,21 @@ export interface CliResult {
 	stderr: string;
 }
 
+/** Env for subprocesses: blueberry override + coverage-tracking vars stripped
+ * (spawning node entry.ts under node:test's ambient NODE_V8_COVERAGE writes
+ * import-only partial profiles that corrupt the merge). */
+function childEnv(agentDir: string): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = { ...process.env, BLUEBERRY_AGENT_DIR: agentDir };
+	delete env["NODE_V8_COVERAGE"];
+	return env;
+}
+
 /** Run the real binary: bb <args...> against a world. */
 export function runCli(args: string[], world: UxWorld, timeoutMs = 20_000): Promise<CliResult> {
 	return new Promise((resolvePromise, reject) => {
 		const child = spawn(BB_BIN, args, {
 			cwd: world.projectDir,
-			env: { ...process.env, BLUEBERRY_AGENT_DIR: world.agentDir },
+			env: childEnv(world.agentDir),
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		let stdout = "";
@@ -121,7 +130,7 @@ export class TuiSession {
 			"new-session", "-d", "-s", name,
 			"-x", String(width), "-y", String(height),
 			"-c", world.projectDir,
-			`env BLUEBERRY_AGENT_DIR=${world.agentDir} '${BB_BIN}'`,
+			`env -u NODE_V8_COVERAGE BLUEBERRY_AGENT_DIR=${world.agentDir} '${BB_BIN}'`,
 		]);
 		return new TuiSession(name);
 	}
