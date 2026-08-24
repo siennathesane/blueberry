@@ -41,6 +41,8 @@ import {
 	type ViewKind,
 } from "../core/library.ts";
 import { getVersion } from "../core/version.ts";
+import { openDb, loadRegistryDb } from "../core/db.ts";
+import { syncStores, restoreMissing } from "../core/sync.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -119,6 +121,10 @@ export async function main(
 			return fixCmd(rest, false, deps);
 		case "doctor":
 			return fixCmd(rest, true, deps);
+		case "sync":
+			return syncCmd(deps);
+		case "restore":
+			return restoreCmd(deps);
 		default:
 			// anything that isn't a known subcommand is treated as pi launch
 			return launchMode(argv, deps);
@@ -543,6 +549,44 @@ async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 			report.duplicates === 0
 		)
 			deps.out("nothing to adopt");
+		return 0;
+	} catch (err) {
+		deps.err(`blueberry: ${(err as Error).message}`);
+		return 1;
+	}
+}
+
+// --- sync / restore --------------------------------------------------------------
+
+async function syncCmd(deps: CliDeps): Promise<number> {
+	try {
+		const db = openDb(deps.agentDir);
+		try {
+			const registry = loadRegistryDb(db);
+			const report = syncStores(db, deps.agentDir, registry);
+			deps.out(`sync: ${report.ingested} ingested · ${report.unchanged} unchanged`);
+			for (const o of report.orphans) deps.out(`orphan: ${o.file} (${o.detail})`);
+			for (const e of report.errors) deps.out(`error: ${e.file} (${e.detail})`);
+		} finally {
+			db.close();
+		}
+		return 0;
+	} catch (err) {
+		deps.err(`blueberry: ${(err as Error).message}`);
+		return 1;
+	}
+}
+
+async function restoreCmd(deps: CliDeps): Promise<number> {
+	try {
+		const db = openDb(deps.agentDir);
+		try {
+			const restored = restoreMissing(db);
+			if (restored.length === 0) deps.out("restore: nothing missing");
+			for (const r of restored) deps.out(`restored ${r.id.slice(0, 8)} -> ${r.path}`);
+		} finally {
+			db.close();
+		}
 		return 0;
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);

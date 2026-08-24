@@ -119,4 +119,38 @@ export default function (pi: ExtensionAPI) {
 			);
 		}
 	});
+
+	// §Data sync: ingest this session's JSONL into blueberry.db at compaction
+	// and shutdown. Fire-and-forget — sync failures must never disturb the
+	// session; bb sync catches anything missed (e.g. crashes).
+	const syncThisSession = (ctx: { sessionManager: { getSessionFile(): string | undefined } }) => {
+		try {
+			const file = ctx.sessionManager.getSessionFile();
+			if (!file) return;
+			const agentDir = process.env["PI_CODING_AGENT_DIR"] ?? "";
+			if (agentDir === "") return;
+			// inline dynamic import to keep module load light under jiti
+			void import("../../src/core/db.ts").then(async ({ openDb, loadRegistryDb }) => {
+				const { ingestSessionFile } = await import("../../src/core/sync.ts");
+				const db = openDb(agentDir);
+				try {
+					const registry = loadRegistryDb(db);
+					const byPath = new Map<string, string>();
+					for (const p of registry.projects) {
+						byPath.set(p.canonicalPath, p.id);
+						for (const a of p.aliases) byPath.set(a, p.id);
+					}
+					ingestSessionFile(db, file, (cwd) => (cwd ? (byPath.get(cwd) ?? null) : null));
+				} finally {
+					db.close();
+				}
+			}).catch(() => {
+				// best-effort only
+			});
+		} catch {
+			// best-effort only
+		}
+	};
+	pi.on("session_compact", (_event, ctx) => syncThisSession(ctx));
+	pi.on("session_shutdown", (_event, ctx) => syncThisSession(ctx));
 }
