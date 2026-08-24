@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# blueberry launcher — runs stock pi with an isolated agent directory.
+#
+#   ./bin/blueberry            # interactive
+#   ./bin/blueberry -p "..."   # print mode, all pi flags pass through
+#
+# Uses ~/.blueberry as PI_CODING_AGENT_DIR (own settings/sessions/auth/packages),
+# completely separate from ~/.pi/agent. Override with BLUEBERRY_AGENT_DIR.
+set -euo pipefail
+
+AGENT_DIR="${BLUEBERRY_AGENT_DIR:-$HOME/.blueberry}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if ! command -v pi >/dev/null 2>&1; then
+  echo "blueberry: 'pi' not found on PATH" >&2
+  echo "  install it: npm install -g --ignore-scripts @earendil-works/pi-coding-agent" >&2
+  exit 1
+fi
+
+if [ ! -f "$AGENT_DIR/settings.json" ]; then
+  echo "blueberry: $AGENT_DIR/settings.json not found — run ./bin/setup.sh first" >&2
+  exit 1
+fi
+
+export PI_CODING_AGENT_DIR="$AGENT_DIR"
+exec pi "$@"
