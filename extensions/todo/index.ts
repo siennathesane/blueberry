@@ -123,7 +123,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// --- strip widget --------------------------------------------------------
-	const refreshStrip = (ctx: { cwd: string; ui: { setWidget(id: string, lines: string[] | undefined): void } }) => {
+	const refreshStrip = (ctx: {
+		cwd: string;
+		ui: { setWidget(id: string, lines: string[] | undefined): void };
+	}) => {
 		const cards = loadCards(ctx.cwd);
 		if (cards.length === 0) {
 			ctx.ui.setWidget("bb-todo", undefined);
@@ -134,7 +137,8 @@ export default function (pi: ExtensionAPI) {
 		const ready = cards.filter((c) => c.stage === "todo" && c.ready);
 		const review = cards.filter((c) => c.stage === "review").length;
 		const parts = [`⬡ ${done}/${cards.length}`];
-		if (doing[0]) parts.push(`◉ ${doing[0]!.title.slice(0, 24)} ${doing[0]!.age}`);
+		if (doing[0])
+			parts.push(`◉ ${doing[0]!.title.slice(0, 24)} ${doing[0]!.age}`);
 		if (review > 0) parts.push(`◷${review}`);
 		if (ready[0]) parts.push(`next ▣ ${ready[0]!.title.slice(0, 24)}`);
 		ctx.ui.setWidget("bb-todo", [` ${parts.join(" · ")}`]);
@@ -181,21 +185,29 @@ export default function (pi: ExtensionAPI) {
 			"create, move (stage: todo|doing|review|done|dropped; blocked tasks cannot advance), " +
 			"dep (add/remove dependency, cycles rejected), delete. Every mutation logs a breadcrumb " +
 			"with the task's id todo:<project>/<hex6> — searchable across sessions via bb_library.",
-		promptSnippet: "Manage long-horizon task DAG (list/create/move/dep/delete) with cross-session search needles",
+		promptSnippet:
+			"Manage long-horizon task DAG (list/create/move/dep/delete) with cross-session search needles",
 		promptGuidelines: [
 			"Use bb_todo to track multi-step work: create tasks for distinct units, add deps reflecting real ordering, move work through stages, and complete tasks when done.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["list", "create", "move", "dep", "delete"] as const),
 			title: Type.Optional(Type.String({ description: "create: task title" })),
-			id: Type.Optional(Type.String({ description: "hex6 task id for move/dep/delete" })),
+			id: Type.Optional(
+				Type.String({ description: "hex6 task id for move/dep/delete" }),
+			),
 			stage: Type.Optional(StringEnum(STAGES)),
-			depId: Type.Optional(Type.String({ description: "dep: dependency task hex6" })),
-			remove: Type.Optional(Type.Boolean({ description: "dep: remove instead of add" })),
+			depId: Type.Optional(
+				Type.String({ description: "dep: dependency task hex6" }),
+			),
+			remove: Type.Optional(
+				Type.Boolean({ description: "dep: remove instead of add" }),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const dir = agentDir();
-			if (dir === "") throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
+			if (dir === "")
+				throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
 			const proj = projectFor(ctx.cwd);
 			if (!proj) throw new Error("no project registered for this cwd");
 
@@ -206,7 +218,10 @@ export default function (pi: ExtensionAPI) {
 					case "list": {
 						const cards = toCards(listTodos(db, proj.id));
 						if (cards.length === 0) {
-							return { content: [{ type: "text", text: `no todos in '${proj.slug}'` }], details: { cards: [] } };
+							return {
+								content: [{ type: "text", text: `no todos in '${proj.slug}'` }],
+								details: { cards: [] },
+							};
 						}
 						const lines = cards.map(
 							(c) =>
@@ -222,7 +237,13 @@ export default function (pi: ExtensionAPI) {
 						if (!res.ok || !res.todo) {
 							throw new Error(res.reason ?? "create failed");
 						}
-						const line = breadcrumb(proj.slug, res.todo.hex6, res.todo.title, "created", []);
+						const line = breadcrumb(
+							proj.slug,
+							res.todo.hex6,
+							res.todo.title,
+							"created",
+							[],
+						);
 						pi.sendMessage({ customType: "bb-todo", content: line, display: true });
 						return {
 							content: [{ type: "text", text: `created ${line}` }],
@@ -230,11 +251,20 @@ export default function (pi: ExtensionAPI) {
 						};
 					}
 					case "move": {
-						if (!params.id || !params.stage) throw new Error("move requires id + stage");
+						if (!params.id || !params.stage)
+							throw new Error("move requires id + stage");
 						const res = setStage(db, proj.id, params.id, params.stage, { sessionId });
 						if (!res.ok || !res.todo) throw new Error(res.reason ?? "move failed");
-						const blockedBy = listTodos(db, proj.id).find((t) => t.hex6 === params.id)!.blockedBy;
-						const line = breadcrumb(proj.slug, res.todo.hex6, res.todo.title, `-> ${params.stage}`, blockedBy);
+						const blockedBy = listTodos(db, proj.id).find(
+							(t) => t.hex6 === params.id,
+						)!.blockedBy;
+						const line = breadcrumb(
+							proj.slug,
+							res.todo.hex6,
+							res.todo.title,
+							`-> ${params.stage}`,
+							blockedBy,
+						);
 						pi.sendMessage({
 							customType: "bb-todo",
 							content: line,
@@ -247,7 +277,8 @@ export default function (pi: ExtensionAPI) {
 						};
 					}
 					case "dep": {
-						if (!params.id || !params.depId) throw new Error("dep requires id + depId");
+						if (!params.id || !params.depId)
+							throw new Error("dep requires id + depId");
 						const res = params.remove
 							? removeDep(db, proj.id, params.id, params.depId, { sessionId })
 							: addDep(db, proj.id, params.id, params.depId, { sessionId });
@@ -260,13 +291,22 @@ export default function (pi: ExtensionAPI) {
 							[],
 						);
 						pi.sendMessage({ customType: "bb-todo", content: line, display: false });
-						return { content: [{ type: "text", text: line }], details: { hex6: res.todo.hex6 } };
+						return {
+							content: [{ type: "text", text: line }],
+							details: { hex6: res.todo.hex6 },
+						};
 					}
 					case "delete": {
 						if (!params.id) throw new Error("delete requires id");
 						const res = deleteTodo(db, proj.id, params.id, { sessionId });
 						if (!res.ok || !res.todo) throw new Error(res.reason ?? "delete failed");
-						const line = breadcrumb(proj.slug, res.todo.hex6, res.todo.title, "deleted", []);
+						const line = breadcrumb(
+							proj.slug,
+							res.todo.hex6,
+							res.todo.title,
+							"deleted",
+							[],
+						);
 						pi.sendMessage({ customType: "bb-todo", content: line, display: false });
 						return { content: [{ type: "text", text: line }], details: {} };
 					}

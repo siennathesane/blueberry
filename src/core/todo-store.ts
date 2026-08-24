@@ -33,11 +33,16 @@ export function hex6Of(id: string): string {
 }
 
 /** Generate a collision-free task id for a project (uuid, last-6 address). */
-export function newTodoId(db: DatabaseSync, projectId: string): { id: string; hex6: string } {
+export function newTodoId(
+	db: DatabaseSync,
+	projectId: string,
+): { id: string; hex6: string } {
 	const existing = new Set(
-		(db.prepare("SELECT id FROM todos WHERE project_id = ?").all(projectId) as Array<Record<string, unknown>>).map(
-			(r) => hex6Of(String(r["id"])),
-		),
+		(
+			db
+				.prepare("SELECT id FROM todos WHERE project_id = ?")
+				.all(projectId) as Array<Record<string, unknown>>
+		).map((r) => hex6Of(String(r["id"]))),
 	);
 	for (let i = 0; i < 50; i++) {
 		const id = randomUUID();
@@ -62,19 +67,28 @@ function rowToTodo(row: Record<string, unknown>): TodoRow {
 }
 
 /** All todos of a project with derived dep info, mapped to pane cards. */
-export function listTodos(db: DatabaseSync, projectId: string): Array<TodoRow & { deps: string[]; blockedBy: string[] }> {
+export function listTodos(
+	db: DatabaseSync,
+	projectId: string,
+): Array<TodoRow & { deps: string[]; blockedBy: string[] }> {
 	const rows = db
 		.prepare("SELECT * FROM todos WHERE project_id = ? ORDER BY created_at")
 		.all(projectId) as Array<Record<string, unknown>>;
 	const depsByTodo = new Map<string, string[]>();
-	for (const d of db.prepare("SELECT todo_id, dep_id FROM todo_deps").all() as Array<Record<string, unknown>>) {
+	for (const d of db
+		.prepare("SELECT todo_id, dep_id FROM todo_deps")
+		.all() as Array<Record<string, unknown>>) {
 		const tid = String(d["todo_id"]);
 		const list = depsByTodo.get(tid) ?? [];
 		list.push(String(d["dep_id"]));
 		depsByTodo.set(tid, list);
 	}
-	const stageById = new Map(rows.map((r) => [String(r["id"]), String(r["stage"])]));
-	const hexById = new Map(rows.map((r) => [String(r["id"]), hex6Of(String(r["id"]))]));
+	const stageById = new Map(
+		rows.map((r) => [String(r["id"]), String(r["stage"])]),
+	);
+	const hexById = new Map(
+		rows.map((r) => [String(r["id"]), hex6Of(String(r["id"]))]),
+	);
 
 	return rows.map((r) => {
 		const todo = rowToTodo(r);
@@ -83,12 +97,18 @@ export function listTodos(db: DatabaseSync, projectId: string): Array<TodoRow & 
 			const stage = stageById.get(dep);
 			return stage !== "done" && stage !== "dropped";
 		});
-		return { ...todo, deps, blockedBy: blockedBy.map((d) => hexById.get(d) ?? hex6Of(d)) };
+		return {
+			...todo,
+			deps,
+			blockedBy: blockedBy.map((d) => hexById.get(d) ?? hex6Of(d)),
+		};
 	});
 }
 
 /** Map DB rows to pane cards (ages derived from timestamps). */
-export function toCards(rows: Array<TodoRow & { blockedBy: string[] }>): TodoCard[] {
+export function toCards(
+	rows: Array<TodoRow & { blockedBy: string[] }>,
+): TodoCard[] {
 	return rows.map((r) => ({
 		id: r.hex6,
 		title: r.title,
@@ -118,7 +138,11 @@ export interface MutationResult {
 	todo?: TodoRow;
 }
 
-function getTodo(db: DatabaseSync, projectId: string, hex6: string): TodoRow | null {
+function getTodo(
+	db: DatabaseSync,
+	projectId: string,
+	hex6: string,
+): TodoRow | null {
 	const rows = db
 		.prepare("SELECT * FROM todos WHERE project_id = ?")
 		.all(projectId) as Array<Record<string, unknown>>;
@@ -126,14 +150,18 @@ function getTodo(db: DatabaseSync, projectId: string, hex6: string): TodoRow | n
 	return hit ? rowToTodo(hit) : null;
 }
 
-function appendEvent(db: DatabaseSync, todoId: string, kind: string, sessionId: string | null, note: string | null): void {
-	db.prepare("INSERT INTO todo_events (todo_id, kind, ts, session_id, note) VALUES (?, ?, ?, ?, ?)").run(
-		todoId,
-		kind,
-		new Date().toISOString(),
-		sessionId,
-		note,
-	);
+function appendEvent(
+	db: DatabaseSync,
+	todoId: string,
+	kind: string,
+	sessionId: string | null,
+	note: string | null,
+): void {
+	db
+		.prepare(
+			"INSERT INTO todo_events (todo_id, kind, ts, session_id, note) VALUES (?, ?, ?, ?, ?)",
+		)
+		.run(todoId, kind, new Date().toISOString(), sessionId, note);
 }
 
 export function createTodo(
@@ -146,12 +174,16 @@ export function createTodo(
 	if (trimmed === "") return { ok: false, reason: "title required" };
 	const now = new Date().toISOString();
 	const { id } = newTodoId(db, projectId);
-	db.prepare(
-		"INSERT INTO todos (id, project_id, title, track, stage, created_at, updated_at) VALUES (?, ?, ?, ?, 'todo', ?, ?)",
-	).run(id, projectId, trimmed, opts.track ?? null, now, now);
+	db
+		.prepare(
+			"INSERT INTO todos (id, project_id, title, track, stage, created_at, updated_at) VALUES (?, ?, ?, ?, 'todo', ?, ?)",
+		)
+		.run(id, projectId, trimmed, opts.track ?? null, now, now);
 	appendEvent(db, id, "create", opts.sessionId ?? null, trimmed);
 	const saved = getTodo(db, projectId, hex6Of(id));
-	return saved ? { ok: true, todo: saved } : { ok: false, reason: "internal: row vanished after insert" };
+	return saved
+		? { ok: true, todo: saved }
+		: { ok: false, reason: "internal: row vanished after insert" };
 }
 
 export function setStage(
@@ -177,26 +209,37 @@ export function setStage(
 
 	const now = new Date().toISOString();
 	const doneAt = stage === "done" ? now : null;
-	db.prepare("UPDATE todos SET stage = ?, updated_at = ?, done_at = COALESCE(?, done_at) WHERE id = ?").run(
-		stage,
-		now,
-		doneAt,
+	db
+		.prepare(
+			"UPDATE todos SET stage = ?, updated_at = ?, done_at = COALESCE(?, done_at) WHERE id = ?",
+		)
+		.run(stage, now, doneAt, todo.id);
+	appendEvent(
+		db,
 		todo.id,
+		`move:${todo.stage}->${stage}`,
+		opts.sessionId ?? null,
+		todo.title,
 	);
-	appendEvent(db, todo.id, `move:${todo.stage}->${stage}`, opts.sessionId ?? null, todo.title);
 
 	let warning: string | undefined;
 	if (stage === "doing") {
 		const doingCount = (
 			db
-				.prepare("SELECT COUNT(*) AS n FROM todos WHERE project_id = ? AND stage = 'doing'")
+				.prepare(
+					"SELECT COUNT(*) AS n FROM todos WHERE project_id = ? AND stage = 'doing'",
+				)
 				.get(projectId) as { n: number }
 		).n;
-		if (doingCount > WIP_LIMIT) warning = `WIP ${doingCount} > ${WIP_LIMIT} (soft limit)`;
+		if (doingCount > WIP_LIMIT)
+			warning = `WIP ${doingCount} > ${WIP_LIMIT} (soft limit)`;
 	}
 	const saved = getTodo(db, projectId, hex6);
-	if (!saved) return { ok: false, reason: "internal: row vanished after update" };
-	return warning === undefined ? { ok: true, todo: saved } : { ok: true, warning, todo: saved };
+	if (!saved)
+		return { ok: false, reason: "internal: row vanished after update" };
+	return warning === undefined
+		? { ok: true, todo: saved }
+		: { ok: true, warning, todo: saved };
 }
 
 export function addDep(
@@ -210,7 +253,8 @@ export function addDep(
 	const dep = getTodo(db, projectId, depHex6);
 	if (!todo) return { ok: false, reason: `no todo '${hex6}'` };
 	if (!dep) return { ok: false, reason: `no todo '${depHex6}'` };
-	if (todo.id === dep.id) return { ok: false, reason: "cannot depend on itself" };
+	if (todo.id === dep.id)
+		return { ok: false, reason: "cannot depend on itself" };
 
 	// cycle check: does dep (transitively) depend on todo?
 	const all = listTodos(db, projectId);
@@ -225,10 +269,14 @@ export function addDep(
 		stack.push(...(depsOf.get(cur) ?? []));
 	}
 
-	db.prepare("INSERT OR IGNORE INTO todo_deps (todo_id, dep_id) VALUES (?, ?)").run(todo.id, dep.id);
+	db
+		.prepare("INSERT OR IGNORE INTO todo_deps (todo_id, dep_id) VALUES (?, ?)")
+		.run(todo.id, dep.id);
 	appendEvent(db, todo.id, "dep:add", opts.sessionId ?? null, depHex6);
 	const saved = getTodo(db, projectId, hex6);
-	return saved ? { ok: true, todo: saved } : { ok: false, reason: "internal: row vanished after dep add" };
+	return saved
+		? { ok: true, todo: saved }
+		: { ok: false, reason: "internal: row vanished after dep add" };
 }
 
 export function removeDep(
@@ -241,10 +289,14 @@ export function removeDep(
 	const todo = getTodo(db, projectId, hex6);
 	const dep = getTodo(db, projectId, depHex6);
 	if (!todo || !dep) return { ok: false, reason: "no such todo" };
-	db.prepare("DELETE FROM todo_deps WHERE todo_id = ? AND dep_id = ?").run(todo.id, dep.id);
+	db
+		.prepare("DELETE FROM todo_deps WHERE todo_id = ? AND dep_id = ?")
+		.run(todo.id, dep.id);
 	appendEvent(db, todo.id, "dep:remove", opts.sessionId ?? null, depHex6);
 	const saved = getTodo(db, projectId, hex6);
-	return saved ? { ok: true, todo: saved } : { ok: false, reason: "internal: row vanished after dep remove" };
+	return saved
+		? { ok: true, todo: saved }
+		: { ok: false, reason: "internal: row vanished after dep remove" };
 }
 
 export function deleteTodo(
@@ -255,7 +307,9 @@ export function deleteTodo(
 ): MutationResult {
 	const todo = getTodo(db, projectId, hex6);
 	if (!todo) return { ok: false, reason: `no todo '${hex6}'` };
-	db.prepare("DELETE FROM todo_deps WHERE todo_id = ? OR dep_id = ?").run(todo.id, todo.id);
+	db
+		.prepare("DELETE FROM todo_deps WHERE todo_id = ? OR dep_id = ?")
+		.run(todo.id, todo.id);
 	db.prepare("DELETE FROM todo_events WHERE todo_id = ?").run(todo.id);
 	db.prepare("DELETE FROM todos WHERE id = ?").run(todo.id);
 	appendEvent(db, todo.id, "delete", opts.sessionId ?? null, todo.title);
@@ -264,7 +318,13 @@ export function deleteTodo(
 
 // --- breadcrumbs + checkpoint ---------------------------------------------------
 
-export function breadcrumb(slug: string, hex6: string, title: string, transition: string, deps: string[]): string {
+export function breadcrumb(
+	slug: string,
+	hex6: string,
+	title: string,
+	transition: string,
+	deps: string[],
+): string {
 	const depNote = deps.length > 0 ? ` · deps ${deps.join(",")}` : "";
 	return `todo:${slug}/${hex6} · ${title} · ${transition}${depNote}`;
 }
@@ -296,7 +356,9 @@ export function checkpointDigest(
 		parts.push(breadcrumb(slug, t.hex6, t.title, t.stage, t.blockedBy));
 	}
 	const doing = rows.filter((r) => r.stage === "doing");
-	const ready = rows.filter((r) => r.stage === "todo" && r.blockedBy.length === 0);
+	const ready = rows.filter(
+		(r) => r.stage === "todo" && r.blockedBy.length === 0,
+	);
 	if (doing.length > 0) parts.push(`NOW ${doing.map((d) => d.hex6).join(",")}`);
 	if (ready.length > 0) parts.push(`NEXT ${ready.map((r) => r.hex6).join(",")}`);
 	return parts.join("\n");

@@ -1,13 +1,32 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { openDb, loadRegistryDb, saveRegistrySync } from "../src/core/db.ts";
-import { ftsSearch, ingestSessionFile, restoreMissing, restoreSession, syncStores } from "../src/core/sync.ts";
+import {
+	ftsSearch,
+	ingestSessionFile,
+	restoreMissing,
+	restoreSession,
+	syncStores,
+} from "../src/core/sync.ts";
 import { loadRegistry, mutations } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { readSessionHeader } from "../src/core/sessions.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -20,27 +39,50 @@ afterEach(() => {
 	cleanup(agentDir, area);
 });
 
-function setup(): { root: string; store: string; registry: ReturnType<typeof loadRegistry> } {
+function setup(): {
+	root: string;
+	store: string;
+	registry: ReturnType<typeof loadRegistry>;
+} {
 	const root = fakeRepo(area, "syncproj", "git");
 	const registryJson = loadRegistry(agentDir);
 	mutations.register(registryJson, { root });
-	return { root, store: getCentralStoreDir(agentDir, "syncproj"), registry: registryJson };
+	return {
+		root,
+		store: getCentralStoreDir(agentDir, "syncproj"),
+		registry: registryJson,
+	};
 }
 
 test("ingest: full pipeline — sessions row, entries, fts, name", () => {
 	const { root, store, registry } = setup();
-	const file = fakeSession(store, { cwd: root, firstUserText: "the needle lives here", name: "named-one" });
+	const file = fakeSession(store, {
+		cwd: root,
+		firstUserText: "the needle lives here",
+		name: "named-one",
+	});
 
 	const db = openDb(agentDir);
 	const byPath = new Map([[root, registry.projects[0]!.id]]);
-	const res = ingestSessionFile(db, file, (cwd) => (cwd ? (byPath.get(cwd) ?? null) : null));
+	const res = ingestSessionFile(db, file, (cwd) =>
+		cwd ? (byPath.get(cwd) ?? null) : null,
+	);
 
 	assert.equal(res.status, "ingested");
-	const row = db.prepare("SELECT * FROM sessions").get() as Record<string, unknown>;
+	const row = db.prepare("SELECT * FROM sessions").get() as Record<
+		string,
+		unknown
+	>;
 	assert.equal(row["name"], "named-one");
 	assert.equal(row["project_id"], registry.projects[0]!.id);
-	const nEntries = (db.prepare("SELECT COUNT(*) AS n FROM session_entries").get() as { n: number }).n;
-	assert.equal(nEntries, 2, "header excluded; user message + session_info stored");
+	const nEntries = (
+		db.prepare("SELECT COUNT(*) AS n FROM session_entries").get() as { n: number }
+	).n;
+	assert.equal(
+		nEntries,
+		2,
+		"header excluded; user message + session_info stored",
+	);
 
 	const hits = ftsSearch(db, "needle");
 	assert.equal(hits.length, 1);
@@ -61,15 +103,26 @@ test("ingest: idempotent by (mtime,size); changed file re-ingests fully", () => 
 
 	// mutate the SAME file (append an entry) → mtime+size change → re-ingest replaces
 	const orig = readFileSync(file, "utf8");
-	writeFileSync(file, `${orig}${JSON.stringify({ type: "message", id: "extra01", parentId: null, timestamp: new Date().toISOString(), message: { role: "user", content: "second version the needle moved", timestamp: 1 } })}\n`);
+	writeFileSync(
+		file,
+		`${orig}${JSON.stringify({ type: "message", id: "extra01", parentId: null, timestamp: new Date().toISOString(), message: { role: "user", content: "second version the needle moved", timestamp: 1 } })}\n`,
+	);
 	utimesSync(file, new Date(), new Date(Date.now() + 5000));
 	assert.equal(ingestSessionFile(db, file, pid).status, "ingested");
-	const count = (db.prepare("SELECT COUNT(*) AS n FROM sessions").get() as { n: number }).n;
+	const count = (
+		db.prepare("SELECT COUNT(*) AS n FROM sessions").get() as { n: number }
+	).n;
 	assert.equal(count, 1, "replaced, not duplicated");
 	const hits = ftsSearch(db, "moved");
 	assert.equal(hits.length, 1, "new entry text indexed");
-	assert.equal(ftsSearch(db, "first version").length, 1, "old entry text still present (file keeps history)");
-	const nEntries = (db.prepare("SELECT COUNT(*) AS n FROM session_entries").get() as { n: number }).n;
+	assert.equal(
+		ftsSearch(db, "first version").length,
+		1,
+		"old entry text still present (file keeps history)",
+	);
+	const nEntries = (
+		db.prepare("SELECT COUNT(*) AS n FROM session_entries").get() as { n: number }
+	).n;
 	assert.equal(nEntries, 2, "appended entry ingested: 1 original + 1 new");
 	db.close();
 });
@@ -77,11 +130,17 @@ test("ingest: idempotent by (mtime,size); changed file re-ingests fully", () => 
 test("ingest: orphan cwds and unparseable files are reported, never crash", () => {
 	const db = openDb(agentDir);
 	const orphanStore = `${area}/orphans`;
-	const f1 = fakeSession(orphanStore, { cwd: "/no/such/project", firstUserText: "x" });
+	const f1 = fakeSession(orphanStore, {
+		cwd: "/no/such/project",
+		firstUserText: "x",
+	});
 	assert.equal(ingestSessionFile(db, f1, () => null).status, "orphan");
 
 	writeFileSync(`${orphanStore}/bad.jsonl`, "not json at all\n");
-	assert.equal(ingestSessionFile(db, `${orphanStore}/bad.jsonl`, () => "p1").status, "error");
+	assert.equal(
+		ingestSessionFile(db, `${orphanStore}/bad.jsonl`, () => "p1").status,
+		"error",
+	);
 	db.close();
 });
 
@@ -91,7 +150,10 @@ test("syncStores: walks all project stores, aggregates the report", () => {
 	// register BOTH projects in the same registry, persist to the db
 	mutations.register(r1.registry, { root: root2 });
 	fakeSession(r1.store, { cwd: r1.root, firstUserText: "alpha content" });
-	fakeSession(getCentralStoreDir(agentDir, "secondproj"), { cwd: root2, firstUserText: "beta content" });
+	fakeSession(getCentralStoreDir(agentDir, "secondproj"), {
+		cwd: root2,
+		firstUserText: "beta content",
+	});
 
 	const db = openDb(agentDir);
 	saveRegistrySync(agentDir, r1.registry);
@@ -110,11 +172,16 @@ test("syncStores: walks all project stores, aggregates the report", () => {
 
 test("ftsSearch: sanitized against fts5 syntax injection; empty safe", () => {
 	const { root, store, registry } = setup();
-	fakeSession(store, { cwd: root, firstUserText: "plain text about OR MATCH and * stars" });
+	fakeSession(store, {
+		cwd: root,
+		firstUserText: "plain text about OR MATCH and * stars",
+	});
 	const db = openDb(agentDir);
 	const byPath = new Map([[root, registry.projects[0]!.id]]);
 	for (const f of readdirSync(store)) {
-		ingestSessionFile(db, join(store, f), (cwd) => (cwd ? (byPath.get(cwd) ?? null) : null));
+		ingestSessionFile(db, join(store, f), (cwd) =>
+			cwd ? (byPath.get(cwd) ?? null) : null,
+		);
 	}
 	// hostile queries don't throw
 	for (const q of ['"unbalanced', "OR * :", "NEAR(a b", ""]) {
@@ -126,7 +193,11 @@ test("ftsSearch: sanitized against fts5 syntax injection; empty safe", () => {
 
 test("restore: rebuilds a deleted session file from the DB byte-faithfully enough", () => {
 	const { root, store, registry } = setup();
-	const file = fakeSession(store, { cwd: root, firstUserText: "restorable content", entries: 2 });
+	const file = fakeSession(store, {
+		cwd: root,
+		firstUserText: "restorable content",
+		entries: 2,
+	});
 	const db = openDb(agentDir);
 	const byPath = new Map([[root, registry.projects[0]!.id]]);
 	ingestSessionFile(db, file, (cwd) => (cwd ? (byPath.get(cwd) ?? null) : null));

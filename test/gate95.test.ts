@@ -5,17 +5,34 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { main, type CliDeps } from "../src/cli/main.ts";
-import { openDb, loadRegistrySync, saveRegistrySync, syncConfigFile } from "../src/core/db.ts";
+import {
+	openDb,
+	loadRegistrySync,
+	saveRegistrySync,
+	syncConfigFile,
+} from "../src/core/db.ts";
 import { ingestSessionFile } from "../src/core/sync.ts";
 import { entrySummary, indexFileLines } from "../src/core/search.ts";
 import { applyInput, layoutFor, renderPane } from "../src/core/todo-pane.ts";
 import { toCards } from "../src/core/todo-store.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { loadRegistry, mutations } from "../src/core/registry.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -72,11 +89,17 @@ test("cli: search sessions and code via dispatch", async () => {
 	const root = fakeRepo(area, "findable", "git");
 	await main([], deps(root));
 	const store = getCentralStoreDir(agentDir, "findable");
-	fakeSession(store, { cwd: root, firstUserText: "the xylophone query appears" });
+	fakeSession(store, {
+		cwd: root,
+		firstUserText: "the xylophone query appears",
+	});
 	await main(["sync"], deps(area));
 
 	assert.equal(await main(["search", "xylophone"], deps(area)), 0);
-	assert.ok(outLines.some((l) => l.includes("▶")), "hit marked");
+	assert.ok(
+		outLines.some((l) => l.includes("▶")),
+		"hit marked",
+	);
 	assert.ok(outLines.some(tsColumn), "timestamp column present");
 
 	assert.equal(await main(["search", "zzz-nothing"], deps(area)), 0);
@@ -88,7 +111,10 @@ test("cli: search sessions and code via dispatch", async () => {
 	indexFileLines(db, src, readFileSync(src, "utf8"));
 	db.close();
 	outLines = [];
-	assert.equal(await main(["search", "xylophoneWidget", "--code"], deps(area)), 0);
+	assert.equal(
+		await main(["search", "xylophoneWidget", "--code"], deps(area)),
+		0,
+	);
 	assert.ok(outLines.some((l) => l.includes("widget.ts:1")));
 
 	assert.equal(await main(["search"], deps(area)), 2);
@@ -119,9 +145,13 @@ test("sync: header-only session ingests zero entries, no name row", () => {
 		join(store, "bare.jsonl"),
 		`${JSON.stringify({ type: "session", version: 3, id: "bare-id-1", timestamp: new Date().toISOString(), cwd: root })}\n`,
 	);
-	const res = ingestSessionFile(db, join(store, "bare.jsonl"), (cwd) => (cwd === root ? projectId : null));
+	const res = ingestSessionFile(db, join(store, "bare.jsonl"), (cwd) =>
+		cwd === root ? projectId : null,
+	);
 	assert.equal(res.status, "ingested");
-	const n = (db.prepare("SELECT COUNT(*) AS n FROM session_entries").get() as { n: number }).n;
+	const n = (
+		db.prepare("SELECT COUNT(*) AS n FROM session_entries").get() as { n: number }
+	).n;
 	assert.equal(n, 0);
 	db.close();
 });
@@ -129,13 +159,29 @@ test("sync: header-only session ingests zero entries, no name row", () => {
 // --- search entrySummary edges -----------------------------------------------------
 
 test("entrySummary: malformed json, non-message types, long-text truncation", () => {
-	assert.deepEqual(entrySummary("{not json"), { ts: null, role: null, text: "" });
-	assert.deepEqual(entrySummary(JSON.stringify({ type: "label", timestamp: "t1" })), { ts: "t1", role: null, text: "" });
-	assert.deepEqual(entrySummary(JSON.stringify({ type: "message", timestamp: "t2" })), { ts: "t2", role: null, text: "" });
-	assert.deepEqual(entrySummary(JSON.stringify({ type: "session_info", timestamp: "t3" })), { ts: "t3", role: "session_info", text: "" });
+	assert.deepEqual(entrySummary("{not json"), {
+		ts: null,
+		role: null,
+		text: "",
+	});
+	assert.deepEqual(
+		entrySummary(JSON.stringify({ type: "label", timestamp: "t1" })),
+		{ ts: "t1", role: null, text: "" },
+	);
+	assert.deepEqual(
+		entrySummary(JSON.stringify({ type: "message", timestamp: "t2" })),
+		{ ts: "t2", role: null, text: "" },
+	);
+	assert.deepEqual(
+		entrySummary(JSON.stringify({ type: "session_info", timestamp: "t3" })),
+		{ ts: "t3", role: "session_info", text: "" },
+	);
 
 	const long = entrySummary(
-		JSON.stringify({ type: "message", message: { role: "user", content: "y".repeat(600), timestamp: 1 } }),
+		JSON.stringify({
+			type: "message",
+			message: { role: "user", content: "y".repeat(600), timestamp: 1 },
+		}),
 	);
 	assert.ok(long.text.length <= 401 && long.text.endsWith("…"));
 
@@ -144,7 +190,11 @@ test("entrySummary: malformed json, non-message types, long-text truncation", ()
 			type: "message",
 			message: {
 				role: "assistant",
-				content: [{ type: "thinking", thinking: "x" }, { type: "text", text: "a" }, { type: "text", text: "b" }],
+				content: [
+					{ type: "thinking", thinking: "x" },
+					{ type: "text", text: "a" },
+					{ type: "text", text: "b" },
+				],
 			},
 		}),
 	);
@@ -166,7 +216,9 @@ test("db: schema_version mismatch clamps back to current", () => {
 	db.prepare("UPDATE meta SET value = '999' WHERE key = 'schema_version'").run();
 	db.close();
 	const db2 = openDb(agentDir);
-	const v = db2.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+	const v = db2
+		.prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+		.get() as { value: string };
 	assert.equal(Number(v.value), 1);
 	db2.close();
 });
@@ -174,11 +226,19 @@ test("db: schema_version mismatch clamps back to current", () => {
 test("db: syncConfigFile repairs corrupt file when stored value exists", () => {
 	const db = openDb(agentDir);
 	writeFileSync(join(agentDir, "settings.json"), '{"theme":"blueberry"}');
-	assert.equal(syncConfigFile(db, agentDir, "settings", "settings.json"), "ingested");
+	assert.equal(
+		syncConfigFile(db, agentDir, "settings", "settings.json"),
+		"ingested",
+	);
 
 	writeFileSync(join(agentDir, "settings.json"), "{broken");
-	assert.equal(syncConfigFile(db, agentDir, "settings", "settings.json"), "materialized");
-	assert.ok(readFileSync(join(agentDir, "settings.json"), "utf8").includes("blueberry"));
+	assert.equal(
+		syncConfigFile(db, agentDir, "settings", "settings.json"),
+		"materialized",
+	);
+	assert.ok(
+		readFileSync(join(agentDir, "settings.json"), "utf8").includes("blueberry"),
+	);
 	db.close();
 });
 
@@ -188,7 +248,9 @@ test("launcher: spawn error propagates (pi binary missing)", async () => {
 	const oldPath = process.env["PATH"];
 	process.env["PATH"] = "/nonexistent-blueberry-test";
 	try {
-		const { prepareLaunch, defaultSpawnPi } = await import("../src/core/launcher.ts");
+		const { prepareLaunch, defaultSpawnPi } = await import(
+			"../src/core/launcher.ts"
+		);
 		const root = fakeRepo(area, "spawner", "git");
 		const plan = await prepareLaunch({
 			cwd: root,
@@ -206,7 +268,10 @@ test("launcher: spawn error propagates (pi binary missing)", async () => {
 
 // --- todo-pane remaining branches ----------------------------------------------------
 
-const identityTheme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+const identityTheme = {
+	fg: (_c: string, s: string) => s,
+	bold: (s: string) => s,
+};
 
 test("pane: empty board renders zero counts", () => {
 	const lines = renderPane(100, identityTheme, [], { cursor: 0, detail: false });

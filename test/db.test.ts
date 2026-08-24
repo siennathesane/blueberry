@@ -27,16 +27,24 @@ afterEach(() => {
 
 test("openDb: creates schema, meta, WAL mode", () => {
 	const db = openDb(agentDir);
-	const meta = db.prepare("SELECT value FROM meta WHERE key = ?").get("schema_version") as {
+	const meta = db
+		.prepare("SELECT value FROM meta WHERE key = ?")
+		.get("schema_version") as {
 		value: string;
 	};
 	assert.equal(Number(meta.value), SCHEMA_VERSION);
 
-	const mode = db.prepare("PRAGMA journal_mode").get() as { journal_mode: string };
+	const mode = db.prepare("PRAGMA journal_mode").get() as {
+		journal_mode: string;
+	};
 	assert.equal(mode.journal_mode.toLowerCase(), "wal");
 
 	const tables = (
-		db.prepare("SELECT name FROM sqlite_master WHERE type='table' OR type='view' ORDER BY name").all() as Array<{
+		db
+			.prepare(
+				"SELECT name FROM sqlite_master WHERE type='table' OR type='view' ORDER BY name",
+			)
+			.all() as Array<{
 			name: string;
 		}>
 	).map((r) => r.name);
@@ -72,7 +80,10 @@ test("registry bridge: save → load round-trips projects and aliases", () => {
 	const db = openDb(agentDir);
 	const r = loadRegistry(agentDir);
 	mutations.register(r, { root: "/x/alpha" });
-	mutations.register(r, { root: "/y/beta", gitRemote: "https://github.com/u/beta" });
+	mutations.register(r, {
+		root: "/y/beta",
+		gitRemote: "https://github.com/u/beta",
+	});
 	mutations.setNested(r, "beta", "alpha");
 	mutations.setStoreMode(agentDir, r, "beta", "in-repo");
 
@@ -88,7 +99,10 @@ test("registry bridge: save → load round-trips projects and aliases", () => {
 	assert.deepEqual(beta.aliases, []);
 
 	// deletion propagates on next save
-	const r2 = { version: 1 as const, projects: loaded.projects.filter((p) => p.slug === "alpha") };
+	const r2 = {
+		version: 1 as const,
+		projects: loaded.projects.filter((p) => p.slug === "alpha"),
+	};
 	saveRegistryDb(db, r2);
 	assert.equal(loadRegistryDb(db).projects.length, 1);
 	db.close();
@@ -106,7 +120,10 @@ test("openDb: one-time registry.json import with backup", async () => {
 	assert.equal(loaded.projects.length, 1);
 	assert.equal(loaded.projects[0]!.canonicalPath, "/x/moved");
 	assert.ok(loaded.projects[0]!.aliases.includes("/x/imported"));
-	assert.ok(existsSync(join(agentDir, "registry.json.imported")), "backup written");
+	assert.ok(
+		existsSync(join(agentDir, "registry.json.imported")),
+		"backup written",
+	);
 	db.close();
 });
 
@@ -119,7 +136,10 @@ test("config: set/get round-trip; ingest picks up files; sync materializes", () 
 	const res = syncConfigFile(db, agentDir, "settings", "settings.json");
 	assert.equal(res, "materialized");
 	assert.ok(existsSync(join(agentDir, "settings.json")));
-	assert.equal(readFileSync(join(agentDir, "settings.json"), "utf8"), '{"theme":"blueberry"}');
+	assert.equal(
+		readFileSync(join(agentDir, "settings.json"), "utf8"),
+		'{"theme":"blueberry"}',
+	);
 
 	// empty db key + existing valid file → ingested
 	writeFileSync(join(agentDir, "auth.json"), '{"zai":{"key":"k"}}');
@@ -137,7 +157,10 @@ test("config: set/get round-trip; ingest picks up files; sync materializes", () 
 	setConfigJson(db, "auth", '{"zai":{"key":"k3"}}');
 	const res4 = syncConfigFile(db, agentDir, "auth", "auth.json");
 	assert.equal(res4, "materialized");
-	assert.equal(readFileSync(join(agentDir, "auth.json"), "utf8"), '{"zai":{"key":"k3"}}');
+	assert.equal(
+		readFileSync(join(agentDir, "auth.json"), "utf8"),
+		'{"zai":{"key":"k3"}}',
+	);
 
 	// absent both → absent
 	const res5 = syncConfigFile(db, agentDir, "nothing", "nope.json");

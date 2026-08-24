@@ -16,11 +16,21 @@ import {
 	setStage,
 } from "../src/core/todo-store.ts";
 import { ftsSearch, ingestSessionFile, syncStores } from "../src/core/sync.ts";
-import { renderMessage, parseSessionFile, renderMessages } from "../src/core/library.ts";
+import {
+	renderMessage,
+	parseSessionFile,
+	renderMessages,
+} from "../src/core/library.ts";
 import { decodeDirNameToPathCandidates } from "../src/core/util.ts";
 import { loadRegistry, mutations } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -31,9 +41,11 @@ beforeEach(() => {
 	agentDir = tmpAgentDir();
 	area = tmpDir("bb-fin-");
 	db = openDb(agentDir);
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)",
-	).run(PROJECT, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)",
+		)
+		.run(PROJECT, new Date().toISOString(), new Date().toISOString());
 });
 afterEach(() => {
 	db.close();
@@ -43,9 +55,21 @@ afterEach(() => {
 test("store: unknown ids rejected across all mutations", () => {
 	const a = createTodo(db, PROJECT, "exists", {});
 	assert.ok(a.ok && a.todo);
-	assert.equal(setStage(db, PROJECT, "zzzzzz", "doing").ok, false, "move unknown");
-	assert.equal(addDep(db, PROJECT, "zzzzzz", a.todo!.hex6).ok, false, "dep unknown task");
-	assert.equal(addDep(db, PROJECT, a.todo!.hex6, "zzzzzz").ok, false, "dep unknown target");
+	assert.equal(
+		setStage(db, PROJECT, "zzzzzz", "doing").ok,
+		false,
+		"move unknown",
+	);
+	assert.equal(
+		addDep(db, PROJECT, "zzzzzz", a.todo!.hex6).ok,
+		false,
+		"dep unknown task",
+	);
+	assert.equal(
+		addDep(db, PROJECT, a.todo!.hex6, "zzzzzz").ok,
+		false,
+		"dep unknown target",
+	);
 	assert.equal(deleteTodo(db, PROJECT, "zzzzzz").ok, false, "delete unknown");
 });
 
@@ -58,7 +82,9 @@ test("store: sessionsForTodo excludes NULL session rows", () => {
 });
 
 test("store: checkpoint with zero touched tasks prints bare frontier", () => {
-	const t = createTodo(db, PROJECT, "untouched by this session", { sessionId: "other" });
+	const t = createTodo(db, PROJECT, "untouched by this session", {
+		sessionId: "other",
+	});
 	assert.ok(t.ok);
 	const digest = checkpointDigest(db, PROJECT, "p", "never-seen-session");
 	assert.ok(digest.startsWith("bb-checkpoint p"));
@@ -78,20 +104,33 @@ test("sync: size-only change re-ingests (mtime equal, size differs)", () => {
 	const r = loadRegistry(agentDir);
 	mutations.register(r, { root });
 	saveRegistrySync(agentDir, r);
-	const projectId = loadRegistryDb(db).projects.find((p) => p.canonicalPath === root)!.id;
+	const projectId = loadRegistryDb(db).projects.find(
+		(p) => p.canonicalPath === root,
+	)!.id;
 
 	const store = getCentralStoreDir(agentDir, "sizechg");
 	const file = fakeSession(store, { cwd: root, firstUserText: "short" });
 	// round mtime to kill sub-ms jitter, ingest, then grow the file at the same mtime
 	const rounded = new Date(Math.floor(Date.now() / 1000) * 1000);
 	utimesSync(file, rounded, rounded);
-	assert.equal(ingestSessionFile(db, file, (c) => (c === root ? projectId : null)).status, "ingested");
-	assert.equal(ingestSessionFile(db, file, (c) => (c === root ? projectId : null)).status, "unchanged");
+	assert.equal(
+		ingestSessionFile(db, file, (c) => (c === root ? projectId : null)).status,
+		"ingested",
+	);
+	assert.equal(
+		ingestSessionFile(db, file, (c) => (c === root ? projectId : null)).status,
+		"unchanged",
+	);
 	// grow with VALID entries, then pin mtime back to the recorded value: size-only change
 	const body = readFileSync(file, "utf8");
-	writeFileSync(file, `${body}${JSON.stringify({ type: "message", id: "grow01", parentId: null, timestamp: new Date().toISOString(), message: { role: "user", content: "padding entry that changes the byte size", timestamp: 1 } })}\n`);
+	writeFileSync(
+		file,
+		`${body}${JSON.stringify({ type: "message", id: "grow01", parentId: null, timestamp: new Date().toISOString(), message: { role: "user", content: "padding entry that changes the byte size", timestamp: 1 } })}\n`,
+	);
 	utimesSync(file, rounded, rounded);
-	const res = ingestSessionFile(db, file, (c) => (c === root ? projectId : null));
+	const res = ingestSessionFile(db, file, (c) =>
+		c === root ? projectId : null,
+	);
 	assert.equal(res.status, "ingested", "size change alone triggers re-ingest");
 });
 
@@ -113,8 +152,14 @@ test("sync: ftsSearch honors limit", () => {
 
 test("decode: >12 segments and zero-segment names return empty", () => {
 	const thirteen = `--${Array.from({ length: 13 }, (_, i) => `s${i}`).join("-")}--`;
-	assert.deepEqual(decodeDirNameToPathCandidates(thirteen, () => true), []);
-	assert.deepEqual(decodeDirNameToPathCandidates("not-a-pi-dir", () => true), []);
+	assert.deepEqual(
+		decodeDirNameToPathCandidates(thirteen, () => true),
+		[],
+	);
+	assert.deepEqual(
+		decodeDirNameToPathCandidates("not-a-pi-dir", () => true),
+		[],
+	);
 });
 
 // --- library renderMessage arms ---------------------------------------------------------
@@ -125,9 +170,41 @@ test("library: bashExecution drill-down renders output, exit, truncation flag", 
 	const file = join(store, "bash.jsonl");
 	const ts = new Date().toISOString();
 	const lines = [
-		JSON.stringify({ type: "session", version: 3, id: "bash-00000001", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "b1", parentId: null, timestamp: ts, message: { role: "bashExecution", command: "npm test", output: "ok", exitCode: 0, cancelled: false, truncated: true, fullOutputPath: "/tmp/full", timestamp: 1 } }),
-		JSON.stringify({ type: "message", id: "b2", parentId: "b1", timestamp: ts, message: { role: "bashExecution", command: "echo", output: "", timestamp: 2 } }),
+		JSON.stringify({
+			type: "session",
+			version: 3,
+			id: "bash-00000001",
+			timestamp: ts,
+			cwd: "/x",
+		}),
+		JSON.stringify({
+			type: "message",
+			id: "b1",
+			parentId: null,
+			timestamp: ts,
+			message: {
+				role: "bashExecution",
+				command: "npm test",
+				output: "ok",
+				exitCode: 0,
+				cancelled: false,
+				truncated: true,
+				fullOutputPath: "/tmp/full",
+				timestamp: 1,
+			},
+		}),
+		JSON.stringify({
+			type: "message",
+			id: "b2",
+			parentId: "b1",
+			timestamp: ts,
+			message: {
+				role: "bashExecution",
+				command: "echo",
+				output: "",
+				timestamp: 2,
+			},
+		}),
 	];
 	writeFileSync(file, `${lines.join("\n")}\n`);
 	const parsed = parseSessionFile(file)!;

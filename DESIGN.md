@@ -524,6 +524,7 @@ schema and the update policy, not the ranking math.
 ---
 
 ## §LSP — native language servers (design 2025-08-25; fulfills the
+
 pi-lens replacement promised in §Search's roadmap)
 
 ### Why not pi-lens's approach
@@ -573,6 +574,7 @@ extensions/lsp/          the shell: session_start boots the watcher (deferred
                           per pi's extension rules; session_shutdown kills),
                           registers bb_lsp + /lsp + statusline segment.
 ```
+
 **Config** lives in blueberry.db's config table (key `lsp`) — default server
 map + per-language overrides + idle timeout; `bb lsp list/status` surfaces
 it. Adding a language = adding a row, not code.
@@ -586,6 +588,7 @@ Single `bb_lsp` tool, action enum — every surface the protocol offers,
 layered by build priority:
 
 **Tier 1 — the agent's daily loop (v1):**
+
 - `status` — servers, health, uptime, restart counts
 - `diagnostics` — file or project-wide; severity-mapped readable lines with
   ranges; includes publishDiagnostics pushed by servers (hover-free truth)
@@ -597,6 +600,7 @@ layered by build priority:
   future bb_search symbol join)
 
 **Tier 2 — registered, exposed, used on demand (v1.x):**
+
 - `completion` — YES, even though the model doesn't type: completion items
   carry signatures/docs the model can request deliberately ("what methods
   does this value have") — a discovery surface, not typing aid
@@ -616,6 +620,7 @@ layered by build priority:
   the client exists, listed for completeness, used rarely
 
 **Tier 3 — WRITE paths, gated (v1.x, behind §Plan-style approval):**
+
 - `rename` — symbol-wide rename via server edits; preview → confirm; runs
   through withFileMutationQueue; result reports files+touched ranges
 - `codeAction execute` — apply a chosen quickfix (organize imports,
@@ -624,6 +629,7 @@ layered by build priority:
   commands can carry server-side writes → treated as Tier 3)
 
 **Explicitly OUT (with reasons, so future-us doesn't relitigate):**
+
 - `willSave/waitUntil` save-advice hooks — no save concept to hook
 - workspace edits from server-initiated `applyEdit` — accepted + reported,
   never auto-applied (same gate as Tier 3)
@@ -654,27 +660,31 @@ link into bb_lsp definition lookups.
 
 ### Open questions
 
-- [ ] **TypeScript server sourcing** (blueberry itself is TS!): bundle
-      `typescript-language-server` as a blueberry dependency (self-hosting,
-      but adds install weight + spawn cost) vs `npx` on demand vs prompt the
-      user to install globally. Lean: bundle — this repo is the primary
-      dogfood target and "works on our own codebase" is the demo.
-- [ ] Post-edit nudge: after edit/write tool_results, inject a ONE-line
-      "N diagnostics in the touched file" custom message? Tempting (closes
-      the loop without the model remembering to ask) but it's context writes
-      on every edit. Alternative: promptGuidelines only, statusline shows
-      the count.
-- [ ] Statusline segment ("2e 1w")? Cheap and always-visible vs noise.
-- [ ] Daemon mode (servers persist across sessions) — v1 says no (per-session
-      lifecycle, §Data's clean shutdown). Revisit if spawn latency hurts;
-      rust-analyzer warmup on a big repo can exceed an impatient human.
-- [ ] v1 language set: rust-analyzer, gopls, deno lsp, clangd (all present)
-      + typescript per the sourcing decision. Python/zig deferred until
-      asked for.
-- [ ] Tier-3 gate shape: per-action confirm (like /plan's approval) vs
-      session-scoped "trust write actions" toggle vs always-preview-diff.
-      Lean: always-preview (the diff IS the consent).
+- [x] **TypeScript server sourcing** — DECIDED: bundle. `typescript-language-server`
+      + `typescript` as runtime dependencies of blueberry. Dogfooding is the demo.
+- [x] Post-edit nudge — DECIDED: lightweight MODEL-ONLY context clues. After
+      edit/write tool results, a `display: false` custom message carries the
+      diagnostics delta ("2 errors in src/foo.ts since your edit") — context
+      the model can act on, invisible to the human. Humans have `bb lsp status`.
+- [x] Statusline segment — DROPPED (same decision: humans have tools).
+- [x] Daemon mode — DECIDED NO for v1: plain spawned child processes, stdio,
+      per-session lifecycle. Lightest sustainable thing; reap at shutdown.
+- [x] v1 language set — FINAL: rust-analyzer, gopls, deno lsp, clangd
+      (installed) + typescript-language-server (bundled). Python/zig deferred.
+- [x] Tier-3 — DECIDED: rename, codeAction execute, and codeLens resolve are
+      first-class actions. Apply policy (the "idk" → decided): **edits that
+      fulfill a requested action apply** through the file-mutation queue with
+      a reported summary (files + ranges); **spontaneous applyEdit** (no
+      in-flight user action) is accepted + reported as a preview, never
+      applied. Surprise-writes are structurally impossible; requested ones
+      don't pay a confirmation tax.
+- [x] Embedding — DECIDED: lsp-client + lsp-manager live in `src/core/`
+      (the framework), the pi extension stays a thin shell. Not optional,
+      not deferred — core subsystem, same standing as sync/search.
 
+---
+
+## §Theme — blueberry + orange-juice (shipped)
 
 Shipped: `themes/blueberry.json` (default) and `themes/orange-juice.json`.
 orange-juice's core palette came from the user's swatch image (2025-08-24):

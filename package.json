@@ -49,6 +49,9 @@
     "@earendil-works/pi-tui": "*",
     "@types/node": "*",
     "typebox": "*",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "typescript-language-server": "^6.0.0"
   }
 }

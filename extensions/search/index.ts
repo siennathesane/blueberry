@@ -23,17 +23,61 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const INDEXABLE_EXT = new Set([
-	".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".css", ".scss", ".html",
-	".py", ".rs", ".go", ".rb", ".java", ".kt", ".c", ".h", ".cpp", ".hpp", ".cs",
-	".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".md", ".sql", ".txt", ".lua",
+	".ts",
+	".tsx",
+	".js",
+	".jsx",
+	".mjs",
+	".cjs",
+	".json",
+	".css",
+	".scss",
+	".html",
+	".py",
+	".rs",
+	".go",
+	".rb",
+	".java",
+	".kt",
+	".c",
+	".h",
+	".cpp",
+	".hpp",
+	".cs",
+	".sh",
+	".bash",
+	".zsh",
+	".yml",
+	".yaml",
+	".toml",
+	".md",
+	".sql",
+	".txt",
+	".lua",
 ]);
 const SKIP_DIRS = new Set([
-	"node_modules", ".git", ".blueberry", "dist", "build", "out", "coverage",
-	".next", ".cache", "vendor", "target", "__pycache__", ".venv",
+	"node_modules",
+	".git",
+	".blueberry",
+	"dist",
+	"build",
+	"out",
+	"coverage",
+	".next",
+	".cache",
+	"vendor",
+	"target",
+	"__pycache__",
+	".venv",
 ]);
 
 /** Walk the project root and (re)index changed files. Returns lines indexed. */
-export function indexProject(db: Parameters<typeof openDb>[0] extends never ? never : import("node:sqlite").DatabaseSync, root: string): number {
+export function indexProject(
+	db: Parameters<typeof openDb>[0] extends never
+		? never
+		: import("node:sqlite").DatabaseSync,
+	root: string,
+): number {
 	let total = 0;
 	const walk = (dir: string): void => {
 		let entries: Array<{ name: string; isDirectory(): boolean }>;
@@ -56,7 +100,12 @@ export function indexProject(db: Parameters<typeof openDb>[0] extends never ? ne
 					const known = db
 						.prepare("SELECT mtime_ms, size FROM files WHERE path = ?")
 						.get(full) as { mtime_ms: number; size: number } | undefined;
-					if (known && known.mtime_ms === Math.round(st.mtimeMs) && known.size === st.size) continue;
+					if (
+						known &&
+						known.mtime_ms === Math.round(st.mtimeMs) &&
+						known.size === st.size
+					)
+						continue;
 					total += indexFileLines(db, full, readFileSync(full, "utf8"));
 				} catch {
 					// unreadable/binary-ish: skip
@@ -82,18 +131,22 @@ export default function (pi: ExtensionAPI) {
 			"reorient instead of snippet-match. Todo tags (todo:<project>/<hex6>) are first-class " +
 			"needles. 'code' — repo file lines (BM25, file:line); auto-indexes changed files first. " +
 			"'index' — force a repo index refresh.",
-		promptSnippet: "Search session history with context neighborhoods + repo code by line",
+		promptSnippet:
+			"Search session history with context neighborhoods + repo code by line",
 		promptGuidelines: [
 			"Use bb_search sessions when the user references past work, decisions, or todo tasks across sessions; use bb_search code for symbol/text lookup in the repo.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["sessions", "code", "index"] as const),
-			query: Type.Optional(Type.String({ description: "sessions/code: search text" })),
+			query: Type.Optional(
+				Type.String({ description: "sessions/code: search text" }),
+			),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const dir = agentDir();
-			if (dir === "") throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
+			if (dir === "")
+				throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
 			const db = openDb(dir);
 			try {
 				if (params.action === "index") {
@@ -101,14 +154,22 @@ export default function (pi: ExtensionAPI) {
 					const res = resolveProject({ cwd: ctx.cwd, registry });
 					const lines = indexProject(db, res.boundary.root);
 					return {
-						content: [{ type: "text", text: `indexed ${lines} lines under ${res.boundary.root}` }],
+						content: [
+							{
+								type: "text",
+								text: `indexed ${lines} lines under ${res.boundary.root}`,
+							},
+						],
 						details: { lines },
 					};
 				}
 
-				if (!params.query || params.query.trim() === "") throw new Error("query required");
+				if (!params.query || params.query.trim() === "")
+					throw new Error("query required");
 				if (params.action === "sessions") {
-					const hits = searchSessionsWithContext(db, params.query, { limit: params.limit ?? 20 });
+					const hits = searchSessionsWithContext(db, params.query, {
+						limit: params.limit ?? 20,
+					});
 					return {
 						content: [{ type: "text", text: formatSessionHits(hits) }],
 						details: { count: hits.length },
@@ -121,9 +182,14 @@ export default function (pi: ExtensionAPI) {
 				indexProject(db, res.boundary.root);
 				const hits = searchCode(db, params.query, params.limit ?? 30);
 				if (hits.length === 0) {
-					return { content: [{ type: "text", text: "no matches" }], details: { count: 0 } };
+					return {
+						content: [{ type: "text", text: "no matches" }],
+						details: { count: 0 },
+					};
 				}
-				const lines = hits.map((h) => `${h.path}:${h.line}  ${h.text.slice(0, 160)}`).join("\n");
+				const lines = hits
+					.map((h) => `${h.path}:${h.line}  ${h.text.slice(0, 160)}`)
+					.join("\n");
 				return {
 					content: [{ type: "text", text: lines }],
 					details: { count: hits.length },

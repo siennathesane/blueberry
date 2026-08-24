@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { visibleWidth, stripAnsi, padEndVisible, truncateVisible, centerVisible } from "../src/core/ansi.ts";
+import {
+	visibleWidth,
+	stripAnsi,
+	padEndVisible,
+	truncateVisible,
+	centerVisible,
+} from "../src/core/ansi.ts";
 
 const RED = "\x1b[31m";
 const RESET = "\x1b[0m";
@@ -20,7 +26,11 @@ test("stripAnsi: removes all escapes", () => {
 test("padEndVisible: pads to VISIBLE width, not string length", () => {
 	const colored = `${RED}hi${RESET}`;
 	const padded = padEndVisible(colored, 6);
-	assert.equal(padded.length, colored.length + 4, "pads by the visible deficit only");
+	assert.equal(
+		padded.length,
+		colored.length + 4,
+		"pads by the visible deficit only",
+	);
 	assert.equal(visibleWidth(padded), 6);
 	assert.equal(padEndVisible("already-long-enough", 4), "already-long-enough");
 });

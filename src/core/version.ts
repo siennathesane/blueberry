@@ -16,7 +16,9 @@ import { fileURLToPath } from "node:url";
 /** Read the version from the package.json two levels above `dir`. */
 export function readPkgVersion(dir: string): string {
 	try {
-		const pkg = JSON.parse(readFileSync(join(dir, "..", "..", "package.json"), "utf8")) as {
+		const pkg = JSON.parse(
+			readFileSync(join(dir, "..", "..", "package.json"), "utf8"),
+		) as {
 			version?: string;
 		};
 		return pkg.version ?? "dev";
@@ -26,7 +28,9 @@ export function readPkgVersion(dir: string): string {
 }
 
 export function getVersion(): string {
-	const env = (process.env as Record<string, string | undefined>)["BLUEBERRY_VERSION"];
+	const env = (process.env as Record<string, string | undefined>)[
+		"BLUEBERRY_VERSION"
+	];
 	if (env !== undefined && env.trim() !== "") {
 		return env.trim();
 	}

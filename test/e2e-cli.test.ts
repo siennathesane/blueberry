@@ -66,7 +66,11 @@ test("ux cli: sessions list / sync / search / restore over real state", async ()
 	mutations.register(r, { root });
 	saveRegistrySync(world.agentDir, r);
 	const store = getCentralStoreDir(world.agentDir, root.split("/").pop()!);
-	fakeSession(store, { cwd: root, firstUserText: "the e2e needle lives here", name: "e2e-session" });
+	fakeSession(store, {
+		cwd: root,
+		firstUserText: "the e2e needle lives here",
+		name: "e2e-session",
+	});
 
 	const list = await runCli(["sessions", "list"], world);
 	assert.equal(list.code, 0);
@@ -80,7 +84,10 @@ test("ux cli: sessions list / sync / search / restore over real state", async ()
 	assert.equal(search.code, 0);
 	assert.ok(search.stdout.includes("▶"), "hit marked");
 	assert.ok(search.stdout.includes("the e2e needle lives here"));
-	assert.ok(/\d{2}-\d{2} \d{2}:\d{2}/.test(search.stdout), "timestamps in neighborhood");
+	assert.ok(
+		/\d{2}-\d{2} \d{2}:\d{2}/.test(search.stdout),
+		"timestamps in neighborhood",
+	);
 
 	// delete the file; restore rebuilds from the DB
 	const file = readdirSync(store).find((f) => f.endsWith(".jsonl"))!;

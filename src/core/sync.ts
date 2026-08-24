@@ -6,7 +6,13 @@
  * (entries + FTS rows for that session are wiped and rewritten).
  */
 import type { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { parseSessionFile } from "./library.ts";
 import type { Registry } from "./registry.ts";
@@ -22,10 +28,14 @@ export interface IngestResult {
 
 /** Extract FTS text + role from a parsed entry. Returns null for non-text entries. */
 /** Extract FTS text + role from a parsed entry. Returns null for non-text entries. (exported for tests) */
-export function entryText(entry: Record<string, unknown>): { role: string; text: string } | null {
+export function entryText(
+	entry: Record<string, unknown>,
+): { role: string; text: string } | null {
 	if (entry["type"] === "session_info") {
 		const name = entry["name"];
-		return typeof name === "string" && name !== "" ? { role: "session_info", text: name } : null;
+		return typeof name === "string" && name !== ""
+			? { role: "session_info", text: name }
+			: null;
 	}
 	if (entry["type"] !== "message") return null;
 	const message = entry["message"] as Record<string, unknown> | undefined;
@@ -41,7 +51,8 @@ export function entryText(entry: Record<string, unknown>): { role: string; text:
 		for (const block of content) {
 			if (typeof block !== "object" || block === null) continue;
 			const b = block as Record<string, unknown>;
-			if (b["type"] === "text" && typeof b["text"] === "string") parts.push(b["text"]);
+			if (b["type"] === "text" && typeof b["text"] === "string")
+				parts.push(b["text"]);
 		}
 		text = parts.join("\n");
 	}
@@ -65,25 +76,45 @@ export function ingestSessionFile(
 		mtimeMs = Math.round(st.mtimeMs);
 		size = st.size;
 	} catch (err) {
-		return { status: "error", sessionId: "", file, detail: (err as Error).message };
+		return {
+			status: "error",
+			sessionId: "",
+			file,
+			detail: (err as Error).message,
+		};
 	}
 
 	const parsed = parseSessionFile(file);
-	if (!parsed) return { status: "error", sessionId: "", file, detail: "unparseable header" };
+	if (!parsed)
+		return { status: "error", sessionId: "", file, detail: "unparseable header" };
 	const header = parsed.header as Record<string, unknown>;
 	const sessionId = typeof header["id"] === "string" ? header["id"] : "";
-	if (sessionId === "") return { status: "error", sessionId: "", file, detail: "missing session id" };
+	if (sessionId === "")
+		return { status: "error", sessionId: "", file, detail: "missing session id" };
 
-	const existing = db.prepare("SELECT file_mtime_ms, size_bytes FROM sessions WHERE id = ?").get(sessionId) as
-		| { file_mtime_ms: number; size_bytes: number }
-		| undefined;
-	if (existing && existing.file_mtime_ms === mtimeMs && existing.size_bytes === size) {
+	const existing = db
+		.prepare("SELECT file_mtime_ms, size_bytes FROM sessions WHERE id = ?")
+		.get(sessionId) as { file_mtime_ms: number; size_bytes: number } | undefined;
+	if (
+		existing &&
+		existing.file_mtime_ms === mtimeMs &&
+		existing.size_bytes === size
+	) {
 		return { status: "unchanged", sessionId, file };
 	}
 
-	const cwd = typeof header["cwd"] === "string" && header["cwd"] !== "" ? header["cwd"] : null;
+	const cwd =
+		typeof header["cwd"] === "string" && header["cwd"] !== ""
+			? header["cwd"]
+			: null;
 	const projectId = projectIdFor(cwd);
-	if (!projectId) return { status: "orphan", sessionId, file, detail: `no project for cwd ${cwd ?? "(none)"}` };
+	if (!projectId)
+		return {
+			status: "orphan",
+			sessionId,
+			file,
+			detail: `no project for cwd ${cwd ?? "(none)"}`,
+		};
 
 	const now = new Date().toISOString();
 	const tx = db.prepare("BEGIN");
@@ -96,26 +127,32 @@ export function ingestSessionFile(
 		db.prepare("DELETE FROM session_fts WHERE session_id = ?").run(sessionId);
 		db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
 
-		db.prepare(
-			`INSERT INTO sessions (id, project_id, file_path, cwd, ts, parent_session, name, file_mtime_ms, size_bytes, ingested_at)
+		db
+			.prepare(
+				`INSERT INTO sessions (id, project_id, file_path, cwd, ts, parent_session, name, file_mtime_ms, size_bytes, ingested_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		).run(
-			sessionId,
-			projectId,
-			file,
-			cwd,
-			typeof header["timestamp"] === "string" ? header["timestamp"] : null,
-			typeof header["parentSession"] === "string" ? header["parentSession"] : null,
-			null,
-			mtimeMs,
-			size,
-			now,
-		);
+			)
+			.run(
+				sessionId,
+				projectId,
+				file,
+				cwd,
+				typeof header["timestamp"] === "string" ? header["timestamp"] : null,
+				typeof header["parentSession"] === "string"
+					? header["parentSession"]
+					: null,
+				null,
+				mtimeMs,
+				size,
+				now,
+			);
 
 		const insertEntry = db.prepare(
 			"INSERT INTO session_entries (session_id, seq, ts, type, entry_id, parent_id, json) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		);
-		const insertFts = db.prepare("INSERT INTO session_fts (text, session_id, seq, role) VALUES (?, ?, ?, ?)");
+		const insertFts = db.prepare(
+			"INSERT INTO session_fts (text, session_id, seq, role) VALUES (?, ?, ?, ?)",
+		);
 		const updateName = db.prepare("UPDATE sessions SET name = ? WHERE id = ?");
 
 		let seq = 0;
@@ -155,8 +192,17 @@ export interface SyncReport {
 }
 
 /** Ingest every session file in every project store. */
-export function syncStores(db: DatabaseSync, agentDir: string, registry: Registry): SyncReport {
-	const report: SyncReport = { ingested: 0, unchanged: 0, orphans: [], errors: [] };
+export function syncStores(
+	db: DatabaseSync,
+	agentDir: string,
+	registry: Registry,
+): SyncReport {
+	const report: SyncReport = {
+		ingested: 0,
+		unchanged: 0,
+		orphans: [],
+		errors: [],
+	};
 	const byPath = new Map<string, string>();
 	for (const p of registry.projects) {
 		byPath.set(normalizePathForCompare(p.canonicalPath), p.id);
@@ -173,7 +219,8 @@ export function syncStores(db: DatabaseSync, agentDir: string, registry: Registr
 			const res = ingestSessionFile(db, join(store, f), projectIdFor);
 			if (res.status === "ingested") report.ingested++;
 			else if (res.status === "unchanged") report.unchanged++;
-			else if (res.status === "orphan") report.orphans.push({ file: res.file, detail: res.detail ?? "" });
+			else if (res.status === "orphan")
+				report.orphans.push({ file: res.file, detail: res.detail ?? "" });
 			else report.errors.push({ file: res.file, detail: res.detail ?? "" });
 		}
 	}
@@ -188,7 +235,11 @@ export interface SearchRow {
 	text: string;
 }
 
-export function ftsSearch(db: DatabaseSync, query: string, limit = 50): SearchRow[] {
+export function ftsSearch(
+	db: DatabaseSync,
+	query: string,
+	limit = 50,
+): SearchRow[] {
 	// fts5 match syntax is user input; quote defensively to avoid parse errors
 	const safe = query.replace(/["'*:]/g, " ").trim();
 	if (safe === "") return [];
@@ -210,10 +261,14 @@ export function ftsSearch(db: DatabaseSync, query: string, limit = 50): SearchRo
  * Materialize a session JSONL back out of the DB (bb restore).
  * Writes entries as raw JSON lines; returns the restored path or null.
  */
-export function restoreSession(db: DatabaseSync, sessionId: string, targetDir: string): string | null {
-	const row = db.prepare("SELECT file_path FROM sessions WHERE id = ?").get(sessionId) as
-		| { file_path: string }
-		| undefined;
+export function restoreSession(
+	db: DatabaseSync,
+	sessionId: string,
+	targetDir: string,
+): string | null {
+	const row = db
+		.prepare("SELECT file_path FROM sessions WHERE id = ?")
+		.get(sessionId) as { file_path: string } | undefined;
 	if (!row) return null;
 	mkdirSync(targetDir, { recursive: true });
 	const entries = db
@@ -222,21 +277,37 @@ export function restoreSession(db: DatabaseSync, sessionId: string, targetDir: s
 	if (entries.length === 0) return null;
 
 	// rebuild header from the sessions row
-	const meta = db.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as Record<string, unknown>;
-	const header: Record<string, unknown> = { type: "session", version: 3, id: sessionId };
+	const meta = db
+		.prepare("SELECT * FROM sessions WHERE id = ?")
+		.get(sessionId) as Record<string, unknown>;
+	const header: Record<string, unknown> = {
+		type: "session",
+		version: 3,
+		id: sessionId,
+	};
 	if (meta["cwd"]) header["cwd"] = meta["cwd"];
 	if (meta["ts"]) header["timestamp"] = meta["ts"];
 	if (meta["parent_session"]) header["parentSession"] = meta["parent_session"];
 
-	const lines = [JSON.stringify(header), ...entries.map((e) => String(e["json"]))];
-	const target = join(targetDir, `${String(meta["ts"] ?? "restored").replace(/[:.]/g, "-")}_${sessionId}.jsonl`);
+	const lines = [
+		JSON.stringify(header),
+		...entries.map((e) => String(e["json"])),
+	];
+	const target = join(
+		targetDir,
+		`${String(meta["ts"] ?? "restored").replace(/[:.]/g, "-")}_${sessionId}.jsonl`,
+	);
 	writeFileSync(target, lines.join("\n") + "\n");
 	return target;
 }
 
 /** Restore every ingested session whose file_path no longer exists. */
-export function restoreMissing(db: DatabaseSync): Array<{ id: string; path: string }> {
-	const rows = db.prepare("SELECT id, file_path FROM sessions").all() as Array<Record<string, unknown>>;
+export function restoreMissing(
+	db: DatabaseSync,
+): Array<{ id: string; path: string }> {
+	const rows = db.prepare("SELECT id, file_path FROM sessions").all() as Array<
+		Record<string, unknown>
+	>;
 	const restored: Array<{ id: string; path: string }> = [];
 	for (const r of rows) {
 		const id = String(r["id"]);

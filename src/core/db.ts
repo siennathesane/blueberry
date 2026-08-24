@@ -8,7 +8,14 @@
  * node:sqlite (stable in Node 24) is synchronous — fine for CLI and jiti.
  */
 import { DatabaseSync } from "node:sqlite";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { Project, Registry } from "./registry.ts";
 import { getRegistryPath } from "./agent-dir.ts";
@@ -163,18 +170,24 @@ export function openDb(agentDir: string): DatabaseSync {
 	db.exec("PRAGMA foreign_keys = ON;");
 	db.exec(SCHEMA);
 
-	const existed = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
-		| { value: string }
-		| undefined;
+	const existed = db
+		.prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+		.get() as { value: string } | undefined;
 	if (!existed) {
-		db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?)").run(String(SCHEMA_VERSION));
+		db
+			.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?)")
+			.run(String(SCHEMA_VERSION));
 	} else if (Number(existed.value) !== SCHEMA_VERSION) {
 		// v1 is the only version today; future versions migrate here
-		db.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION));
+		db
+			.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'")
+			.run(String(SCHEMA_VERSION));
 	}
 
 	// one-time registry.json import
-	const count = db.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number };
+	const count = db.prepare("SELECT COUNT(*) AS n FROM projects").get() as {
+		n: number;
+	};
 	if (count.n === 0) {
 		const jsonPath = getRegistryPath(agentDir);
 		if (existsSync(jsonPath)) {
@@ -196,7 +209,9 @@ function importRegistryJson(db: DatabaseSync, jsonPath: string): void {
 			 (id, slug, canonical_path, git_remote, session_store, merged_into, trusted, created_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		);
-		const insertAlias = db.prepare("INSERT OR IGNORE INTO aliases (project_id, path) VALUES (?, ?)");
+		const insertAlias = db.prepare(
+			"INSERT OR IGNORE INTO aliases (project_id, path) VALUES (?, ?)",
+		);
 		for (const p of data.projects) {
 			if (typeof p.id !== "string") continue;
 			insertProject.run(
@@ -220,8 +235,12 @@ function importRegistryJson(db: DatabaseSync, jsonPath: string): void {
 // --- registry bridge ------------------------------------------------------------
 
 export function loadRegistryDb(db: DatabaseSync): Registry {
-	const rows = db.prepare("SELECT * FROM projects ORDER BY created_at, slug").all() as Array<Record<string, unknown>>;
-	const aliasRows = db.prepare("SELECT * FROM aliases").all() as Array<Record<string, unknown>>;
+	const rows = db
+		.prepare("SELECT * FROM projects ORDER BY created_at, slug")
+		.all() as Array<Record<string, unknown>>;
+	const aliasRows = db.prepare("SELECT * FROM aliases").all() as Array<
+		Record<string, unknown>
+	>;
 	const aliasesByProject = new Map<string, string[]>();
 	for (const a of aliasRows) {
 		const pid = String(a["project_id"]);
@@ -234,7 +253,8 @@ export function loadRegistryDb(db: DatabaseSync): Registry {
 		slug: String(r["slug"]),
 		canonicalPath: String(r["canonical_path"]),
 		gitRemote: (r["git_remote"] as string | null) ?? null,
-		sessionStore: (r["session_store"] as string) === "in-repo" ? "in-repo" : "central",
+		sessionStore:
+			(r["session_store"] as string) === "in-repo" ? "in-repo" : "central",
 		mergedInto: (r["merged_into"] as string | null) ?? null,
 		trusted: r["trusted"] === 0 ? false : true,
 		createdAt: String(r["created_at"]),
@@ -251,7 +271,9 @@ export function saveRegistryDb(db: DatabaseSync, registry: Registry): void {
 	tx.run();
 	try {
 		db.prepare("DELETE FROM aliases").run();
-		const existing = db.prepare("SELECT id FROM projects").all() as Array<Record<string, unknown>>;
+		const existing = db.prepare("SELECT id FROM projects").all() as Array<
+			Record<string, unknown>
+		>;
 		const existingIds = new Set(existing.map((r) => String(r["id"])));
 		const keptIds = new Set(registry.projects.map((p) => p.id));
 		const del = db.prepare("DELETE FROM projects WHERE id = ?");
@@ -269,7 +291,9 @@ export function saveRegistryDb(db: DatabaseSync, registry: Registry): void {
 			   trusted = excluded.trusted,
 			   updated_at = excluded.updated_at`,
 		);
-		const insertAlias = db.prepare("INSERT OR IGNORE INTO aliases (project_id, path) VALUES (?, ?)");
+		const insertAlias = db.prepare(
+			"INSERT OR IGNORE INTO aliases (project_id, path) VALUES (?, ?)",
+		);
 		for (const p of registry.projects) {
 			up.run(
 				p.id,
@@ -294,16 +318,31 @@ export function saveRegistryDb(db: DatabaseSync, registry: Registry): void {
 // --- config (settings / auth) ----------------------------------------------------
 
 export function getConfigJson(db: DatabaseSync, key: string): string | null {
-	const row = db.prepare("SELECT json FROM config WHERE key = ?").get(key) as { json: string } | undefined;
+	const row = db.prepare("SELECT json FROM config WHERE key = ?").get(key) as
+		| { json: string }
+		| undefined;
 	return row?.json ?? null;
 }
 
-export function setConfigJson(db: DatabaseSync, key: string, json: string): void {
-	db.prepare("INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json").run(key, json);
+export function setConfigJson(
+	db: DatabaseSync,
+	key: string,
+	json: string,
+): void {
+	db
+		.prepare(
+			"INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json",
+		)
+		.run(key, json);
 }
 
 /** Ingest an on-disk config file into the config table (no-op if absent or already stored). */
-export function ingestConfigFile(db: DatabaseSync, agentDir: string, key: string, fileName: string): boolean {
+export function ingestConfigFile(
+	db: DatabaseSync,
+	agentDir: string,
+	key: string,
+	fileName: string,
+): boolean {
 	const file = join(agentDir, fileName);
 	if (!existsSync(file)) return false;
 	const existing = getConfigJson(db, key);
@@ -323,12 +362,17 @@ export function ingestConfigFile(db: DatabaseSync, agentDir: string, key: string
  * re-ingest instead (pi mutated it mid-session); otherwise write DB → disk.
  * Returns "materialized" | "ingested" | "absent".
  */
-export function syncConfigFile(db: DatabaseSync, agentDir: string, key: string, fileName: string): "materialized" | "ingested" | "absent" {
+export function syncConfigFile(
+	db: DatabaseSync,
+	agentDir: string,
+	key: string,
+	fileName: string,
+): "materialized" | "ingested" | "absent" {
 	const file = join(agentDir, fileName);
 	const stored = getConfigJson(db, key);
-	const stateRow = db.prepare("SELECT last_synced FROM config_state WHERE key = ?").get(key) as
-		| { last_synced: string | null }
-		| undefined;
+	const stateRow = db
+		.prepare("SELECT last_synced FROM config_state WHERE key = ?")
+		.get(key) as { last_synced: string | null } | undefined;
 	const lastSynced = stateRow?.last_synced ?? null;
 	const setState = (v: string | null) =>
 		db

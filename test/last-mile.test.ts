@@ -12,10 +12,21 @@ import { openDb, loadRegistrySync, saveRegistrySync } from "../src/core/db.ts";
 import { entryText } from "../src/core/sync.ts";
 import { listSessions } from "../src/core/sessions.ts";
 import { mutations, loadRegistry } from "../src/core/registry.ts";
-import { addDep, createTodo, deleteTodo, listTodos } from "../src/core/todo-store.ts";
+import {
+	addDep,
+	createTodo,
+	deleteTodo,
+	listTodos,
+} from "../src/core/todo-store.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { runFix } from "../src/core/fix.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -60,9 +71,16 @@ test("fix: orphan store with mixed cwds — majority wins via comparator", () =>
 test("cli: sessions show tree view renders via dispatch", async () => {
 	const root = fakeRepo(area, "treeview", "git");
 	await main([], deps(root));
-	fakeSession(getCentralStoreDir(agentDir, "treeview"), { cwd: root, firstUserText: "the root node", entries: 1 });
+	fakeSession(getCentralStoreDir(agentDir, "treeview"), {
+		cwd: root,
+		firstUserText: "the root node",
+		entries: 1,
+	});
 
-	assert.equal(await main(["sessions", "show", "1", "--view", "tree"], deps(root)), 0);
+	assert.equal(
+		await main(["sessions", "show", "1", "--view", "tree"], deps(root)),
+		0,
+	);
 	assert.ok(out.some((l) => l.includes("[user] the root node")));
 });
 
@@ -75,12 +93,25 @@ test("sync: entryText variants — non-text blocks, empty strings, session_info 
 	const parse = (o: unknown) => o as Record<string, unknown>;
 	// array content with a non-text block only → filtered to "" → null
 	assert.equal(
-		entryText(parse({ type: "message", message: { role: "assistant", content: [{ type: "thinking", thinking: "hidden" }] } })),
+		entryText(
+			parse({
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [{ type: "thinking", thinking: "hidden" }],
+				},
+			}),
+		),
 		null,
 	);
 	// array with empty text block → "" → null
 	assert.equal(
-		entryText(parse({ type: "message", message: { role: "user", content: [{ type: "text", text: "   " }] } })),
+		entryText(
+			parse({
+				type: "message",
+				message: { role: "user", content: [{ type: "text", text: "   " }] },
+			}),
+		),
 		null,
 	);
 	// session_info with name → text
@@ -108,7 +139,9 @@ test("sync: restore of a zero-entry session returns null (nothing to rebuild)", 
 	);
 	const db = openDb(agentDir);
 	assert.equal(
-		ingestSessionFile(db, join(store, "empty.jsonl"), (cwd) => (cwd === root ? projectId : null)).status,
+		ingestSessionFile(db, join(store, "empty.jsonl"), (cwd) =>
+			cwd === root ? projectId : null,
+		).status,
 		"orphan", // no cwd → orphan before project resolution
 	);
 	db.close();
@@ -128,11 +161,11 @@ test("registry: touch pushes an unknown project into the registry", () => {
 test("store: dep on a deleted task falls back to raw hex6 in blockedBy", () => {
 	const db = openDb(agentDir);
 	const pid = "mile-proj";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'm', '/m', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'm', '/m', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	const keeper = createTodo(db, pid, "keeper", { sessionId: null });
 	const doomed = createTodo(db, pid, "doomed", { sessionId: null });
 	assert.ok(keeper.ok && doomed.ok);
@@ -154,7 +187,10 @@ test("cli: projects list tolerates orphaned mergedInto target", async () => {
 	db.prepare("UPDATE projects SET merged_into = 'ghost-id' WHERE 1=1").run();
 	db.close();
 	assert.equal(await main(["projects", "list"], deps(area)), 0);
-	assert.ok(out.some((l) => l.includes("nested into ghost-id")), "fallback renders raw id");
+	assert.ok(
+		out.some((l) => l.includes("nested into ghost-id")),
+		"fallback renders raw id",
+	);
 });
 
 test("sessions: numeric message content yields null firstUserText without crashing", () => {
@@ -164,8 +200,20 @@ test("sessions: numeric message content yields null firstUserText without crashi
 	writeFileSync(
 		join(store, "num.jsonl"),
 		[
-			JSON.stringify({ type: "session", version: 3, id: "num-id-0000001", timestamp: ts, cwd: "/x" }),
-			JSON.stringify({ type: "message", id: "n1", parentId: null, timestamp: ts, message: { role: "user", content: 42, timestamp: 1 } }),
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "num-id-0000001",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "n1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "user", content: 42, timestamp: 1 },
+			}),
 		].join("\n") + "\n",
 	);
 	const listed = listSessions(store);
@@ -186,11 +234,16 @@ test("cli: restoreSession path for cwd-less headers uses restored filename", asy
 	const raw = (await import("node:fs")).readFileSync(join(store, file), "utf8");
 	const header = JSON.parse(raw.split("\n")[0]!) as Record<string, unknown>;
 	delete header["cwd"];
-	(await import("node:fs")).writeFileSync(join(store, file), `${JSON.stringify(header)}\n${raw.split("\n").slice(1).join("\n")}`);
+	(await import("node:fs")).writeFileSync(
+		join(store, file),
+		`${JSON.stringify(header)}\n${raw.split("\n").slice(1).join("\n")}`,
+	);
 
 	const { ingestSessionFile } = await import("../src/core/sync.ts");
 	const db = openDb(agentDir);
-	const res = ingestSessionFile(db, join(store, file), (cwd) => (cwd === root ? projectId : null));
+	const res = ingestSessionFile(db, join(store, file), (cwd) =>
+		cwd === root ? projectId : null,
+	);
 	assert.equal(res.status, "orphan", "cwd-less header cannot resolve a project");
 	db.close();
 });

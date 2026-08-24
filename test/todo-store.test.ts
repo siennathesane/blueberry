@@ -26,11 +26,11 @@ const SESSION = "session-uuid-1";
 beforeEach(() => {
 	agentDir = tmpAgentDir();
 	db = openDb(agentDir);
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)").run(
-		PROJECT,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)",
+		)
+		.run(PROJECT, new Date().toISOString(), new Date().toISOString());
 });
 afterEach(() => {
 	db.close();
@@ -48,9 +48,9 @@ test("create: uuid last-6 ids, unique per project, events logged", () => {
 	const b = make("beta");
 	assert.match(a, /^[0-9a-f]{6}$/);
 	assert.notEqual(a, b);
-	const events = db.prepare("SELECT kind FROM todo_events WHERE kind = 'create'").all() as Array<
-		Record<string, unknown>
-	>;
+	const events = db
+		.prepare("SELECT kind FROM todo_events WHERE kind = 'create'")
+		.all() as Array<Record<string, unknown>>;
 	assert.equal(events.length, 2);
 	// empty title rejected
 	assert.equal(createTodo(db, PROJECT, "   ").ok, false);
@@ -102,10 +102,14 @@ test("setStage: blocked task cannot enter review either", () => {
 
 test("setStage: no-op same-stage move is ok without event", () => {
 	const a = make("stable");
-	const before = (db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }).n;
+	const before = (
+		db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }
+	).n;
 	const res = setStage(db, PROJECT, a, "todo");
 	assert.ok(res.ok && res.todo);
-	const after = (db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }).n;
+	const after = (
+		db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }
+	).n;
 	assert.equal(after, before, "same-stage move appends no event");
 });
 
@@ -118,7 +122,10 @@ test("setStage: WIP soft-limit warning after N+1 doing", () => {
 		assert.ok(res.ok);
 		lastWarning = res.warning;
 	}
-	assert.ok(lastWarning !== undefined && lastWarning.includes("WIP"), `warning set: ${lastWarning}`);
+	assert.ok(
+		lastWarning !== undefined && lastWarning.includes("WIP"),
+		`warning set: ${lastWarning}`,
+	);
 });
 
 test("deps: add/remove, self-dep and cycle rejection", () => {
@@ -132,10 +139,9 @@ test("deps: add/remove, self-dep and cycle rejection", () => {
 
 	// blockedBy derives across the chain and unblocks when deps finish
 	// (a ← b ← c: finish c, then b, then a's blocker set is empty)
-	assert.deepEqual(
-		listTodos(db, PROJECT).find((t) => t.hex6 === a)!.blockedBy,
-		[b],
-	);
+	assert.deepEqual(listTodos(db, PROJECT).find((t) => t.hex6 === a)!.blockedBy, [
+		b,
+	]);
 	assert.ok(setStage(db, PROJECT, c, "done").ok);
 	assert.ok(setStage(db, PROJECT, b, "done").ok);
 	assert.deepEqual(
@@ -144,7 +150,11 @@ test("deps: add/remove, self-dep and cycle rejection", () => {
 	);
 
 	assert.ok(removeDep(db, PROJECT, a, b).ok);
-	assert.equal(removeDep(db, PROJECT, a, "zzzzzz").ok, false, "unknown dep rejected");
+	assert.equal(
+		removeDep(db, PROJECT, a, "zzzzzz").ok,
+		false,
+		"unknown dep rejected",
+	);
 });
 
 test("listTodos + toCards: ages, ready derivation, dropped renders dim", () => {
@@ -153,10 +163,9 @@ test("listTodos + toCards: ages, ready derivation, dropped renders dim", () => {
 	const fresh = make("fresh one");
 	assert.ok(addDep(db, PROJECT, blocked, old).ok);
 	// backdate 'old' (match by exact short id, fully parameterized)
-	db.prepare("UPDATE todos SET created_at = ? WHERE substr(id, -6) = ?").run(
-		new Date(Date.now() - 3 * 86_400_000).toISOString(),
-		old,
-	);
+	db
+		.prepare("UPDATE todos SET created_at = ? WHERE substr(id, -6) = ?")
+		.run(new Date(Date.now() - 3 * 86_400_000).toISOString(), old);
 
 	const cards = toCards(listTodos(db, PROJECT));
 	const oldCard = cards.find((x) => x.id === old)!;
@@ -176,17 +185,27 @@ test("deleteTodo: removes deps both directions and events", () => {
 	assert.ok(deleteTodo(db, PROJECT, b).ok);
 	// a's dep on b is gone
 	assert.deepEqual(listTodos(db, PROJECT).find((t) => t.hex6 === a)!.deps, []);
-	const depRows = db.prepare("SELECT COUNT(*) AS n FROM todo_deps").get() as { n: number };
+	const depRows = db.prepare("SELECT COUNT(*) AS n FROM todo_deps").get() as {
+		n: number;
+	};
 	assert.equal(depRows.n, 0);
 	const evRows = db
-		.prepare("SELECT COUNT(*) AS n FROM todo_events WHERE substr(todo_id, -6) = ?")
+		.prepare(
+			"SELECT COUNT(*) AS n FROM todo_events WHERE substr(todo_id, -6) = ?",
+		)
 		.get(b) as { n: number };
 	// events for b were removed with the delete; the delete event carries the same id suffix
 	assert.ok(evRows.n >= 0);
 });
 
 test("breadcrumb: embeds the search needle todo:slug/hex6", () => {
-	const line = breadcrumb("blueberry", "9f3a2c", "pane graph mode", "todo->doing", []);
+	const line = breadcrumb(
+		"blueberry",
+		"9f3a2c",
+		"pane graph mode",
+		"todo->doing",
+		[],
+	);
 	assert.ok(line.startsWith("todo:blueberry/9f3a2c"));
 	assert.ok(line.includes("pane graph mode"));
 	assert.ok(line.includes("todo->doing"));
@@ -206,7 +225,10 @@ test("checkpointDigest: touched tasks + NOW/NEXT frontier", () => {
 	assert.ok(digest.includes(`todo:p/${b.hex6}`), "creator's task listed");
 	assert.ok(digest.includes(`todo:p/${a.hex6}`), "dep-adder's task listed");
 	// touched list is session-scoped; the untouched task never gets a breadcrumb
-	assert.ok(!digest.includes(`todo:p/${untouched}`), "no breadcrumb for other session's task");
+	assert.ok(
+		!digest.includes(`todo:p/${untouched}`),
+		"no breadcrumb for other session's task",
+	);
 	// the frontier (NEXT) is global by design — untouched-but-ready may appear there
 	// blocked a is not NEXT; b (ready) is NEXT
 	assert.ok(digest.includes("NEXT"));
@@ -216,7 +238,8 @@ test("checkpointDigest: touched tasks + NOW/NEXT frontier", () => {
 test("sessionsForTodo: exact session discovery from events", () => {
 	const s1 = "sess-one";
 	const s2 = "sess-two";
-	const a = createTodo(db, PROJECT, "multi-session task", { sessionId: s1 }).todo!;
+	const a = createTodo(db, PROJECT, "multi-session task", { sessionId: s1 })
+		.todo!;
 	assert.ok(setStage(db, PROJECT, a.hex6, "doing", { sessionId: s2 }).ok);
 
 	const sessions = sessionsForTodo(db, a.hex6);

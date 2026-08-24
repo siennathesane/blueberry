@@ -7,7 +7,14 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { TuiSession, cleanupSessions, destroyWorld, makeWorld, tmuxAvailable, type UxWorld } from "./harness.ts";
+import {
+	TuiSession,
+	cleanupSessions,
+	destroyWorld,
+	makeWorld,
+	tmuxAvailable,
+	type UxWorld,
+} from "./harness.ts";
 import { openDb } from "../src/core/db.ts";
 import { createTodo, setStage } from "../src/core/todo-store.ts";
 import { samePath } from "../src/core/util.ts";
@@ -55,7 +62,10 @@ function worldProjectId(): string {
 describe("tui opener", { skip: !tmuxAvailable() }, async () => {
 	await it("renders the 3-line opener and no resource wall", async () => {
 		const t = await boot();
-		const screen = await t.waitFor("project line", new RegExp(world.projectDir.split("/").pop()!));
+		const screen = await t.waitFor(
+			"project line",
+			new RegExp(world.projectDir.split("/").pop()!),
+		);
 		assert.ok(screen.includes("esc interrupt · / commands"), "hint line renders");
 		// quiet startup: the resource wall must NOT render
 		assert.ok(!screen.includes("[Skills]"), "no skills listing");
@@ -100,7 +110,10 @@ describe("tui todo pane", { skip: !tmuxAvailable() }, async () => {
 		// cursor starts on the first visible cell (todo column → beta)
 		const markerLine = (screen: string): string =>
 			screen.split("\n").find((l) => l.includes("▸")) ?? "";
-		assert.ok(markerLine(board).includes("beta ux task"), "marker starts on beta (flat[0])");
+		assert.ok(
+			markerLine(board).includes("beta ux task"),
+			"marker starts on beta (flat[0])",
+		);
 		assert.ok(board.includes("◉"), "doing glyph present");
 
 		// move cursor: marker moves from beta to alpha (doing column)
@@ -111,7 +124,10 @@ describe("tui todo pane", { skip: !tmuxAvailable() }, async () => {
 		// enter → detail card
 		t.sendKeys("Enter");
 		await t.waitFor("detail", "waits on");
-		assert.ok(t.capture().includes("nothing — ready"), "unblocked card shows ready");
+		assert.ok(
+			t.capture().includes("nothing — ready"),
+			"unblocked card shows ready",
+		);
 
 		// backspace → back to the pane
 		t.sendKeys("BSpace");

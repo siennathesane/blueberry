@@ -11,7 +11,11 @@
  * rewritten to absolute paths against the ORIGINAL cwd first.
  */
 import type { Registry } from "./registry.ts";
-import { loadRegistrySync, saveRegistrySync, syncConfigsAtLaunch } from "./db.ts";
+import {
+	loadRegistrySync,
+	saveRegistrySync,
+	syncConfigsAtLaunch,
+} from "./db.ts";
 import { resolveProject, storeDirFor } from "./resolution.ts";
 import { trustPaths } from "./trust.ts";
 import { getAgentDir } from "./agent-dir.ts";

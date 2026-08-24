@@ -27,7 +27,11 @@ export interface SessionHit {
 }
 
 /** Summarize one stored entry for neighborhood rendering (exported for tests). */
-export function entrySummary(json: string): { ts: string | null; role: string | null; text: string } {
+export function entrySummary(json: string): {
+	ts: string | null;
+	role: string | null;
+	text: string;
+} {
 	try {
 		const e = JSON.parse(json) as Record<string, unknown>;
 		const ts = typeof e["timestamp"] === "string" ? e["timestamp"] : null;
@@ -44,7 +48,9 @@ export function entrySummary(json: string): { ts: string | null; role: string | 
 		else if (Array.isArray(content)) {
 			text = content
 				.map((b) =>
-					typeof b === "object" && b !== null && (b as Record<string, unknown>)["type"] === "text"
+					typeof b === "object" &&
+					b !== null &&
+					(b as Record<string, unknown>)["type"] === "text"
 						? String((b as Record<string, unknown>)["text"] ?? "")
 						: "",
 				)
@@ -76,7 +82,9 @@ export function searchSessionsWithContext(
 	const seenSessions = new Set<string>();
 	const hits: SessionHit[] = [];
 
-	const sessionMeta = db.prepare("SELECT s.id, s.name, p.slug FROM sessions s LEFT JOIN projects p ON p.id = s.project_id WHERE s.id = ?");
+	const sessionMeta = db.prepare(
+		"SELECT s.id, s.name, p.slug FROM sessions s LEFT JOIN projects p ON p.id = s.project_id WHERE s.id = ?",
+	);
 	const entriesFor = db.prepare(
 		"SELECT seq, ts, json FROM session_entries WHERE session_id = ? AND seq BETWEEN ? AND ? ORDER BY seq",
 	);
@@ -85,10 +93,14 @@ export function searchSessionsWithContext(
 		if (seenSessions.has(row.session_id)) continue; // one neighborhood per session
 		seenSessions.add(row.session_id);
 
-		const meta = sessionMeta.get(row.session_id) as Record<string, unknown> | undefined;
-		const entryRows = entriesFor.all(row.session_id, row.seq - before, row.seq + after) as Array<
-			Record<string, unknown>
-		>;
+		const meta = sessionMeta.get(row.session_id) as
+			| Record<string, unknown>
+			| undefined;
+		const entryRows = entriesFor.all(
+			row.session_id,
+			row.seq - before,
+			row.seq + after,
+		) as Array<Record<string, unknown>>;
 		if (entryRows.length === 0) continue;
 
 		const messages: ContextMessage[] = entryRows.map((e) => {
@@ -104,8 +116,14 @@ export function searchSessionsWithContext(
 
 		hits.push({
 			sessionId: row.session_id,
-			name: meta && meta["name"] !== null && meta["name"] !== undefined ? String(meta["name"]) : null,
-			projectSlug: meta && meta["slug"] !== null && meta["slug"] !== undefined ? String(meta["slug"]) : null,
+			name:
+				meta && meta["name"] !== null && meta["name"] !== undefined
+					? String(meta["name"])
+					: null,
+			projectSlug:
+				meta && meta["slug"] !== null && meta["slug"] !== undefined
+					? String(meta["slug"])
+					: null,
 			hitSeq: row.seq,
 			hitRole: row.role,
 			messages,
@@ -151,9 +169,15 @@ export interface CodeHit {
 }
 
 /** Index a file's lines into code_fts (replacing any prior rows for the path). */
-export function indexFileLines(db: DatabaseSync, path: string, content: string): number {
+export function indexFileLines(
+	db: DatabaseSync,
+	path: string,
+	content: string,
+): number {
 	db.prepare("DELETE FROM code_fts WHERE path = ?").run(path);
-	const insert = db.prepare("INSERT INTO code_fts (text, path, line) VALUES (?, ?, ?)");
+	const insert = db.prepare(
+		"INSERT INTO code_fts (text, path, line) VALUES (?, ?, ?)",
+	);
 	const lines = content.split("\n");
 	let count = 0;
 	for (let i = 0; i < lines.length; i++) {
@@ -162,13 +186,19 @@ export function indexFileLines(db: DatabaseSync, path: string, content: string):
 		insert.run(line, path, i + 1);
 		count++;
 	}
-	db.prepare(
-		"INSERT INTO files (path, mtime_ms, size) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size",
-	).run(path, Date.now(), content.length);
+	db
+		.prepare(
+			"INSERT INTO files (path, mtime_ms, size) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size",
+		)
+		.run(path, Date.now(), content.length);
 	return count;
 }
 
-export function searchCode(db: DatabaseSync, query: string, limit = 30): CodeHit[] {
+export function searchCode(
+	db: DatabaseSync,
+	query: string,
+	limit = 30,
+): CodeHit[] {
 	const safe = query.replace(/["'*:]/g, " ").trim();
 	if (safe === "") return [];
 	const rows = db
@@ -176,7 +206,11 @@ export function searchCode(db: DatabaseSync, query: string, limit = 30): CodeHit
 			"SELECT path, line, text FROM code_fts WHERE code_fts MATCH ? ORDER BY bm25(code_fts) LIMIT ?",
 		)
 		.all(`"${safe}"`, limit) as Array<Record<string, unknown>>;
-	return rows.map((r) => ({ path: String(r["path"]), line: Number(r["line"]), text: String(r["text"]) }));
+	return rows.map((r) => ({
+		path: String(r["path"]),
+		line: Number(r["line"]),
+		text: String(r["text"]),
+	}));
 }
 
 export { ftsSearch, type SearchRow };

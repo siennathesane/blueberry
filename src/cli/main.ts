@@ -45,7 +45,11 @@ import {
 import { getVersion } from "../core/version.ts";
 import { openDb, loadRegistryDb } from "../core/db.ts";
 import { syncStores, restoreMissing } from "../core/sync.ts";
-import { searchSessionsWithContext, formatSessionHits, searchCode } from "../core/search.ts";
+import {
+	searchSessionsWithContext,
+	formatSessionHits,
+	searchCode,
+} from "../core/search.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -572,7 +576,9 @@ async function syncCmd(deps: CliDeps): Promise<number> {
 		try {
 			const registry = loadRegistryDb(db);
 			const report = syncStores(db, deps.agentDir, registry);
-			deps.out(`sync: ${report.ingested} ingested · ${report.unchanged} unchanged`);
+			deps.out(
+				`sync: ${report.ingested} ingested · ${report.unchanged} unchanged`,
+			);
 			for (const o of report.orphans) deps.out(`orphan: ${o.file} (${o.detail})`);
 			for (const e of report.errors) deps.out(`error: ${e.file} (${e.detail})`);
 		} finally {
@@ -609,13 +615,15 @@ async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 					deps.out("no matches");
 					return 0;
 				}
-				for (const h of hits) deps.out(`${h.path}:${h.line}  ${h.text.slice(0, 160)}`);
+				for (const h of hits)
+					deps.out(`${h.path}:${h.line}  ${h.text.slice(0, 160)}`);
 				return 0;
 			}
 			const contextN = Number(rest[rest.indexOf("--context") + 1] ?? "");
-			const opts = Number.isInteger(contextN) && contextN >= 0 && contextN <= 9
-				? { contextBefore: contextN, contextAfter: contextN }
-				: {};
+			const opts =
+				Number.isInteger(contextN) && contextN >= 0 && contextN <= 9
+					? { contextBefore: contextN, contextAfter: contextN }
+					: {};
 			const hits = searchSessionsWithContext(db, query, opts);
 			deps.out(formatSessionHits(hits));
 			return 0;
@@ -634,7 +642,8 @@ async function restoreCmd(deps: CliDeps): Promise<number> {
 		try {
 			const restored = restoreMissing(db);
 			if (restored.length === 0) deps.out("restore: nothing missing");
-			for (const r of restored) deps.out(`restored ${r.id.slice(0, 8)} -> ${r.path}`);
+			for (const r of restored)
+				deps.out(`restored ${r.id.slice(0, 8)} -> ${r.path}`);
 		} finally {
 			db.close();
 		}

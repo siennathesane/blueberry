@@ -8,15 +8,34 @@ import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main, type CliDeps } from "../src/cli/main.ts";
-import { openDb, saveRegistrySync, syncConfigFile, loadRegistrySync } from "../src/core/db.ts";
-import { ingestSessionFile, restoreSession, syncStores } from "../src/core/sync.ts";
+import {
+	openDb,
+	saveRegistrySync,
+	syncConfigFile,
+	loadRegistrySync,
+} from "../src/core/db.ts";
+import {
+	ingestSessionFile,
+	restoreSession,
+	syncStores,
+} from "../src/core/sync.ts";
 import { formatSessionHits, type SessionHit } from "../src/core/search.ts";
-import { listSessions, renameSession, rewriteSessionHeader } from "../src/core/sessions.ts";
+import {
+	listSessions,
+	renameSession,
+	rewriteSessionHeader,
+} from "../src/core/sessions.ts";
 import { runFix } from "../src/core/fix.ts";
 import { adoptSessions } from "../src/core/adopt.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { loadRegistry, mutations } from "../src/core/registry.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -41,16 +60,33 @@ test("formatSessionHits: NaN timestamps, empty neighbors skipped, huge output tr
 		messages: [
 			{ seq: 0, ts: "garbage-date", role: "user", text: "before", isHit: false },
 			{ seq: 1, ts: null, role: null, text: "", isHit: false }, // empty non-hit → skipped
-			{ seq: 2, ts: "2026-08-24T10:00:00Z", role: "user", text: "the hit", isHit: true },
-			{ seq: 3, ts: "2026-08-24T10:01:00Z", role: "assistant", text: "", isHit: true }, // empty HIT kept
+			{
+				seq: 2,
+				ts: "2026-08-24T10:00:00Z",
+				role: "user",
+				text: "the hit",
+				isHit: true,
+			},
+			{
+				seq: 3,
+				ts: "2026-08-24T10:01:00Z",
+				role: "assistant",
+				text: "",
+				isHit: true,
+			}, // empty HIT kept
 		],
 	};
 	const text = formatSessionHits([hit]);
 	assert.ok(text.includes("--:--"), "NaN date renders placeholder");
 	assert.ok(text.includes("s1"), "unnamed session falls back to id");
-	assert.ok(!text.includes("before".repeat(1)) || text.includes("before"), "before rendered");
+	assert.ok(
+		!text.includes("before".repeat(1)) || text.includes("before"),
+		"before rendered",
+	);
 	// empty non-hit neighbor skipped: only 3 message lines (header + 3)
-	const msgLines = text.split("\n").filter((l) => l.startsWith(" ") || l.startsWith("▶"));
+	const msgLines = text
+		.split("\n")
+		.filter((l) => l.startsWith(" ") || l.startsWith("▶"));
 	assert.equal(msgLines.length, 3);
 
 	// >50k truncation (each hit caps text at 140 chars → need ~320 hits)
@@ -61,7 +97,13 @@ test("formatSessionHits: NaN timestamps, empty neighbors skipped, huge output tr
 		hitSeq: 0,
 		hitRole: "user",
 		messages: [
-			{ seq: 0, ts: "2026-08-24T10:00:00Z", role: "user", text: "x".repeat(900), isHit: true },
+			{
+				seq: 0,
+				ts: "2026-08-24T10:00:00Z",
+				role: "user",
+				text: "x".repeat(900),
+				isHit: true,
+			},
 		],
 	}));
 	const bigText = formatSessionHits(big);
@@ -78,8 +120,24 @@ test("sessions: image-only user message yields null firstUserText", () => {
 	writeFileSync(
 		join(store, "img.jsonl"),
 		[
-			JSON.stringify({ type: "session", version: 3, id: "img-id-000001", timestamp: ts, cwd: "/x" }),
-			JSON.stringify({ type: "message", id: "i1", parentId: null, timestamp: ts, message: { role: "user", content: [{ type: "image", data: "zz" }], timestamp: 1 } }),
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "img-id-000001",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "i1",
+				parentId: null,
+				timestamp: ts,
+				message: {
+					role: "user",
+					content: [{ type: "image", data: "zz" }],
+					timestamp: 1,
+				},
+			}),
 		].join("\n") + "\n",
 	);
 	const listed = listSessions(store);
@@ -98,9 +156,21 @@ test("sessions: renameSession skips garbage body lines", () => {
 	writeFileSync(
 		file,
 		[
-			JSON.stringify({ type: "session", version: 3, id: "g-id-000000001", timestamp: ts, cwd: "/x" }),
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "g-id-000000001",
+				timestamp: ts,
+				cwd: "/x",
+			}),
 			"{{{ not json",
-			JSON.stringify({ type: "message", id: "m1", parentId: null, timestamp: ts, message: { role: "user", content: "hi", timestamp: 1 } }),
+			JSON.stringify({
+				type: "message",
+				id: "m1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "user", content: "hi", timestamp: 1 },
+			}),
 		].join("\n") + "\n",
 	);
 	renameSession(file, "renamed");
@@ -125,15 +195,24 @@ test("db: saveRegistryDb rollback on UNIQUE slug violation", () => {
 		createdAt: now,
 		updatedAt: now,
 	});
-	assert.throws(() => saveRegistrySync2(db, mk("id-1", "/x/one"), mk("id-2", "/y/two")), /UNIQUE/);
+	assert.throws(
+		() => saveRegistrySync2(db, mk("id-1", "/x/one"), mk("id-2", "/y/two")),
+		/UNIQUE/,
+	);
 	// nothing persisted (rolled back)
-	const n = (db.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number }).n;
+	const n = (
+		db.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number }
+	).n;
 	assert.equal(n, 0);
 	db.close();
 });
 
 import { saveRegistryDb } from "../src/core/db.ts";
-function saveRegistrySync2(db: Parameters<typeof saveRegistryDb>[0], a: ReturnType<typeof mkProj>, b: ReturnType<typeof mkProj>): void {
+function saveRegistrySync2(
+	db: Parameters<typeof saveRegistryDb>[0],
+	a: ReturnType<typeof mkProj>,
+	b: ReturnType<typeof mkProj>,
+): void {
 	const r = { version: 1 as const, projects: [a, b] };
 	saveRegistryDb(db, r);
 }
@@ -197,7 +276,9 @@ test("sync: SQLITE_BUSY on a held lock reports error without data loss", () => {
 	blocker.exec("BEGIN EXCLUSIVE;");
 	const file = join(store, readdirSync(store)[0]!);
 	try {
-		const res = ingestSessionFile(db, file, (cwd) => (cwd === root ? projectId : null));
+		const res = ingestSessionFile(db, file, (cwd) =>
+			cwd === root ? projectId : null,
+		);
 		assert.equal(res.status, "error");
 		assert.match(res.detail ?? "", /locked|busy/i);
 	} finally {
@@ -205,7 +286,9 @@ test("sync: SQLITE_BUSY on a held lock reports error without data loss", () => {
 		blocker.close();
 	}
 	// after release, a normal ingest still works (no half-written rows)
-	const ok = ingestSessionFile(db, file, (cwd) => (cwd === root ? projectId : null));
+	const ok = ingestSessionFile(db, file, (cwd) =>
+		cwd === root ? projectId : null,
+	);
 	assert.equal(ok.status, "ingested");
 	db.close();
 });
@@ -230,7 +313,10 @@ test("fix: orphan store whose cwd belongs to an existing project reports visibil
 	const registry = loadRegistrySync(agentDir);
 	const report = runFix(registry, agentDir, { dryRun: false });
 	assert.ok(
-		report.findings.some((f) => f.kind === "orphan-store-registered" && f.detail.includes("'hostproj'")),
+		report.findings.some(
+			(f) =>
+				f.kind === "orphan-store-registered" && f.detail.includes("'hostproj'"),
+		),
 		"resolved to existing project",
 	);
 });
@@ -247,8 +333,20 @@ test("adopt: self-referencing parentSession moves without dangling rewrite", () 
 	writeFileSync(
 		selfFile,
 		[
-			JSON.stringify({ type: "session", version: 3, id: "self-00000001", timestamp: ts, cwd: root }),
-			JSON.stringify({ type: "message", id: "p1", parentId: null, timestamp: ts, message: { role: "user", content: "self", timestamp: 1 } }),
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "self-00000001",
+				timestamp: ts,
+				cwd: root,
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "p1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "user", content: "self", timestamp: 1 },
+			}),
 		].join("\n") + "\n",
 	);
 	// rewrite header to point parentSession at itself
@@ -277,7 +375,9 @@ test("launcher: SIGINT handler kills the spawned child", async () => {
 	const oldPath = process.env["PATH"];
 	process.env["PATH"] = `${stubBin}:${oldPath}`;
 	try {
-		const { prepareLaunch, defaultSpawnPi } = await import("../src/core/launcher.ts");
+		const { prepareLaunch, defaultSpawnPi } = await import(
+			"../src/core/launcher.ts"
+		);
 		const root = fakeRepo(area, "sigproj", "git");
 		const plan = await prepareLaunch({
 			cwd: root,
@@ -293,7 +393,10 @@ test("launcher: SIGINT handler kills the spawned child", async () => {
 		process.emit("SIGINT");
 		const code = await spawned;
 		const elapsed = Date.now() - started;
-		assert.ok(elapsed < 5000, `child died promptly (${elapsed}ms), not after its 30s sleep`);
+		assert.ok(
+			elapsed < 5000,
+			`child died promptly (${elapsed}ms), not after its 30s sleep`,
+		);
 		// signal-kill resolves close(null) as 0 — the launcher's convention
 		assert.equal(code, 0);
 	} finally {
@@ -342,10 +445,28 @@ test("cli: sessions show message/messages views succeed via dispatch", async () 
 		err: () => {},
 		gitRemoteReader: () => null,
 	};
-	assert.equal(await main(["sessions", "show", "viewable", "--view", "messages"], deps2), 0);
+	assert.equal(
+		await main(["sessions", "show", "viewable", "--view", "messages"], deps2),
+		0,
+	);
 	assert.ok(out.some((l) => l.includes("show me")));
 	// message drill-down view: valid N renders, 0 is rejected
-	assert.equal(await main(["sessions", "show", "viewable", "--view", "message", "--message", "1"], deps2), 0);
-	assert.ok(out.some((l) => l.includes("show me")), "message view renders the hit");
-	assert.equal(await main(["sessions", "show", "viewable", "--view", "message", "--message", "0"], deps2), 2);
+	assert.equal(
+		await main(
+			["sessions", "show", "viewable", "--view", "message", "--message", "1"],
+			deps2,
+		),
+		0,
+	);
+	assert.ok(
+		out.some((l) => l.includes("show me")),
+		"message view renders the hit",
+	);
+	assert.equal(
+		await main(
+			["sessions", "show", "viewable", "--view", "message", "--message", "0"],
+			deps2,
+		),
+		2,
+	);
 });

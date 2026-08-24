@@ -29,7 +29,8 @@ const identity: PaneTheme = {
 
 /** Theme that emits real ANSI codes — alignment must survive these. */
 const colored: PaneTheme = {
-	fg: (c, s) => `\x1b[${c === "accent" ? 35 : c === "success" ? 32 : c === "warning" ? 33 : 90}m${s}\x1b[0m`,
+	fg: (c, s) =>
+		`\x1b[${c === "accent" ? 35 : c === "success" ? 32 : c === "warning" ? 33 : 90}m${s}\x1b[0m`,
 	bold: (s) => `\x1b[1m${s}\x1b[0m`,
 };
 
@@ -37,12 +38,48 @@ const CARDS: TodoCard[] = [
 	{ id: "9f3a2c", title: "dag core + persistence", stage: "doing", age: "4h" },
 	{ id: "a11b02", title: "quiet opener polish", stage: "review", age: "2h" },
 	{ id: "c7d4e9", title: "bb sync catch-up walk", stage: "review", age: "1d" },
-	{ id: "5e8f31", title: "fts5 schema + migration", stage: "todo", age: "new", ready: true },
-	{ id: "3b9k77", title: "bb_search tool", stage: "todo", age: "new", blockedBy: ["5e8f31"] },
-	{ id: "d2c4a8", title: "symbol index", stage: "todo", age: "new", blockedBy: ["5e8f31"] },
-	{ id: "7i5j9k", title: "plan file format", stage: "todo", age: "new", ready: true },
-	{ id: "1k2l3m", title: "tool gate", stage: "todo", age: "new", blockedBy: ["7i5j9k"] },
-	{ id: "8q9r0s", title: "pane graph mode", stage: "todo", age: "new", blockedBy: ["9f3a2c"] },
+	{
+		id: "5e8f31",
+		title: "fts5 schema + migration",
+		stage: "todo",
+		age: "new",
+		ready: true,
+	},
+	{
+		id: "3b9k77",
+		title: "bb_search tool",
+		stage: "todo",
+		age: "new",
+		blockedBy: ["5e8f31"],
+	},
+	{
+		id: "d2c4a8",
+		title: "symbol index",
+		stage: "todo",
+		age: "new",
+		blockedBy: ["5e8f31"],
+	},
+	{
+		id: "7i5j9k",
+		title: "plan file format",
+		stage: "todo",
+		age: "new",
+		ready: true,
+	},
+	{
+		id: "1k2l3m",
+		title: "tool gate",
+		stage: "todo",
+		age: "new",
+		blockedBy: ["7i5j9k"],
+	},
+	{
+		id: "8q9r0s",
+		title: "pane graph mode",
+		stage: "todo",
+		age: "new",
+		blockedBy: ["9f3a2c"],
+	},
 	{ id: "2t3u4v", title: "session registry", stage: "done", age: "2d" },
 	{ id: "6w7x8y", title: "cross-project library", stage: "done", age: "2d" },
 	{ id: "0z1a2b", title: "/exit + opener", stage: "done", age: "1d" },
@@ -57,9 +94,16 @@ test("layout: offsets are monotonic, evenly gapped, within width", () => {
 		const { colW, offsets } = layoutFor(w);
 		assert.ok(colW >= 12, `colW >= 12 at width ${w}`);
 		for (let i = 1; i < offsets.length; i++) {
-			assert.equal(offsets[i]! - offsets[i - 1]!, colW + 2, `gap constant at width ${w} col ${i}`);
+			assert.equal(
+				offsets[i]! - offsets[i - 1]!,
+				colW + 2,
+				`gap constant at width ${w} col ${i}`,
+			);
 		}
-		assert.ok(offsets[offsets.length - 1]! + colW <= w, `columns fit in width ${w}`);
+		assert.ok(
+			offsets[offsets.length - 1]! + colW <= w,
+			`columns fit in width ${w}`,
+		);
 	}
 });
 
@@ -70,11 +114,16 @@ test("pane: every data row starts columns at the exact layout offsets (ANSI-colo
 	const lines = renderPane(WIDTH, colored, CARDS, { cursor: 3, detail: false });
 
 	// data rows begin after header(2) + column header + divider
-	const dataRows = lines.slice(3).filter((l) => stripAnsi(l).includes("◉") || /[▣▧✓◷]/.test(stripAnsi(l)));
+	const dataRows = lines
+		.slice(3)
+		.filter((l) => stripAnsi(l).includes("◉") || /[▣▧✓◷]/.test(stripAnsi(l)));
 	assert.ok(dataRows.length > 0, "found data rows");
 
 	for (const row of dataRows) {
-		assert.ok(visibleWidth(row) <= WIDTH, `row within width: '${stripAnsi(row).slice(0, 30)}' ${visibleWidth(row)}`);
+		assert.ok(
+			visibleWidth(row) <= WIDTH,
+			`row within width: '${stripAnsi(row).slice(0, 30)}' ${visibleWidth(row)}`,
+		);
 		// each column's cell is exactly colW wide: chars at offset+colW are the gap
 		for (let i = 0; i < offsets.length - 1; i++) {
 			const plain = stripAnsi(row);
@@ -89,8 +138,12 @@ test("pane: every data row starts columns at the exact layout offsets (ANSI-colo
 });
 
 test("pane: identity and colored renders have identical plain text", () => {
-	const a = renderPane(WIDTH, identity, CARDS, { cursor: 0, detail: false }).map(stripAnsi);
-	const b = renderPane(WIDTH, colored, CARDS, { cursor: 0, detail: false }).map(stripAnsi);
+	const a = renderPane(WIDTH, identity, CARDS, { cursor: 0, detail: false }).map(
+		stripAnsi,
+	);
+	const b = renderPane(WIDTH, colored, CARDS, { cursor: 0, detail: false }).map(
+		stripAnsi,
+	);
 	assert.deepEqual(a, b, "coloring never changes content or geometry");
 });
 
@@ -116,23 +169,36 @@ test("pane: exactly one cursor marker, on the cursor row", () => {
 
 test("pane: todo column orders ready-first; review orders oldest-first; done caps at 4", () => {
 	const todo = columnItems(CARDS, "todo").map((c) => c.ready ?? false);
-	assert.deepEqual(todo, [true, true, false, false, false, false], "ready cards first");
+	assert.deepEqual(
+		todo,
+		[true, true, false, false, false, false],
+		"ready cards first",
+	);
 
 	const review = columnItems(CARDS, "review").map((c) => c.age);
 	assert.deepEqual(review, ["1d", "2h"], "1d (older) before 2h");
 
 	const many: TodoCard[] = Array.from({ length: 9 }, (_, i) => ({
-		id: `d${i}`, title: `done ${i}`, stage: "done" as const, age: "1d",
+		id: `d${i}`,
+		title: `done ${i}`,
+		stage: "done" as const,
+		age: "1d",
 	}));
 	assert.equal(columnItems(many, "done").length, 4, "done column capped");
 });
 
 test("pane: overflow indicators appear when a column exceeds MAX_ROWS", () => {
 	const many: TodoCard[] = Array.from({ length: 11 }, (_, i) => ({
-		id: `x${i}`, title: `task ${i}`, stage: "todo" as const, age: "new",
+		id: `x${i}`,
+		title: `task ${i}`,
+		stage: "todo" as const,
+		age: "new",
 	}));
 	const lines = renderPane(WIDTH, identity, many, { cursor: 0, detail: false });
-	assert.ok(lines.some((l) => l.includes("+3 todo")), "overflow count shown");
+	assert.ok(
+		lines.some((l) => l.includes("+3 todo")),
+		"overflow count shown",
+	);
 });
 
 test("pane: rows never exceed width even with long titles", () => {
@@ -143,7 +209,10 @@ test("pane: rows never exceed width even with long titles", () => {
 	for (const w of [60, 100]) {
 		const lines = renderPane(w, colored, long, { cursor: 0, detail: false });
 		for (const l of lines) {
-			assert.ok(visibleWidth(l) <= w, `width ${w}: '${stripAnsi(l).slice(0, 20)}' is ${visibleWidth(l)}`);
+			assert.ok(
+				visibleWidth(l) <= w,
+				`width ${w}: '${stripAnsi(l).slice(0, 20)}' is ${visibleWidth(l)}`,
+			);
 		}
 	}
 });
@@ -153,26 +222,45 @@ test("pane: rows never exceed width even with long titles", () => {
 test("detail: box rows are width-exact and show waits-on/unlocks", () => {
 	const flat = visibleCells(CARDS);
 	const idx = flat.findIndex((c) => c.id === "1k2l3m"); // blocked card
-	const lines = renderDetail(WIDTH, colored, CARDS, { cursor: idx, detail: true });
+	const lines = renderDetail(WIDTH, colored, CARDS, {
+		cursor: idx,
+		detail: true,
+	});
 
 	const boxRows = lines.filter((l) => l.includes("│"));
 	assert.ok(boxRows.length >= 4, "box has content rows");
 	for (const row of boxRows) {
-		assert.equal(visibleWidth(row), visibleWidth(boxRows[0]!), `box row width uniform: '${stripAnsi(row).slice(0, 24)}'`);
+		assert.equal(
+			visibleWidth(row),
+			visibleWidth(boxRows[0]!),
+			`box row width uniform: '${stripAnsi(row).slice(0, 24)}'`,
+		);
 	}
 	const joined = lines.join("\n");
 	assert.ok(joined.includes("7i5j9k"), "blocker id shown");
 	// unlocks direction: 5e8f31 unlocks two cards; a true leaf shows (nothing yet)
 	const readyIdx = flat.findIndex((c) => c.id === "5e8f31");
-	const readyCard = renderDetail(WIDTH, identity, CARDS, { cursor: readyIdx, detail: true }).join("\n");
+	const readyCard = renderDetail(WIDTH, identity, CARDS, {
+		cursor: readyIdx,
+		detail: true,
+	}).join("\n");
 	assert.ok(readyCard.includes("nothing — ready"), "ready card shows ready");
 	assert.ok(readyCard.includes("3b9k77"), "unlocks lists dependents");
 	const leafIdx = flat.findIndex((c) => c.id === "3b9k77");
-	const leafCard = renderDetail(WIDTH, identity, CARDS, { cursor: leafIdx, detail: true }).join("\n");
-	assert.ok(leafCard.includes("(nothing yet)"), "leaf card shows nothing unlocks");
+	const leafCard = renderDetail(WIDTH, identity, CARDS, {
+		cursor: leafIdx,
+		detail: true,
+	}).join("\n");
+	assert.ok(
+		leafCard.includes("(nothing yet)"),
+		"leaf card shows nothing unlocks",
+	);
 	// a done/unblocked card shows ready state without blockers row noise
 	const doingIdx = flat.findIndex((c) => c.id === "9f3a2c");
-	const doingCard = renderDetail(WIDTH, identity, CARDS, { cursor: doingIdx, detail: true }).join("\n");
+	const doingCard = renderDetail(WIDTH, identity, CARDS, {
+		cursor: doingIdx,
+		detail: true,
+	}).join("\n");
 	assert.ok(doingCard.includes("nothing — ready"), "unblocked card shows ready");
 	assert.ok(doingCard.includes("8q9r0s"), "doing card unlocks its dependent");
 });
@@ -234,16 +322,32 @@ test("input: last-cell clamp and empty-board behavior", () => {
 });
 
 test("renderTodoPane dispatches by state", () => {
-	const pane = renderTodoPane(WIDTH, identity, CARDS, { cursor: 0, detail: false });
-	const detail = renderTodoPane(WIDTH, identity, CARDS, { cursor: 0, detail: true });
+	const pane = renderTodoPane(WIDTH, identity, CARDS, {
+		cursor: 0,
+		detail: false,
+	});
+	const detail = renderTodoPane(WIDTH, identity, CARDS, {
+		cursor: 0,
+		detail: true,
+	});
 	assert.ok(pane[0]!.includes("⬡ todos"));
-	assert.ok(detail.some((l) => l.includes("waits on") || l.includes("(no task)")));
+	assert.ok(
+		detail.some((l) => l.includes("waits on") || l.includes("(no task)")),
+	);
 });
 
 test("visibleCells: column-major order matches column composition", () => {
 	const cells = visibleCells(CARDS).map((c) => c.id);
 	// display order: todo (ready first), doing, review (oldest first), done
-	assert.deepEqual(cells.slice(0, 2), ["5e8f31", "7i5j9k"], "ready pair leads todo");
+	assert.deepEqual(
+		cells.slice(0, 2),
+		["5e8f31", "7i5j9k"],
+		"ready pair leads todo",
+	);
 	assert.deepEqual(cells.slice(6, 7), ["9f3a2c"], "doing follows");
-	assert.deepEqual(cells.slice(7, 9), ["c7d4e9", "a11b02"], "review oldest-first");
+	assert.deepEqual(
+		cells.slice(7, 9),
+		["c7d4e9", "a11b02"],
+		"review oldest-first",
+	);
 });

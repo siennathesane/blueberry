@@ -44,7 +44,10 @@ export interface UxWorld {
 /** Fresh agent dir + plain project dir; settings.json wired for TUI launch. */
 export function makeWorld(prefix: string): UxWorld {
 	const agentDir = join(tmpdir(), `bb-ux-${prefix}-${randomUUID().slice(0, 8)}`);
-	const projectDir = join(tmpdir(), `bb-ux-${prefix}-proj-${randomUUID().slice(0, 8)}`);
+	const projectDir = join(
+		tmpdir(),
+		`bb-ux-${prefix}-proj-${randomUUID().slice(0, 8)}`,
+	);
 	mkdirSync(join(agentDir), { recursive: true });
 	mkdirSync(projectDir, { recursive: true });
 	// minimal settings: theme + quiet + THIS repo as a package so extensions load
@@ -77,13 +80,20 @@ export interface CliResult {
  * (spawning node entry.ts under node:test's ambient NODE_V8_COVERAGE writes
  * import-only partial profiles that corrupt the merge). */
 function childEnv(agentDir: string): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = { ...process.env, BLUEBERRY_AGENT_DIR: agentDir };
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		BLUEBERRY_AGENT_DIR: agentDir,
+	};
 	delete env["NODE_V8_COVERAGE"];
 	return env;
 }
 
 /** Run the real binary: bb <args...> against a world. */
-export function runCli(args: string[], world: UxWorld, timeoutMs = 20_000): Promise<CliResult> {
+export function runCli(
+	args: string[],
+	world: UxWorld,
+	timeoutMs = 20_000,
+): Promise<CliResult> {
 	return new Promise((resolvePromise, reject) => {
 		const child = spawn(BB_BIN, args, {
 			cwd: world.projectDir,
@@ -94,7 +104,9 @@ export function runCli(args: string[], world: UxWorld, timeoutMs = 20_000): Prom
 		let stderr = "";
 		const timer = setTimeout(() => {
 			child.kill("SIGKILL");
-			reject(new Error(`runCli timeout after ${timeoutMs}ms: bb ${args.join(" ")}`));
+			reject(
+				new Error(`runCli timeout after ${timeoutMs}ms: bb ${args.join(" ")}`),
+			);
 		}, timeoutMs);
 		child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
 		child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
@@ -121,15 +133,25 @@ export class TuiSession {
 	}
 
 	/** Launch the blueberry TUI in a detached tmux session. */
-	static launch(world: UxWorld, opts: { width?: number; height?: number } = {}): TuiSession {
+	static launch(
+		world: UxWorld,
+		opts: { width?: number; height?: number } = {},
+	): TuiSession {
 		if (!tmuxAvailable()) throw new Error("tmux not available");
 		const name = `${SESSION_PREFIX}-${randomUUID().slice(0, 8)}`;
 		const width = opts.width ?? 120;
 		const height = opts.height ?? 30;
 		execFileSync(TMUX!, [
-			"new-session", "-d", "-s", name,
-			"-x", String(width), "-y", String(height),
-			"-c", world.projectDir,
+			"new-session",
+			"-d",
+			"-s",
+			name,
+			"-x",
+			String(width),
+			"-y",
+			String(height),
+			"-c",
+			world.projectDir,
 			`env -u NODE_V8_COVERAGE BLUEBERRY_AGENT_DIR=${world.agentDir} '${BB_BIN}'`,
 		]);
 		return new TuiSession(name);
@@ -152,7 +174,9 @@ export class TuiSession {
 
 	/** Plain-text screen capture (tmux strips ANSI). */
 	capture(): string {
-		return execFileSync(TMUX!, ["capture-pane", "-p", "-t", this.name], { encoding: "utf8" });
+		return execFileSync(TMUX!, ["capture-pane", "-p", "-t", this.name], {
+			encoding: "utf8",
+		});
 	}
 
 	/** Lines of the current capture. */
@@ -163,18 +187,27 @@ export class TuiSession {
 	/** True when the screen currently contains the pattern. */
 	shows(pattern: RegExp | string): boolean {
 		const text = this.capture();
-		return typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+		return typeof pattern === "string"
+			? text.includes(pattern)
+			: pattern.test(text);
 	}
 
 	/** Poll until the pattern renders (or throw on timeout). */
-	async waitFor(what: string, pattern: RegExp | string, timeoutMs = 10_000): Promise<string> {
+	async waitFor(
+		what: string,
+		pattern: RegExp | string,
+		timeoutMs = 10_000,
+	): Promise<string> {
 		const started = Date.now();
 		for (;;) {
 			const text = this.capture();
-			const hit = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+			const hit =
+				typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
 			if (hit) return text;
 			if (Date.now() - started > timeoutMs) {
-				throw new Error(`TUI waitFor(${what}) timed out after ${timeoutMs}ms.\n--- screen ---\n${text}`);
+				throw new Error(
+					`TUI waitFor(${what}) timed out after ${timeoutMs}ms.\n--- screen ---\n${text}`,
+				);
 			}
 			await sleep(150);
 		}
@@ -195,7 +228,9 @@ export class TuiSession {
 		const started = Date.now();
 		while (!this.exited()) {
 			if (Date.now() - started > timeoutMs) {
-				throw new Error(`TUI did not exit within ${timeoutMs}ms.\n--- screen ---\n${this.capture()}`);
+				throw new Error(
+					`TUI did not exit within ${timeoutMs}ms.\n--- screen ---\n${this.capture()}`,
+				);
 			}
 			await sleep(120);
 		}
@@ -220,7 +255,9 @@ export function sleep(ms: number): Promise<void> {
 export function cleanupSessions(): void {
 	if (!tmuxAvailable()) return;
 	try {
-		const out = execFileSync(TMUX!, ["list-sessions", "-F", "#{session_name}"], { encoding: "utf8" });
+		const out = execFileSync(TMUX!, ["list-sessions", "-F", "#{session_name}"], {
+			encoding: "utf8",
+		});
 		for (const line of out.split("\n")) {
 			const name = line.trim();
 			if (name.startsWith(SESSION_PREFIX)) {

@@ -29,7 +29,11 @@ export function padEndVisible(s: string, width: number, pad = " "): string {
  * colored glyph keeps its color. Content is truncated from the plain text;
  * colors inside the cut region are dropped.
  */
-export function truncateVisible(s: string, maxWidth: number, ellipsis = "…"): string {
+export function truncateVisible(
+	s: string,
+	maxWidth: number,
+	ellipsis = "…",
+): string {
 	const plain = stripAnsi(s);
 	if (plain.length <= maxWidth) return s;
 	const lead = /^\x1b\[[0-9;]*[A-Za-z]/.exec(s);

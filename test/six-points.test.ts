@@ -10,7 +10,13 @@ import { entryText, syncStores } from "../src/core/sync.ts";
 import { checkpointDigest } from "../src/core/todo-store.ts";
 import { mutations, loadRegistry } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -30,7 +36,10 @@ test("syncStores: project with no store dir is skipped silently", () => {
 	mutations.register(r, { root: rootA });
 	mutations.register(r, { root: rootB });
 	saveRegistrySync(agentDir, r);
-	fakeSession(getCentralStoreDir(agentDir, "hasstore"), { cwd: rootA, firstUserText: "only one" });
+	fakeSession(getCentralStoreDir(agentDir, "hasstore"), {
+		cwd: rootA,
+		firstUserText: "only one",
+	});
 
 	const db = openDb(agentDir);
 	const report = syncStores(db, agentDir, loadRegistryDb(db));
@@ -42,11 +51,11 @@ test("syncStores: project with no store dir is skipped silently", () => {
 test("checkpointDigest: board with zero ready tasks omits NEXT", () => {
 	const db = openDb(agentDir);
 	const pid = "six";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 's', '/s', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 's', '/s', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	// every todo blocked by the first
 	const { createTodo, addDep } = require_todo();
 	const gate = createTodo(db, pid, "gate", { sessionId: "sx" });
@@ -83,11 +92,18 @@ test("cli: search --context 2 applies a tight window", async () => {
 		gitRemoteReader: () => null,
 	};
 	await main([], deps);
-	fakeSession(getCentralStoreDir(agentDir, "ctxwin"), { cwd: root, firstUserText: "windowed needle hit", entries: 6 });
+	fakeSession(getCentralStoreDir(agentDir, "ctxwin"), {
+		cwd: root,
+		firstUserText: "windowed needle hit",
+		entries: 6,
+	});
 	await main(["sync"], deps);
 	const out2: string[] = [];
 	const deps2: CliDeps = { ...deps, out: (l) => out2.push(l) };
-	assert.equal(await main(["search", "windowed needle", "--context", "2"], deps2), 0);
+	assert.equal(
+		await main(["search", "windowed needle", "--context", "2"], deps2),
+		0,
+	);
 	// with context 2 the neighborhood is small; hit marker present
 	assert.ok(out2.some((l) => l.includes("▶")));
 });
