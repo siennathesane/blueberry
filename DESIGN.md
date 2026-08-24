@@ -288,6 +288,7 @@ rituals. Loops (agentic hype) have no waits and no memory; principals work in
 ### Rendering (researched 2025-08-25)
 
 No turnkey JS library renders a DAG pane inside a host TUI. Composition:
+
 - **pi-tui** for components (we live inside pi; ink/blessed would fight the host).
 - **Kanban mode needs no graph layout** — columns are stage, cards are one line.
 - **Closure mode layout math**: `d3-dag` (maintained TS Sugiyama layering; ranks
@@ -321,6 +322,49 @@ final polish happens live against a real terminal.
 - **Dreaming (future §Goals)**: idle/nightly consolidation over the event log +
   session library: refresh priorities, surface rot ("s3 ready for 12 days"),
   distill context, propose splits/merges. The event log is shaped for this now.
+
+### Todo ↔ session log integration (DECIDED 2025-08-25)
+
+Cross-session reorientation must be **zero-effort**: searching a todo's tag
+from any session surfaces every session that touched it, with full context.
+
+- **Identifiers (internal, not for humans)**: uuidgen, last 6 hex + project
+  slug — `blueberry/9f3a2c`. Full uuid stored in sqlite; short form is the
+  address/tag. Humans read titles; ids are for data mapping and search
+  needles. Consistent with §Library's existing selector grammar (uuid
+  prefix). 6 hex = 16.7M space per project; birthday bound ~4.8k tasks —
+  single-user per project, non-issue. Log tag form: `todo:<slug>/<hex6>`.
+- **Breadcrumb custom messages (DECIDED)**: every create / stage-move /
+  dep-change / completion emits a compact custom message (customType
+  `bb-todo`, one line: `todo:<slug>/<hex6> · title · transition · deps`).
+  Custom messages participate in LLM context → resumed/forked sessions
+  reorient natively, and §Library search scans custom-role text today.
+  **The internal identifier MUST appear in every breadcrumb** — that's what
+  makes it a search needle. `display: false` for routine moves (quiet
+  context), `display: true` for create/complete. Raw entries survive
+  compaction (context building only; the file keeps everything).
+- **Tool calls are the audit spine**: bb_todo calls (arguments + state digest
+  in the result) land in the JSONL automatically.
+- **Reorientation digest — LOGGED, not ephemeral (DECIDED)**: the digest is
+  for the MODEL, not the user; it exists to survive multi-compaction sessions
+  and be findable in search. At session end (checkpoint), a digest breadcrumb
+  is appended: `bb-checkpoint` custom message carrying `todo:` tags of every
+  task touched this session, NOW/NEXT/review-queue state, and notable notes.
+  A future session searching a tag finds: breadcrumbs (per-change) +
+  checkpoints (per-session) + tool digest — layered reorientation with zero
+  human effort.
+- **Discovery split (DECIDED)**: DB-first for discovery AND payload (the
+  event log's `session_id` column answers "which sessions touched t9f3a2c"
+  exactly — no scan); logs for context (once found, §Library serves the
+  surrounding conversation).
+
+> **Design note (applies to §Library search generally):** search results must
+> include **3–5 contextual messages above and below** each hit — with
+> timestamps and other contextually relevant information (session id, todo
+> tags, adjacent transitions). A bare snippet is not reorientation; the
+> neighborhood is. §Library's `renderMessages` pagination already gives the
+> mechanism; search needs a `--context N` mode that renders the hit's
+> surrounding window, not just the matching line.
 
 ### Open questions
 
