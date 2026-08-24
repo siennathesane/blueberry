@@ -5,6 +5,8 @@
  *   blueberry projects list|rename|merge|forget|nest|unnest|sessions
  *   blueberry sessions list|rename|move|open|trash
  *   blueberry adopt [dir] [--map dir=path] [--copy]
+ *   blueberry sync | restore
+ *   blueberry search <text> [--code] [--context N]
  *   blueberry fix [--dry-run] | doctor
  *
  * main() is dependency-injected (cwd, io, spawn) so the command layer is
@@ -43,6 +45,7 @@ import {
 import { getVersion } from "../core/version.ts";
 import { openDb, loadRegistryDb } from "../core/db.ts";
 import { syncStores, restoreMissing } from "../core/sync.ts";
+import { searchSessionsWithContext, formatSessionHits, searchCode } from "../core/search.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -85,6 +88,9 @@ usage:
   blueberry sessions search <text> [--all]
   blueberry sessions fork <[project/]sel>
   blueberry adopt [dir] [--map <mangled-dir>=<root>] [--copy]
+  blueberry sync            ingest session stores into blueberry.db
+  blueberry restore         rebuild missing session files from the DB
+  blueberry search <text> [--code] [--context N]  FTS5 search (history + code)
   blueberry fix [--dry-run]
   blueberry doctor
 
@@ -125,6 +131,8 @@ export async function main(
 			return syncCmd(deps);
 		case "restore":
 			return restoreCmd(deps);
+		case "search":
+			return searchCmd(rest, deps);
 		default:
 			// anything that isn't a known subcommand is treated as pi launch
 			return launchMode(argv, deps);
@@ -571,6 +579,40 @@ async function syncCmd(deps: CliDeps): Promise<number> {
 			db.close();
 		}
 		return 0;
+	} catch (err) {
+		deps.err(`blueberry: ${(err as Error).message}`);
+		return 1;
+	}
+}
+
+// --- search -----------------------------------------------------------------
+
+async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
+	try {
+		const positional = rest.filter((a) => !a.startsWith("--"));
+		const query = positional.join(" ");
+		if (!query) return usageErr(deps, "search <text> [--code] [--context N]");
+		const db = openDb(deps.agentDir);
+		try {
+			if (rest.includes("--code")) {
+				const hits = searchCode(db, query);
+				if (hits.length === 0) {
+					deps.out("no matches");
+					return 0;
+				}
+				for (const h of hits) deps.out(`${h.path}:${h.line}  ${h.text.slice(0, 160)}`);
+				return 0;
+			}
+			const contextN = Number(rest[rest.indexOf("--context") + 1] ?? "");
+			const opts = Number.isInteger(contextN) && contextN >= 0 && contextN <= 9
+				? { contextBefore: contextN, contextAfter: contextN }
+				: {};
+			const hits = searchSessionsWithContext(db, query, opts);
+			deps.out(formatSessionHits(hits));
+			return 0;
+		} finally {
+			db.close();
+		}
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);
 		return 1;
