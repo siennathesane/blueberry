@@ -44,6 +44,12 @@ bb sessions move <sel> <project>  # move a session between projects
 bb sessions open <sel>      # resume a session in its project (from anywhere)
 bb sessions trash <sel>     # trash, never delete
 
+# §Library: cross-project session access (read-only; fork copies into YOUR store)
+bb sessions show <[proj/]sel> [--view summary|tree|messages|message] [--message N]
+bb sessions search <text> [--all]   # scan session text across projects
+bb sessions fork <[proj/]sel>       # name@project copy in the current store
+# the model gets the same powers via the bb_library tool (single tool, action enum)
+
 bb adopt [dir] [--copy]       # import ~/.pi/agent history (groups by header cwd, stamps gaps;
                               #   --copy leaves the pi tree untouched, re-runs skip duplicates)
 bb fix / bb doctor          # reconcile orphans, stale cwds, dangling forks, split-brain

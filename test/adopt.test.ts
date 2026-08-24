@@ -1,6 +1,12 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { adoptSessions } from "../src/core/adopt.ts";
 import { loadRegistry, findBySlug } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
@@ -218,7 +224,9 @@ test("adopt: copy mode maps parentSession to an already-adopted parent", () => {
 	assert.equal(report3.imported[0]?.sessions, 1, "child re-imported");
 	const destFiles2 = readdirSync(dest).map((n) => `${dest}/${n}`);
 	const parentId = readSessionHeader(parent)!.id;
-	const parentDest = destFiles2.find((f) => readSessionHeader(f)?.id === parentId)!;
+	const parentDest = destFiles2.find(
+		(f) => readSessionHeader(f)?.id === parentId,
+	)!;
 	const childDest = destFiles2.find((f) => readSessionHeader(f)?.parentSession);
 	assert.equal(
 		readSessionHeader(childDest!)?.parentSession,

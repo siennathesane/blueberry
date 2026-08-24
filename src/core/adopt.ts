@@ -66,7 +66,12 @@ export function adoptSessions(
 	registry: Registry,
 	opts: AdoptOptions,
 ): AdoptReport {
-	const report: AdoptReport = { imported: [], skipped: [], stamped: 0, duplicates: 0 };
+	const report: AdoptReport = {
+		imported: [],
+		skipped: [],
+		stamped: 0,
+		duplicates: 0,
+	};
 	if (!existsSync(opts.sourceDir)) return report;
 
 	const exists = opts.pathExists ?? existsSync;
@@ -193,7 +198,8 @@ export function adoptSessions(
 			if (place(item)) movedCount++;
 			else report.duplicates++;
 		}
-		if (movedCount > 0) report.imported.push({ project: project.slug, sessions: movedCount });
+		if (movedCount > 0)
+			report.imported.push({ project: project.slug, sessions: movedCount });
 	}
 
 	return report;

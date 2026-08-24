@@ -215,8 +215,9 @@ export function moveSession(
 		return h;
 	});
 	let finalPath = target;
-	if (existsSync(target) && target !== file) {
-		// collision: suffix with the session's short id
+	if (existsSync(target) && (target !== file || opts.copy)) {
+		// collision: suffix with the session's short id. Copy mode never overwrites
+		// an existing target — including the source itself (same-store fork).
 		const suffix = (readSessionHeader(staging)?.id ?? randomUUID()).slice(0, 8);
 		finalPath = target.replace(/\.jsonl$/, `-${suffix}.jsonl`);
 	}

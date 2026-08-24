@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { main, defaultDeps, type CliDeps } from "../src/cli/main.ts";
 import { loadRegistry, findBySlug } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
@@ -193,7 +193,9 @@ test("cli: adopt --copy leaves the pi source tree untouched", async () => {
 	fakeSession(piStore, { cwd: root, firstUserText: "ancient" });
 
 	assert.equal(await main(["adopt", piSource, "--copy"], deps(area)), 0);
-	assert.ok(outLines.some((l) => l.includes("imported 1 sessions -> clipy (copied)")));
+	assert.ok(
+		outLines.some((l) => l.includes("imported 1 sessions -> clipy (copied)")),
+	);
 	assert.equal(readdirSync(piStore).length, 1, "source file preserved");
 	assert.equal(readdirSync(getCentralStoreDir(agentDir, "clipy")).length, 1);
 
@@ -264,6 +266,15 @@ test("cli: --version prints even without a discoverable package.json", async () 
 	const code = await main(["--version"], deps(area));
 	assert.equal(code, 0);
 	assert.ok(outLines.some((l) => l.startsWith("blueberry ")));
+});
+
+test("cli: --version falls back to dev when package.json lacks a version", async () => {
+	// agentDir nested so that <agentDir>/../../package.json exists but has no version
+	mkdirSync(`${area}/pkgroot/a`, { recursive: true });
+	writeFileSync(`${area}/pkgroot/package.json`, "{}\n");
+	const nested = { ...deps(area), agentDir: `${area}/pkgroot/a/agent` };
+	assert.equal(await main(["--version"], nested), 0);
+	assert.ok(outLines.some((l) => l.trim() === "blueberry dev"));
 });
 
 test("cli: -h short help works", async () => {
@@ -400,6 +411,20 @@ test("cli: adopt with unresolvable dir reports skip", async () => {
 	assert.ok(outLines.some((l) => l.includes("skipped")));
 });
 
+test("cli: adopt on a file (not dir) errors cleanly", async () => {
+	const notADir = `${area}/notadir`;
+	writeFileSync(notADir, "x\n");
+	assert.equal(await main(["adopt", notADir], deps(area)), 1);
+	assert.ok(errLines.some((l) => l.includes("blueberry:")));
+});
+
+test("cli: fix errors cleanly when a store path is a file", async () => {
+	mkdirSync(`${agentDir}/sessions`, { recursive: true });
+	writeFileSync(`${agentDir}/sessions/blocked`, "not a dir\n");
+	assert.equal(await main(["fix"], deps(area)), 1);
+	assert.ok(errLines.some((l) => l.includes("blueberry:")));
+});
+
 test("cli: defaultDeps wires process io without throwing", () => {
 	const d = defaultDeps();
 	assert.equal(typeof d.cwd, "string");
@@ -417,6 +442,56 @@ test("cli: projects list --json and empty-registry message", async () => {
 		slug: string;
 	}>;
 	assert.ok(parsed.some((p) => p.slug === "listed"));
+});
+
+test("cli: sessions show/search/fork — cross-project access", async () => {
+	const rootA = fakeRepo(area, "lib-a", "git");
+	const rootB = fakeRepo(area, "lib-b", "git");
+	await main([], deps(rootA));
+	await main([], deps(rootB));
+	fakeSession(getCentralStoreDir(agentDir, "lib-a"), {
+		cwd: rootA,
+		name: "cross-session",
+		firstUserText: "the needle lives here",
+	});
+
+	// show summary by address from the OTHER project's cwd
+	assert.equal(await main(["sessions", "show", "lib-a/cross-session"], deps(rootB)), 0);
+	assert.ok(outLines.some((l) => l.includes("cross-session")));
+
+	// messages view with tool lines via address
+	assert.equal(await main(["sessions", "show", "lib-a/cross-session", "--view", "messages"], deps(rootB)), 0);
+	assert.ok(outLines.some((l) => l.includes("the needle lives here")));
+
+	// bare selector = current project
+	assert.equal(await main(["sessions", "show", "cross-session"], deps(rootA)), 0);
+
+	// errors
+	assert.equal(await main(["sessions", "show", "ghost/1"], deps(rootA)), 1);
+	assert.ok(errLines.some((l) => l.includes("no project 'ghost'")));
+	assert.equal(await main(["sessions", "show", "lib-a/999"], deps(rootB)), 1);
+	assert.equal(await main(["sessions", "show", "lib-a/1", "--view", "bogus"], deps(rootB)), 2);
+	assert.equal(await main(["sessions", "show"], deps(rootB)), 2);
+	assert.equal(await main(["sessions", "show", "lib-a/1", "--view", "message"], deps(rootB)), 2);
+	assert.equal(await main(["sessions", "show", "lib-a/1", "--view", "message", "--message", "abc"], deps(rootB)), 2, "non-numeric message rejected");
+
+	// search: scoped and --all
+	assert.equal(await main(["sessions", "search", "needle"], deps(rootB)), 0);
+	assert.ok(outLines.some((l) => l.includes("no matches")), "current project has no needle");
+	assert.equal(await main(["sessions", "search", "needle", "--all"], deps(rootB)), 0);
+	assert.ok(outLines.some((l) => l.includes("lib-a/")));
+	assert.equal(await main(["sessions", "search"], deps(rootB)), 2);
+
+	// fork from B's cwd: copies lib-a session into lib-b's store
+	assert.equal(await main(["sessions", "fork", "lib-a/cross-session"], deps(rootB)), 0);
+	assert.ok(outLines.some((l) => l.includes("cross-session@lib-a")));
+	const forked = listSessions(getCentralStoreDir(agentDir, "lib-b"));
+	assert.equal(forked.length, 1);
+	assert.equal(forked[0]?.name, "cross-session@lib-a");
+	assert.equal(forked[0]?.cwd, rootB, "fork header rewritten to target cwd");
+	// source intact in lib-a
+	assert.equal(listSessions(getCentralStoreDir(agentDir, "lib-a")).length, 1);
+	assert.equal(await main(["sessions", "fork"], deps(rootB)), 2);
 });
 
 test("cli: sessions list marks sessions without a header cwd", async () => {

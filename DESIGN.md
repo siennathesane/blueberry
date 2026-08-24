@@ -113,7 +113,19 @@ entry becomes a published npm/git source. CLI-first, generic naming, from day on
 
 ---
 
-## §Library — cross-project session access (designed 2025-08-25, not implemented)
+## §Library — cross-project session access (SHIPPED 2025-08-25)
+
+**Status: implemented.** `src/core/library.ts` + `extensions/library/` (bb_library tool) +
+CLI `sessions show|search|fork`. 160 tests, coverage ≥90% on all metrics.
+
+Decisions recorded (user, 2025-08-25):
+- Single tool with action enum — confirmed; `bb_library` actions: projects, sessions, show, search.
+- Everything inspectable — confirmed; the `message` view is the full drill-down (thinking, tool
+  arguments, tool results with details blocks, images noted).
+- Fork naming: `name@project` (not `fork:` prefix). Slashes stripped; empty base falls back
+  to `session@project`.
+- Replay/eval: NOT near-term. Fork stays simple — information + future merging are the use;
+  provenance travels in the name itself.
 
 ### The problem
 
@@ -162,11 +174,13 @@ Ambiguity (duplicate names across projects) resolves by refusing and listing can
 ### Surfaces
 
 **CLI (humans):**
+
 - `bb sessions show <addr> [--view summary|tree|messages] [--offset --limit]`
 - `bb sessions search <text> [--all]` — streaming scan v1 (no index); the
   §Search SQLite engine can host a sessions FTS table later without API change.
 
 **Extension `extensions/library/` (the model — this is the first-class part):**
+
 - Tool `bb_library` with actions: `projects` (list), `sessions` (list per
   project), `show` (any view, paginated). One tool, not three — keeps the
   prompt small and the model chooses granularity.
@@ -175,6 +189,7 @@ Ambiguity (duplicate names across projects) resolves by refusing and listing can
   only as needed.
 
 **Fork (the only write):**
+
 - `bb sessions fork <addr>` — copies the source into the CURRENT project's
   store via the existing `moveSession` copy mode: header cwd rewritten to the
   current canonical, `parentSession` cleared per surgery rules (it would be
@@ -193,15 +208,11 @@ Ambiguity (duplicate names across projects) resolves by refusing and listing can
 
 ### Open questions
 
-- [ ] bb_library tool shape: single tool with `action` enum, or separate tools?
-  (Single proposed above; happy to flip if prompt measurements say otherwise.)
-- [ ] Should `messages` view include tool RESULTS on demand (`--tools` flag)
-  or only call lines, ever?
-- [ ] Fork naming: `fork:<origname>` vs `<origname>@<project>`? Cosmetic but
-  sticky once names accumulate.
-- [ ] Is replay/eval actually wanted soon? If yes, fork's output format should
-  be designed for it (e.g., no name mutation, keep provenance in a custom
-  entry... which requires a session-load — revisit).
+- [x] bb_library tool shape: single tool with `action` enum — DECIDED (single)
+- [x] Should `messages` view include tool RESULTS on demand — DECIDED (yes: `message` view
+      is the full-content drill-down)
+- [x] Fork naming — DECIDED (`name@project`)
+- [x] Is replay/eval actually wanted soon — DECIDED (no; information + maybe merging later)
 
 ---
 

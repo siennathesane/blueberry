@@ -16,10 +16,7 @@ import {
 	mutations,
 	findBySlug,
 } from "../core/registry.ts";
-import {
-	getAgentDir,
-	getTrashDir,
-} from "../core/agent-dir.ts";
+import { getAgentDir, getTrashDir } from "../core/agent-dir.ts";
 import { resolveProject, storeDirFor } from "../core/resolution.ts";
 import {
 	prepareLaunch,
@@ -35,6 +32,18 @@ import {
 	trashSession,
 	selectSession,
 } from "../core/sessions.ts";
+import {
+	resolveAddress,
+	parseSessionFile,
+	renderSummary,
+	renderTree,
+	renderMessages,
+	renderMessage,
+	searchSessions,
+	formatSearchHits,
+	forkSession,
+	type ViewKind,
+} from "../core/library.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -73,6 +82,9 @@ usage:
   blueberry sessions move <sel> <project-slug>
   blueberry sessions open <sel>
   blueberry sessions trash <sel>
+  blueberry sessions show <[project/]sel> [--view summary|tree|messages|message] [--offset N] [--limit N] [--message N]
+  blueberry sessions search <text> [--all]
+  blueberry sessions fork <[project/]sel>
   blueberry adopt [dir] [--map <mangled-dir>=<root>] [--copy]
   blueberry fix [--dry-run]
   blueberry doctor
@@ -390,8 +402,75 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				deps.out(`trashed session ${session.id.slice(0, 8)} -> ${trashed}`);
 				return 0;
 			}
+			case "show": {
+				const addr = positionals(rest, "show")[0];
+				if (!addr)
+					return usageErr(
+						deps,
+						"sessions show <project/selector> [--view summary|tree|messages|message] [--offset N] [--limit N] [--message N]",
+					);
+				const view = (extractValue(rest, "--view") ?? "summary") as ViewKind;
+				const registry = loadRegistry(deps.agentDir);
+				const { project: current } = await currentProject(deps, projectFlag);
+				const resolved = resolveAddress(registry, deps.agentDir, current.slug, addr);
+				const parsed = parseSessionFile(resolved.session.file);
+				if (!parsed) return deps.err(`cannot parse ${resolved.session.file}`), 1;
+				switch (view) {
+					case "summary":
+						deps.out(renderSummary(resolved.session, parsed));
+						break;
+					case "tree":
+						deps.out(renderTree(parsed));
+						break;
+					case "messages": {
+						const offset = Number(extractValue(rest, "--offset") ?? 0);
+						const limit = Number(extractValue(rest, "--limit") ?? 80);
+						deps.out(renderMessages(parsed, offset, limit));
+						break;
+					}
+					case "message": {
+						const n = Number(extractValue(rest, "--message") ?? 0);
+						if (!Number.isInteger(n) || n < 1)
+							return usageErr(deps, "sessions show ... --view message --message N");
+						deps.out(renderMessage(parsed, n));
+						break;
+					}
+					default:
+						return usageErr(deps, "sessions show ... --view summary|tree|messages|message");
+				}
+				return 0;
+			}
+			case "search": {
+				const text = positionals(rest, "search").join(" ");
+				if (!text) return usageErr(deps, "sessions search <text> [--all]");
+				const registry = loadRegistry(deps.agentDir);
+				const { project: current } = await currentProject(deps, projectFlag);
+				const hits = searchSessions(registry, deps.agentDir, text, {
+					all: rest.includes("--all"),
+					currentSlug: current.slug,
+				});
+				deps.out(formatSearchHits(hits));
+				return 0;
+			}
+			case "fork": {
+				const addr = positionals(rest, "fork")[0];
+				if (!addr) return usageErr(deps, "sessions fork <project/selector>");
+				const registry = loadRegistry(deps.agentDir);
+				const { project: current } = await currentProject(deps, projectFlag);
+				const resolved = resolveAddress(registry, deps.agentDir, current.slug, addr);
+				const result = forkSession({
+					agentDir: deps.agentDir,
+					sourceFile: resolved.session.file,
+					sourceProject: resolved.project,
+					sourceSession: resolved.session,
+					targetProject: current,
+				});
+				deps.out(`forked -> ${result.name}`);
+				deps.out(result.file);
+				return 0;
+			}
 			default:
-				return usageErr(deps, "sessions list|rename|move|open|trash");
+				return usageErr(deps, "sessions list|rename|move|open|trash|show|search|fork");
 		}
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);
@@ -443,9 +522,13 @@ async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 		await saveRegistry(deps.agentDir, registry);
 
 		for (const line of report.imported)
-			deps.out(`imported ${line.sessions} sessions -> ${line.project}${copy ? " (copied)" : ""}`);
+			deps.out(
+				`imported ${line.sessions} sessions -> ${line.project}${copy ? " (copied)" : ""}`,
+			);
 		if (report.duplicates > 0)
-			deps.out(`skipped ${report.duplicates} sessions already present (nothing to do)`);
+			deps.out(
+				`skipped ${report.duplicates} sessions already present (nothing to do)`,
+			);
 		if (report.stamped > 0)
 			deps.out(`stamped ${report.stamped} sessions with a missing header cwd`);
 		for (const s of report.skipped) deps.out(`skipped ${s.file}: ${s.reason}`);
@@ -496,6 +579,30 @@ function extractValue(
 ): string | undefined {
 	const i = args.indexOf(flag);
 	return i >= 0 ? args[i + 1] : undefined;
+}
+
+/** Positional tokens after a subcommand, ignoring flag tokens and their values. */
+function positionals(rest: readonly string[], sub: string): string[] {
+	const idx = rest.indexOf(sub);
+	if (idx < 0) return [];
+	const out: string[] = [];
+	for (let i = idx + 1; i < rest.length; i++) {
+		const tok = rest[i]!;
+		if (tok.startsWith("--")) {
+			if (
+				tok === "--view" ||
+				tok === "--offset" ||
+			tok === "--limit" ||
+			tok === "--message" ||
+			tok === "--project"
+			) {
+				i++; // skip the value
+			}
+			continue;
+		}
+		out.push(tok);
+	}
+	return out;
 }
 
 function stripFlags(args: readonly string[], flags: string[]): string[] {

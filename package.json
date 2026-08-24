@@ -20,6 +20,7 @@
   "pi": {
     "extensions": [
       "./extensions/core/index.ts",
+      "./extensions/library/index.ts",
       "./extensions/plan/index.ts",
       "./extensions/todo/index.ts",
       "./extensions/search/index.ts"
