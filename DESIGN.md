@@ -217,6 +217,100 @@ Ambiguity (duplicate names across projects) resolves by refusing and listing can
 
 ---
 
+## §Data — the formal data layout (DECIDED 2025-08-25)
+
+> One file is the agent. Copy `blueberry.db` + clone the repos = take your
+> agent with you. Auth included — by design.
+
+### The rule: three formats, total
+
+| Format | Contents | Status |
+| --- | --- | --- |
+| **`~/.blueberry/blueberry.db`** (SQLite, WAL, `0600`) | todos, deps, events, projects/aliases, sessions + entries, config, auth | THE state; source of truth |
+| **pi interop files** | session JSONL (per-project stores), `settings.json`, `trust.json`, `auth.json` | materialized caches; rebuildable from the DB |
+| **Marker files** | `.git/blueberry-id`, `.lore/blueberry-id`, `.blueberry/id` | one ULID string; live in repos by design |
+
+Nothing else. No per-feature formats; new features get tables or die.
+
+### Schema (v1)
+
+```sql
+CREATE TABLE meta     (key TEXT PRIMARY KEY, value TEXT);  -- schema_version, last_sync, …
+
+CREATE TABLE projects (id TEXT PRIMARY KEY, slug TEXT UNIQUE, canonical_path TEXT,
+                       git_remote TEXT, session_store TEXT, merged_into TEXT,
+                       trusted INTEGER, created_at TEXT, updated_at TEXT);
+CREATE TABLE aliases  (project_id TEXT, path TEXT, PRIMARY KEY (project_id, path));
+
+CREATE TABLE todos    (id TEXT PRIMARY KEY, project_id TEXT, title TEXT, track TEXT,
+                       stage TEXT DEFAULT 'todo',  -- todo|doing|review|done|dropped
+                       created_at TEXT, updated_at TEXT, done_at TEXT);
+CREATE TABLE todo_deps (todo_id TEXT, dep_id TEXT, PRIMARY KEY (todo_id, dep_id));
+CREATE TABLE todo_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, todo_id TEXT,
+                       kind TEXT, ts TEXT, session_id TEXT, note TEXT);
+
+-- session history (ingested; JSONL remains pi's live write-path)
+CREATE TABLE sessions (id TEXT PRIMARY KEY, project_id TEXT, file_path TEXT,
+                       cwd TEXT, ts TEXT, parent_session TEXT, name TEXT,
+                       file_mtime_ms INTEGER, size_bytes INTEGER, ingested_at TEXT);
+CREATE TABLE session_entries (session_id TEXT, seq INTEGER, ts TEXT, type TEXT,
+                       entry_id TEXT, parent_id TEXT, json TEXT,
+                       PRIMARY KEY (session_id, seq));
+CREATE VIRTUAL TABLE session_fts USING fts5(
+  text, content='');  -- contentless: (session_id, seq, role, text) rows at ingest
+
+-- pi configs, stored as the JSON pi consumes (no format translation)
+CREATE TABLE config (key TEXT PRIMARY KEY, json TEXT);  -- 'settings', 'auth'
+```
+
+Deliberate simplicity: no tags table (a tag IS `slug + todo id` — derivable);
+no separate sessions index (entries ARE it); config as JSON rows (pi's exact
+serialization, zero translation loss). Goals/dreaming tables land here later.
+
+### Sync model (decided: compaction + shutdown + bb sync)
+
+- **Write path**: pi appends JSONL in stores, exactly as today. Never sqlite-live.
+- **Materialize at launch**: DB → `settings.json` + `auth.json` before exec'ing pi.
+- **Ingest**: on `session_compact` (post-success), on `session_shutdown`, and on
+  `bb sync` (catch-up: walks stores, ingests by mtime). `bb fix` reconciles drift.
+- **Two-way configs**: pi mutates `settings.json` (/settings, /model) and
+  `auth.json` (/login, OAuth token refresh) mid-session → re-ingest at sync.
+  Mtime rules: file newer → ingest wins; DB newer (written via bb) → materialize
+  wins. Crash between change and sync loses that change to materialization —
+  accepted v1 cost, `bb fix` is the escape hatch.
+- **Restore**: `bb restore` materializes JSONL back out of `entries` into the
+  right project store when a store is missing (or explicitly). Either side
+  rebuilds the other; no truth ambiguity.
+
+### Auth (decided: IN)
+
+`auth.json` is already plaintext on the same disk — the DB changes nothing
+> about the threat model, and `0600` on one file centralizes protection.
+Portability includes credentials by design (that's the feature: no re-login on
+machine B). Consequence: **the DB is a secret-bearing file** — never commit,
+never share without scrubbing. Future option: keychain/SQLCipher, not v1.
+
+### Portability story
+
+Copy `blueberry.db` to a new machine, clone the repos: markers travel inside
+repos, the DB carries identity + history + config + auth, and the resolution
+ladder (marker → git-remote → alias) reattaches to new absolute paths.
+
+### Convergence bonus
+
+Ingested entries + `session_fts` = FTS5 over session history — the substrate
+§Search wanted and the thing `todo:<slug>/<hex6>` reorientation queries want;
+`--context 3–5` neighborhoods become SQL, not file scans.
+
+### Migration
+
+`registry.json` → `projects` table on first run (backup kept, then retired).
+Existing JSONL stores ingest via `bb sync`. `trust.json` stays a pi interop
+file (rewritten by blueberry as today — it's keyed by absolute path, not
+portable, so it belongs to the machine, not the agent).
+
+---
+
 ## §Plan — plan mode, rewritten
 
 Upstream reference: `vendored/pi-plan-mode/` (@narumitw/pi-plan-mode v0.52.0)
@@ -263,14 +357,14 @@ actually work: small working set, explicit waits, deferred trust, re-orientation
 rituals. Loops (agentic hype) have no waits and no memory; principals work in
 **episodes** — re-orient, act, checkpoint — and the tool must serve the episode.
 
-### Storage (decided 2025-08-25)
+### Storage (decided 2025-08-25, amended: shared DB)
 
-- **SQLite per project** (`todos.db`), not JSON. Reason: the event log is the
-  point — `events(task_id, kind, ts, session_id, note)` alongside `tasks` and
-  `deps` tables enables replay, WIP age, cycle time, stuck detection, and the
+- **SQLite in the shared `~/.blueberry/blueberry.db`** — todos are a table,
+  not a database (see §Data). Reason: the event log is the point —
+  `todo_events` enables replay, WIP age, cycle time, stuck detection, and the
   future "dreaming" consolidation pass. Current-state JSON can't do any of that.
-- **Never in git.** Central store under the agent dir (consistent with session
-  store policy): `~/.blueberry/todos/<slug>.db` (location open, see questions).
+- **Never in git.** The DB lives in the agent dir with the rest of blueberry's
+  state; one file, one backup story, one thing to carry to another machine.
 - **Session log as audit trail:** `bb_todo` tool calls land in session JSONL as
   normal tool entries (automatic); tool-result `details` carry a state digest so
   `/tree` navigation stays renderable. **Todo state is project truth in SQLite**;
