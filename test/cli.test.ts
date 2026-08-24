@@ -430,10 +430,13 @@ test("cli: fix errors cleanly when a store path is a file", async () => {
 	assert.ok(errLines.some((l) => l.includes("blueberry:")));
 });
 
-test("cli: defaultDeps wires process io without throwing", () => {
+test("cli: defaultDeps wires process io and actually invokes them", () => {
 	const d = defaultDeps();
 	assert.equal(typeof d.cwd, "string");
 	assert.equal(typeof d.spawn, "function");
+	// exercise the io arrows (stdout/stderr writes)
+	d.out("blueberry-io-probe");
+	d.err("blueberry-io-probe");
 });
 
 test("cli: projects list --json and empty-registry message", async () => {

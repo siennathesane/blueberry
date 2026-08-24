@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { parseSessionFile } from "./library.ts";
 import type { Registry } from "./registry.ts";
 import { storeDirFor } from "./resolution.ts";
+import { normalizePathForCompare } from "./util.ts";
 
 export interface IngestResult {
 	status: "ingested" | "unchanged" | "error" | "orphan";
@@ -20,7 +21,8 @@ export interface IngestResult {
 }
 
 /** Extract FTS text + role from a parsed entry. Returns null for non-text entries. */
-function entryText(entry: Record<string, unknown>): { role: string; text: string } | null {
+/** Extract FTS text + role from a parsed entry. Returns null for non-text entries. (exported for tests) */
+export function entryText(entry: Record<string, unknown>): { role: string; text: string } | null {
 	if (entry["type"] === "session_info") {
 		const name = entry["name"];
 		return typeof name === "string" && name !== "" ? { role: "session_info", text: name } : null;
@@ -157,11 +159,11 @@ export function syncStores(db: DatabaseSync, agentDir: string, registry: Registr
 	const report: SyncReport = { ingested: 0, unchanged: 0, orphans: [], errors: [] };
 	const byPath = new Map<string, string>();
 	for (const p of registry.projects) {
-		byPath.set(p.canonicalPath, p.id);
-		for (const a of p.aliases) byPath.set(a, p.id);
+		byPath.set(normalizePathForCompare(p.canonicalPath), p.id);
+		for (const a of p.aliases) byPath.set(normalizePathForCompare(a), p.id);
 	}
 	const projectIdFor = (cwd: string | null): string | null =>
-		cwd === null ? null : (byPath.get(cwd) ?? null);
+		cwd === null ? null : (byPath.get(normalizePathForCompare(cwd)) ?? null);
 
 	for (const project of registry.projects) {
 		const store = storeDirFor(agentDir, project);

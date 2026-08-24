@@ -6,7 +6,7 @@
  * Node's native type stripping (CLI/tests) and jiti (pi extensions).
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { realpathSync, readFileSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
@@ -117,6 +117,22 @@ export function decodeDirNameToPathCandidates(
 			results.push(candidate);
 	}
 	return results;
+}
+
+/** Canonical form for path comparison: realpath when it exists (resolves
+ * symlinks — critical on macOS where /tmp and /var are symlinks and
+ * process.cwd() returns /private/... forms), resolve() otherwise. */
+export function normalizePathForCompare(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		return resolve(p);
+	}
+}
+
+/** Path equality that survives symlinks and trailing-slash/trivial diffs. */
+export function samePath(a: string, b: string): boolean {
+	return normalizePathForCompare(a) === normalizePathForCompare(b);
 }
 
 /** Sanitize a session display name the way pi does (single line, trimmed). */

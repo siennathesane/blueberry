@@ -174,9 +174,6 @@ export function setStage(
 			return { ok: false, reason: `blocked by ${row.blockedBy.join(", ")}` };
 		}
 	}
-	if ((todo.stage === "done" || todo.stage === "dropped") && stage !== "done" && stage !== "dropped") {
-		// reopening is allowed (long-horizon work: done is sometimes wrong)
-	}
 
 	const now = new Date().toISOString();
 	const doneAt = stage === "done" ? now : null;
@@ -199,7 +196,7 @@ export function setStage(
 	}
 	const saved = getTodo(db, projectId, hex6);
 	if (!saved) return { ok: false, reason: "internal: row vanished after update" };
-	return warning !== undefined ? { ok: true, warning, todo: saved } : { ok: true, todo: saved };
+	return warning === undefined ? { ok: true, todo: saved } : { ok: true, warning, todo: saved };
 }
 
 export function addDep(

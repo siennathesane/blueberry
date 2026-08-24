@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getVersion } from "../src/core/version.ts";
+import { getVersion, readPkgVersion } from "../src/core/version.ts";
 import { readFileSync } from "node:fs";
 import { tmpAgentDir, cleanup } from "./helpers.ts";
 
@@ -13,6 +13,10 @@ const pkg = JSON.parse(
 test("getVersion: reads package.json (source of truth)", () => {
 	delete process.env["BLUEBERRY_VERSION"];
 	assert.equal(getVersion(), pkg.version);
+});
+
+test("readPkgVersion: missing file and missing version field fall back to dev", () => {
+	assert.equal(readPkgVersion("/nonexistent/dir/depth"), "dev");
 });
 
 test("getVersion: BLUEBERRY_VERSION env wins (binary escape hatch)", () => {

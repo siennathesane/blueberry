@@ -24,6 +24,7 @@ import {
 	mutations,
 } from "./registry.ts";
 import { getCentralStoreDir, getInRepoStoreDir } from "./agent-dir.ts";
+import { samePath } from "./util.ts";
 import { existsSync } from "node:fs";
 
 export type ResolveStatus = "marker" | "remote" | "path" | "new";
@@ -109,15 +110,16 @@ export function resolveProject(opts: {
 		} else if (!remote) {
 			// 4. Path/alias match (no remote to disambiguate; only safe when the
 			//    canonical path no longer exists — otherwise this is a split).
+			// samePath: symlink-aware (/var vs /private/var are one project).
 			const byPath = findByPath(registry, boundary.root);
 			if (
 				byPath &&
-				(byPath.canonicalPath === boundary.root ||
+				(samePath(byPath.canonicalPath, boundary.root) ||
 					!existsSync(byPath.canonicalPath))
 			) {
 				project = byPath;
 				status = "path";
-				if (project.canonicalPath !== boundary.root) {
+				if (!samePath(project.canonicalPath, boundary.root)) {
 					mutations.reattach(registry, project, boundary.root);
 					actions.push(
 						`reattached '${project.slug}' via path match: ${boundary.root}`,

@@ -91,6 +91,24 @@ test("setStage: done→doing reopen allowed; done_at stamped", () => {
 	assert.ok(setStage(db, PROJECT, a, "review").ok);
 });
 
+test("setStage: blocked task cannot enter review either", () => {
+	const blocker = make("gate");
+	const child = make("gated");
+	assert.ok(addDep(db, PROJECT, child, blocker).ok);
+	assert.equal(setStage(db, PROJECT, child, "review").ok, false);
+	assert.ok(setStage(db, PROJECT, blocker, "done").ok);
+	assert.ok(setStage(db, PROJECT, child, "review").ok);
+});
+
+test("setStage: no-op same-stage move is ok without event", () => {
+	const a = make("stable");
+	const before = (db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }).n;
+	const res = setStage(db, PROJECT, a, "todo");
+	assert.ok(res.ok && res.todo);
+	const after = (db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }).n;
+	assert.equal(after, before, "same-stage move appends no event");
+});
+
 test("setStage: WIP soft-limit warning after N+1 doing", () => {
 	const ids: string[] = [];
 	for (let i = 0; i <= WIP_LIMIT; i++) ids.push(make(`wip ${i}`));

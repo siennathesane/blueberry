@@ -12,6 +12,7 @@
  * project; unmarked subdirs belong to the outer project.
  */
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 
 export type BoundaryKind = "git" | "lore" | "worktree" | "plain";
@@ -93,8 +94,6 @@ export function writeMarkerId(boundary: Boundary, id: string): void {
 /** Best-effort origin remote URL for a repo root; null when unavailable. */
 export function getGitRemote(root: string): string | null {
 	try {
-		const { execFileSync } =
-			require("node:child_process") as typeof import("node:child_process");
 		const out = execFileSync("git", ["remote", "get-url", "origin"], {
 			cwd: root,
 			encoding: "utf8",

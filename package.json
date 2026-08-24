@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "description": "A personal pi distribution. Blueberry pi, served with orange juice.",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "type": "module",
   "scripts": {
     "setup": "bash bin/setup.sh",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/cli/entry.ts' --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=90"
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/cli/entry.ts' --test-coverage-lines=95 --test-coverage-branches=95 --test-coverage-functions=95"
   },
   "bin": {
     "blueberry": "./bin/blueberry"
@@ -25,9 +27,15 @@
       "./extensions/todo/index.ts",
       "./extensions/search/index.ts"
     ],
-    "skills": ["./skills"],
-    "prompts": ["./prompts"],
-    "themes": ["./themes"]
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
+    ],
+    "themes": [
+      "./themes"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

@@ -85,40 +85,50 @@ function firstUserTextFrom(content: unknown): string | null {
 	return null;
 }
 
-/** Scan a store directory for sessions, newest first. */
+/** Scan a store directory for sessions, newest first. Single read per file. */
 export function listSessions(storeDir: string): SessionInfo[] {
 	if (!existsSync(storeDir)) return [];
 	const out: SessionInfo[] = [];
 	for (const f of readdirSync(storeDir)) {
 		if (!f.endsWith(".jsonl")) continue;
 		const file = join(storeDir, f);
-		const header = readSessionHeader(file);
+		let raw: string;
+		try {
+			raw = readFileSync(file, "utf8");
+		} catch {
+			continue; // unreadable: skip entirely
+		}
+		const nl = raw.indexOf("\n");
+		const firstLine = nl === -1 ? raw : raw.slice(0, nl);
+		let header: SessionHeader | null = null;
+		try {
+			const parsed = JSON.parse(firstLine) as SessionHeader;
+			if (parsed?.type === "session" && typeof parsed.id === "string")
+				header = parsed;
+		} catch {
+			header = null;
+		}
 		if (!header) continue;
 
 		let name: string | null = null;
 		let firstUserText: string | null = null;
 		let messageCount = 0;
-		try {
-			const raw = readFileSync(file, "utf8");
-			for (const line of raw.split("\n")) {
-				if (line.trim() === "") continue;
-				let entry: ParsedEntry;
-				try {
-					entry = JSON.parse(line) as ParsedEntry;
-				} catch {
-					continue;
-				}
-				if (entry.type === "session_info" && typeof entry.name === "string")
-					name = entry.name;
-				if (entry.type === "message" && entry.message) {
-					messageCount++;
-					if (firstUserText === null && entry.message.role === "user") {
-						firstUserText = firstUserTextFrom(entry.message.content);
-					}
+		for (const line of (nl === -1 ? "" : raw.slice(nl + 1)).split("\n")) {
+			if (line.trim() === "") continue;
+			let entry: ParsedEntry;
+			try {
+				entry = JSON.parse(line) as ParsedEntry;
+			} catch {
+				continue;
+			}
+			if (entry.type === "session_info" && typeof entry.name === "string")
+				name = entry.name;
+			if (entry.type === "message" && entry.message) {
+				messageCount++;
+				if (firstUserText === null && entry.message.role === "user") {
+					firstUserText = firstUserTextFrom(entry.message.content);
 				}
 			}
-		} catch {
-			// unreadable body: still list it with header info
 		}
 		const st = statSync(file);
 		out.push({

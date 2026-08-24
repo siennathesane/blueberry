@@ -148,7 +148,7 @@ function glyphFor(t: TodoCard, theme: PaneTheme): string {
 
 /** Render the kanban pane. All lines are padEnd-aligned per the layout contract. */
 export function renderPane(width: number, theme: PaneTheme, cards: TodoCard[], state: PaneState): string[] {
-	const { colW, offsets } = layoutFor(width);
+	const { colW } = layoutFor(width);
 	const lines: string[] = [];
 
 	const total = cards.length;
@@ -166,7 +166,7 @@ export function renderPane(width: number, theme: PaneTheme, cards: TodoCard[], s
 		const cap = c.cap ? theme.fg("dim", `/${c.cap}`) : "";
 		return padEndVisible(truncateVisible(theme.bold(`${c.label} ${theme.fg("muted", String(n))}${cap}`), colW), colW);
 	});
-	const leftPad = " ".repeat(offsets[0] ?? LEFT_PAD);
+	const leftPad = " ".repeat(LEFT_PAD); // first column offset; offsets[0] is always LEFT_PAD
 	lines.push(leftPad + headers.join(" ".repeat(GAP)));
 	lines.push(theme.fg("dim", leftPad + COLUMNS.map(() => "─".repeat(colW)).join(" ".repeat(GAP))));
 
@@ -186,7 +186,6 @@ export function renderPane(width: number, theme: PaneTheme, cards: TodoCard[], s
 		});
 		lines.push(leftPad + cells.join(" ".repeat(GAP)));
 	}
-
 	const overflow = byCol
 		.map((items, i) => {
 			const col = COLUMNS[i];

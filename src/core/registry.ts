@@ -17,7 +17,7 @@ import {
 	rmSync,
 } from "node:fs";
 import { join } from "node:path";
-import { atomicWriteJson, readJsonIfExists, slugify, ulid } from "./util.ts";
+import { atomicWriteJson, readJsonIfExists, samePath, slugify, ulid } from "./util.ts";
 import {
 	getCentralStoreDir,
 	getInRepoStoreDir,
@@ -102,8 +102,10 @@ export function findByPath(
 	registry: Registry,
 	path: string,
 ): Project | undefined {
+	// symlink-aware: /var/... and /private/var/... are the same project
 	return registry.projects.find(
-		(p) => p.canonicalPath === path || p.aliases.includes(path),
+		(p) =>
+			samePath(p.canonicalPath, path) || p.aliases.some((a) => samePath(a, path)),
 	);
 }
 

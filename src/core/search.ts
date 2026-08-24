@@ -26,7 +26,8 @@ export interface SessionHit {
 	messages: ContextMessage[]; // the neighborhood
 }
 
-function entrySummary(json: string): { ts: string | null; role: string | null; text: string } {
+/** Summarize one stored entry for neighborhood rendering (exported for tests). */
+export function entrySummary(json: string): { ts: string | null; role: string | null; text: string } {
 	try {
 		const e = JSON.parse(json) as Record<string, unknown>;
 		const ts = typeof e["timestamp"] === "string" ? e["timestamp"] : null;

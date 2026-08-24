@@ -589,7 +589,16 @@ async function syncCmd(deps: CliDeps): Promise<number> {
 
 async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 	try {
-		const positional = rest.filter((a) => !a.startsWith("--"));
+		// positional tokens, skipping flags AND their values (--context N)
+		const skipNext = new Set(["--context"]);
+		const positional: string[] = [];
+		for (let i = 0; i < rest.length; i++) {
+			if (skipNext.has(rest[i]!)) {
+				i++;
+				continue;
+			}
+			if (!rest[i]!.startsWith("--")) positional.push(rest[i]!);
+		}
 		const query = positional.join(" ");
 		if (!query) return usageErr(deps, "search <text> [--code] [--context N]");
 		const db = openDb(deps.agentDir);
