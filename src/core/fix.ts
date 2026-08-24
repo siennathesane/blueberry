@@ -9,9 +9,17 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Registry } from "./registry.ts";
-import { findBySlug, mutations } from "./registry.ts";
-import { getCentralStoreDir, getSessionsRoot, getInRepoStoreDir } from "./agent-dir.ts";
-import { listSessions, readSessionHeader, rewriteSessionHeader } from "./sessions.ts";
+import { findBySlug } from "./registry.ts";
+import {
+	getCentralStoreDir,
+	getSessionsRoot,
+	getInRepoStoreDir,
+} from "./agent-dir.ts";
+import {
+	listSessions,
+	readSessionHeader,
+	rewriteSessionHeader,
+} from "./sessions.ts";
 import { ensureProjectForRoot } from "./adopt.ts";
 
 export type FindingKind =
@@ -35,7 +43,11 @@ export interface FixReport {
 	dryRun: boolean;
 }
 
-export function runFix(registry: Registry, agentDir: string, opts: { dryRun?: boolean } = {}): FixReport {
+export function runFix(
+	registry: Registry,
+	agentDir: string,
+	opts: { dryRun?: boolean } = {},
+): FixReport {
 	const dryRun = opts.dryRun ?? false;
 	const findings: Finding[] = [];
 
@@ -86,9 +98,10 @@ export function runFix(registry: Registry, agentDir: string, opts: { dryRun?: bo
 
 	// 2 + 3. Per-project session hygiene.
 	for (const project of registry.projects) {
-		const storeDir = project.sessionStore === "in-repo"
-			? getInRepoStoreDir(project.canonicalPath)
-			: getCentralStoreDir(agentDir, project.slug);
+		const storeDir =
+			project.sessionStore === "in-repo"
+				? getInRepoStoreDir(project.canonicalPath)
+				: getCentralStoreDir(agentDir, project.slug);
 		if (project.sessionStore === "in-repo" && !existsSync(storeDir)) {
 			findings.push({
 				kind: "in-repo-store-missing",
@@ -118,7 +131,10 @@ export function runFix(registry: Registry, agentDir: string, opts: { dryRun?: bo
 			}
 
 			const header = readSessionHeader(session.file);
-			if (typeof header?.parentSession === "string" && !existsSync(header.parentSession)) {
+			if (
+				typeof header?.parentSession === "string" &&
+				!existsSync(header.parentSession)
+			) {
 				if (dryRun) {
 					findings.push({
 						kind: "parent-session-cleared",
@@ -140,7 +156,9 @@ export function runFix(registry: Registry, agentDir: string, opts: { dryRun?: bo
 
 	// 4. Stale projects: canonical path gone and no alias exists.
 	for (const project of registry.projects) {
-		const alive = [project.canonicalPath, ...project.aliases].some((p) => existsSync(p));
+		const alive = [project.canonicalPath, ...project.aliases].some((p) =>
+			existsSync(p),
+		);
 		if (!alive) {
 			findings.push({
 				kind: "stale-project",
@@ -171,6 +189,3 @@ export function runFix(registry: Registry, agentDir: string, opts: { dryRun?: bo
 export function runDoctor(registry: Registry, agentDir: string): FixReport {
 	return runFix(registry, agentDir, { dryRun: true });
 }
-
-// re-export for CLI wiring
-export { mutations };

@@ -93,7 +93,8 @@ export function writeMarkerId(boundary: Boundary, id: string): void {
 /** Best-effort origin remote URL for a repo root; null when unavailable. */
 export function getGitRemote(root: string): string | null {
 	try {
-		const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+		const { execFileSync } =
+			require("node:child_process") as typeof import("node:child_process");
 		const out = execFileSync("git", ["remote", "get-url", "origin"], {
 			cwd: root,
 			encoding: "utf8",

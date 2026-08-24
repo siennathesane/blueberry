@@ -4,19 +4,37 @@
  *   blueberry [pi-args...]                    -> launch pi in this project
  *   blueberry projects list|rename|merge|forget|nest|unnest|sessions
  *   blueberry sessions list|rename|move|open|trash
- *   blueberry adopt [dir] [--map dir=path]
+ *   blueberry adopt [dir] [--map dir=path] [--copy]
  *   blueberry fix [--dry-run] | doctor
  *
  * main() is dependency-injected (cwd, io, spawn) so the command layer is
  * fully testable; bin/blueberry supplies the real process bindings.
  */
-import { loadRegistry, saveRegistry, mutations, findBySlug } from "../core/registry.ts";
-import { getAgentDir, getSessionsRoot, getTrashDir } from "../core/agent-dir.ts";
+import {
+	loadRegistry,
+	saveRegistry,
+	mutations,
+	findBySlug,
+} from "../core/registry.ts";
+import {
+	getAgentDir,
+	getTrashDir,
+} from "../core/agent-dir.ts";
 import { resolveProject, storeDirFor } from "../core/resolution.ts";
-import { prepareLaunch, defaultSpawnPi, type PiSpawner } from "../core/launcher.ts";
-import { adoptSessions } from "../core/adopt.ts";
+import {
+	prepareLaunch,
+	defaultSpawnPi,
+	type PiSpawner,
+} from "../core/launcher.ts";
+import { adoptSessions, type AdoptOptions } from "../core/adopt.ts";
 import { runFix, runDoctor } from "../core/fix.ts";
-import { listSessions, renameSession, moveSession, trashSession, selectSession } from "../core/sessions.ts";
+import {
+	listSessions,
+	renameSession,
+	moveSession,
+	trashSession,
+	selectSession,
+} from "../core/sessions.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -55,7 +73,7 @@ usage:
   blueberry sessions move <sel> <project-slug>
   blueberry sessions open <sel>
   blueberry sessions trash <sel>
-  blueberry adopt [dir] [--map <mangled-dir>=<root>]
+  blueberry adopt [dir] [--map <mangled-dir>=<root>] [--copy]
   blueberry fix [--dry-run]
   blueberry doctor
 
@@ -65,7 +83,10 @@ launch flags:
 
 session selectors: list index (1-based), uuid prefix (>=4), or exact name`;
 
-export async function main(argv: readonly string[], deps: CliDeps): Promise<number> {
+export async function main(
+	argv: readonly string[],
+	deps: CliDeps,
+): Promise<number> {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		deps.out(USAGE);
 		return 0;
@@ -73,7 +94,9 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
 	if (argv.includes("--version") || argv.includes("-v")) {
 		const { readFile } = await import("node:fs/promises");
 		try {
-			const pkg = JSON.parse(await readFile(join(deps.agentDir, "..", "..", "package.json"), "utf8")) as { version?: string };
+			const pkg = JSON.parse(
+				await readFile(join(deps.agentDir, "..", "..", "package.json"), "utf8"),
+			) as { version?: string };
 			deps.out(`blueberry ${pkg.version ?? "dev"}`);
 		} catch {
 			deps.out("blueberry dev");
@@ -103,7 +126,10 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
 
 // --- launch -----------------------------------------------------------------
 
-async function launchMode(argv: readonly string[], deps: CliDeps): Promise<number> {
+async function launchMode(
+	argv: readonly string[],
+	deps: CliDeps,
+): Promise<number> {
 	const here = argv.includes("--here");
 	const projectIdx = argv.indexOf("--project");
 	const projectSlug = projectIdx >= 0 ? argv[projectIdx + 1] : undefined;
@@ -163,11 +189,15 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 					return 0;
 				}
 				if (registry.projects.length === 0) {
-					deps.out("no projects registered — launch blueberry in a directory to mint one");
+					deps.out(
+						"no projects registered — launch blueberry in a directory to mint one",
+					);
 					return 0;
 				}
 				for (const p of registry.projects) {
-					const nested = p.mergedInto ? ` -> nested into ${findBySlug(registry, p.mergedInto)?.slug ?? p.mergedInto}` : "";
+					const nested = p.mergedInto
+						? ` -> nested into ${findBySlug(registry, p.mergedInto)?.slug ?? p.mergedInto}`
+						: "";
 					const store = p.sessionStore === "in-repo" ? "in-repo" : "central";
 					deps.out(`${p.slug}  [${store}]${nested}  ${p.canonicalPath}`);
 				}
@@ -175,7 +205,8 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			}
 			case "rename": {
 				const [slug, newName] = args;
-				if (!slug || !newName) return usageErr(deps, "projects rename <slug> <new>");
+				if (!slug || !newName)
+					return usageErr(deps, "projects rename <slug> <new>");
 				const registry = loadRegistry(deps.agentDir);
 				mutations.renameSlug(deps.agentDir, registry, slug, newName);
 				await saveRegistry(deps.agentDir, registry);
@@ -186,11 +217,19 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const from = args[0];
 				const intoIdx = args.indexOf("--into");
 				const into = intoIdx >= 0 ? args[intoIdx + 1] : undefined;
-				if (!from || !into) return usageErr(deps, "projects merge <from> --into <to>");
+				if (!from || !into)
+					return usageErr(deps, "projects merge <from> --into <to>");
 				const registry = loadRegistry(deps.agentDir);
-				const { survivor, moved } = mutations.merge(deps.agentDir, registry, from, into);
+				const { survivor, moved } = mutations.merge(
+					deps.agentDir,
+					registry,
+					from,
+					into,
+				);
 				await saveRegistry(deps.agentDir, registry);
-				deps.out(`merged '${from}' into '${survivor.slug}' (${moved} sessions moved)`);
+				deps.out(
+					`merged '${from}' into '${survivor.slug}' (${moved} sessions moved)`,
+				);
 				return 0;
 			}
 			case "forget": {
@@ -198,20 +237,29 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				if (!slug) return usageErr(deps, "projects forget <slug> [--purge]");
 				const purge = args.includes("--purge");
 				const registry = loadRegistry(deps.agentDir);
-				const { storeDir } = mutations.forget(deps.agentDir, registry, slug, { purge });
+				const { storeDir } = mutations.forget(deps.agentDir, registry, slug, {
+					purge,
+				});
 				await saveRegistry(deps.agentDir, registry);
-				deps.out(storeDir ? `forgot '${slug}' (sessions kept at ${storeDir})` : `forgot '${slug}'${purge ? " (store purged)" : ""}`);
+				deps.out(
+					storeDir
+						? `forgot '${slug}' (sessions kept at ${storeDir})`
+						: `forgot '${slug}'${purge ? " (store purged)" : ""}`,
+				);
 				return 0;
 			}
 			case "nest": {
 				const child = args[0];
 				const intoIdx = args.indexOf("--into");
 				const parent = intoIdx >= 0 ? args[intoIdx + 1] : undefined;
-				if (!child || !parent) return usageErr(deps, "projects nest <child> --into <parent>");
+				if (!child || !parent)
+					return usageErr(deps, "projects nest <child> --into <parent>");
 				const registry = loadRegistry(deps.agentDir);
 				mutations.setNested(registry, child, parent);
 				await saveRegistry(deps.agentDir, registry);
-				deps.out(`sessions of '${child}' now belong to '${parent}' (existing sessions: move with 'sessions move')`);
+				deps.out(
+					`sessions of '${child}' now belong to '${parent}' (existing sessions: move with 'sessions move')`,
+				);
 				return 0;
 			}
 			case "unnest": {
@@ -225,16 +273,27 @@ async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			}
 			case "sessions": {
 				const [mode, slug] = args;
-				if (mode !== "central" && mode !== "repo") return usageErr(deps, "projects sessions <central|repo> <slug>");
+				if (mode !== "central" && mode !== "repo")
+					return usageErr(deps, "projects sessions <central|repo> <slug>");
 				if (!slug) return usageErr(deps, "projects sessions <central|repo> <slug>");
 				const registry = loadRegistry(deps.agentDir);
-				mutations.setStoreMode(deps.agentDir, registry, slug, mode === "repo" ? "in-repo" : "central");
+				mutations.setStoreMode(
+					deps.agentDir,
+					registry,
+					slug,
+					mode === "repo" ? "in-repo" : "central",
+				);
 				await saveRegistry(deps.agentDir, registry);
-				deps.out(`'${slug}' sessions now ${mode === "repo" ? "live in the repo (.blueberry/sessions)" : "centralized"}`);
+				deps.out(
+					`'${slug}' sessions now ${mode === "repo" ? "live in the repo (.blueberry/sessions)" : "centralized"}`,
+				);
 				return 0;
 			}
 			default:
-				return usageErr(deps, "projects list|rename|merge|forget|nest|unnest|sessions");
+				return usageErr(
+					deps,
+					"projects list|rename|merge|forget|nest|unnest|sessions",
+				);
 		}
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);
@@ -290,15 +349,20 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			}
 			case "move": {
 				const [sel, targetSlug] = args;
-				if (!sel || !targetSlug) return usageErr(deps, "sessions move <sel> <project-slug>");
+				if (!sel || !targetSlug)
+					return usageErr(deps, "sessions move <sel> <project-slug>");
 				const registry = loadRegistry(deps.agentDir);
 				const { project } = await currentProject(deps, projectFlag);
 				const target = findBySlug(registry, targetSlug);
 				if (!target) return deps.err(`no project '${targetSlug}'`), 1;
 				const session = selectSession(storeDirFor(deps.agentDir, project), sel);
 				if (!session) return deps.err(`no session matching '${sel}'`), 1;
-				const dest = moveSession(session.file, storeDirFor(deps.agentDir, target), { newCwd: target.canonicalPath });
-				deps.out(`moved session ${session.id.slice(0, 8)} -> '${targetSlug}' (${dest})`);
+				const dest = moveSession(session.file, storeDirFor(deps.agentDir, target), {
+					newCwd: target.canonicalPath,
+				});
+				deps.out(
+					`moved session ${session.id.slice(0, 8)} -> '${targetSlug}' (${dest})`,
+				);
 				return 0;
 			}
 			case "open": {
@@ -335,7 +399,11 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 	}
 }
 
-function fmtSession(s: ReturnType<typeof listSessions>[number], slug: string, index?: number): string {
+function fmtSession(
+	s: ReturnType<typeof listSessions>[number],
+	slug: string,
+	index?: number,
+): string {
 	const num = index === undefined ? "" : `${index}. `;
 	const label = s.name ?? s.firstUserText?.slice(0, 60) ?? "(empty)";
 	const date = new Date(s.mtimeMs).toISOString().slice(0, 16).replace("T", " ");
@@ -347,8 +415,9 @@ function fmtSession(s: ReturnType<typeof listSessions>[number], slug: string, in
 
 async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 	try {
-		const sourceDir = rest.find((a) => !a.startsWith("--") && !a.includes("="))
-			?? join(homedir(), ".pi", "agent", "sessions");
+		const sourceDir =
+			rest.find((a) => !a.startsWith("--") && !a.includes("=")) ??
+			join(homedir(), ".pi", "agent", "sessions");
 		const map: Record<string, string> = {};
 		for (const a of rest) {
 			const eq = a.indexOf("=");
@@ -367,13 +436,25 @@ async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 		}
 
 		const registry = loadRegistry(deps.agentDir);
-		const report = adoptSessions(registry, { sourceDir, agentDir: deps.agentDir, map });
+		const copy = rest.includes("--copy");
+		const adoptOpts: AdoptOptions = { sourceDir, agentDir: deps.agentDir, map };
+		if (copy) adoptOpts.copy = true;
+		const report = adoptSessions(registry, adoptOpts);
 		await saveRegistry(deps.agentDir, registry);
 
-		for (const line of report.imported) deps.out(`imported ${line.sessions} sessions -> ${line.project}`);
-		if (report.stamped > 0) deps.out(`stamped ${report.stamped} sessions with a missing header cwd`);
+		for (const line of report.imported)
+			deps.out(`imported ${line.sessions} sessions -> ${line.project}${copy ? " (copied)" : ""}`);
+		if (report.duplicates > 0)
+			deps.out(`skipped ${report.duplicates} sessions already present (nothing to do)`);
+		if (report.stamped > 0)
+			deps.out(`stamped ${report.stamped} sessions with a missing header cwd`);
 		for (const s of report.skipped) deps.out(`skipped ${s.file}: ${s.reason}`);
-		if (report.imported.length === 0 && report.skipped.length === 0) deps.out("nothing to adopt");
+		if (
+			report.imported.length === 0 &&
+			report.skipped.length === 0 &&
+			report.duplicates === 0
+		)
+			deps.out("nothing to adopt");
 		return 0;
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);
@@ -381,13 +462,19 @@ async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 	}
 }
 
-async function fixCmd(rest: string[], dryRun: boolean, deps: CliDeps): Promise<number> {
+async function fixCmd(
+	rest: string[],
+	dryRun: boolean,
+	deps: CliDeps,
+): Promise<number> {
 	try {
 		const registry = loadRegistry(deps.agentDir);
-		const report = dryRun || rest.includes("--dry-run")
-			? runDoctor(registry, deps.agentDir)
-			: runFix(registry, deps.agentDir);
-		if (!dryRun && !rest.includes("--dry-run")) await saveRegistry(deps.agentDir, registry);
+		const report =
+			dryRun || rest.includes("--dry-run")
+				? runDoctor(registry, deps.agentDir)
+				: runFix(registry, deps.agentDir);
+		if (!dryRun && !rest.includes("--dry-run"))
+			await saveRegistry(deps.agentDir, registry);
 
 		if (report.findings.length === 0) {
 			deps.out("all clear — registry, stores, and sessions consistent");
@@ -403,7 +490,10 @@ async function fixCmd(rest: string[], dryRun: boolean, deps: CliDeps): Promise<n
 
 // --- arg helpers ----------------------------------------------------------------
 
-function extractValue(args: readonly string[], flag: string): string | undefined {
+function extractValue(
+	args: readonly string[],
+	flag: string,
+): string | undefined {
 	const i = args.indexOf(flag);
 	return i >= 0 ? args[i + 1] : undefined;
 }
@@ -424,5 +514,3 @@ function usageErr(deps: CliDeps, usage: string): number {
 	deps.err(`usage: blueberry ${usage}`);
 	return 2;
 }
-
-export { getSessionsRoot };

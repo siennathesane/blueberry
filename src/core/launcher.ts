@@ -32,7 +32,10 @@ const PATH_FLAGS = new Set([
 ]);
 
 /** Rewrite path-like argv entries to absolute, relative to fromDir. */
-export function rewriteArgsForCwd(argv: readonly string[], fromDir: string): string[] {
+export function rewriteArgsForCwd(
+	argv: readonly string[],
+	fromDir: string,
+): string[] {
 	const out: string[] = [];
 	let expectPathValue = false;
 
@@ -47,7 +50,11 @@ export function rewriteArgsForCwd(argv: readonly string[], fromDir: string): str
 			out.push(arg);
 			continue;
 		}
-		if (arg.startsWith("--") && arg.includes("=") && PATH_FLAGS.has(arg.slice(0, arg.indexOf("=")))) {
+		if (
+			arg.startsWith("--") &&
+			arg.includes("=") &&
+			PATH_FLAGS.has(arg.slice(0, arg.indexOf("=")))
+		) {
 			const [flag, ...rest] = arg.split("=");
 			out.push(`${flag}=${absolutize(rest.join("="), fromDir)}`);
 			continue;
@@ -66,7 +73,13 @@ function absolutize(p: string, fromDir: string): string {
 	if (p === "" || isAbsolute(p)) return p;
 	// bare tokens (uuid prefixes, names, urls) are left alone: only things that
 	// look like relative paths get rewritten
-	if (!p.startsWith("./") && !p.startsWith("../") && !p.startsWith(".") && !p.startsWith("~") && !p.includes("/")) {
+	if (
+		!p.startsWith("./") &&
+		!p.startsWith("../") &&
+		!p.startsWith(".") &&
+		!p.startsWith("~") &&
+		!p.includes("/")
+	) {
 		return p;
 	}
 	return resolvePath(fromDir, p);
@@ -104,7 +117,9 @@ export async function prepareLaunch(opts: LaunchOptions): Promise<LaunchPlan> {
 	if (opts.projectSlug) {
 		const project = registry.projects.find((p) => p.slug === opts.projectSlug);
 		if (!project) {
-			throw new Error(`no project '${opts.projectSlug}' (known: ${registry.projects.map((p) => p.slug).join(", ") || "none"})`);
+			throw new Error(
+				`no project '${opts.projectSlug}' (known: ${registry.projects.map((p) => p.slug).join(", ") || "none"})`,
+			);
 		}
 		plan = {
 			root: project.canonicalPath,
@@ -116,17 +131,35 @@ export async function prepareLaunch(opts: LaunchOptions): Promise<LaunchPlan> {
 	} else if (opts.here) {
 		// --here: session identity is this exact directory; store still resolves
 		// via the boundary project so files never leave the project's store.
-		const res = resolveProject({ cwd: opts.cwd, registry, ...(opts.gitRemoteReader ? { gitRemoteReader: opts.gitRemoteReader } : {}) });
+		const res = resolveProject({
+			cwd: opts.cwd,
+			registry,
+			...(opts.gitRemoteReader ? { gitRemoteReader: opts.gitRemoteReader } : {}),
+		});
 		plan = {
 			root: opts.cwd,
 			sessionDir: storeDirFor(agentDir, res.project),
 			argv: rewriteArgsForCwd(opts.argv, opts.cwd),
 			env: process.env,
-			actions: [...res.actions, "--here: cwd NOT canonicalized (history may fragment)"],
+			actions: [
+				...res.actions,
+				"--here: cwd NOT canonicalized (history may fragment)",
+			],
 		};
-		await finalizeResolution(agentDir, registry, res.registryMutated, opts, res.root, res.project.trusted);
+		await finalizeResolution(
+			agentDir,
+			registry,
+			res.registryMutated,
+			opts,
+			res.root,
+			res.project.trusted,
+		);
 	} else {
-		const res = resolveProject({ cwd: opts.cwd, registry, ...(opts.gitRemoteReader ? { gitRemoteReader: opts.gitRemoteReader } : {}) });
+		const res = resolveProject({
+			cwd: opts.cwd,
+			registry,
+			...(opts.gitRemoteReader ? { gitRemoteReader: opts.gitRemoteReader } : {}),
+		});
 		plan = {
 			root: res.root,
 			sessionDir: storeDirFor(agentDir, res.project),
@@ -134,7 +167,14 @@ export async function prepareLaunch(opts: LaunchOptions): Promise<LaunchPlan> {
 			env: process.env,
 			actions: res.actions,
 		};
-		await finalizeResolution(agentDir, registry, res.registryMutated, opts, res.root, res.project.trusted);
+		await finalizeResolution(
+			agentDir,
+			registry,
+			res.registryMutated,
+			opts,
+			res.root,
+			res.project.trusted,
+		);
 	}
 
 	mkdirSync(plan.sessionDir, { recursive: true });

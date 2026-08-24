@@ -1,6 +1,16 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, utimesSync, copyFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+	utimesSync,
+	copyFileSync,
+} from "node:fs";
 import {
 	readSessionHeader,
 	listSessions,
@@ -39,7 +49,11 @@ test("listSessions: newest first, name + first user text + counts", async () => 
 	fakeSession(store, { cwd: "/x/p", firstUserText: "older question" });
 	// ensure distinct mtimes
 	await new Promise((r) => setTimeout(r, 15));
-	const f2 = fakeSession(store, { cwd: "/x/p", firstUserText: "newer question", name: "my-session" });
+	const f2 = fakeSession(store, {
+		cwd: "/x/p",
+		firstUserText: "newer question",
+		name: "my-session",
+	});
 	await new Promise((r) => setTimeout(r, 15));
 	utimesSync(f2, new Date(), new Date(Date.now() + 60_000)); // push f2 clearly newer
 
@@ -57,7 +71,11 @@ test("listSessions: empty and missing stores", () => {
 });
 
 test("rewriteSessionHeader: first line only, rest byte-identical", () => {
-	const f = fakeSession(store, { cwd: "/x/p", firstUserText: "hello", entries: 3 });
+	const f = fakeSession(store, {
+		cwd: "/x/p",
+		firstUserText: "hello",
+		entries: 3,
+	});
 	const before = readFileSync(f, "utf8");
 	const beforeLines = before.split("\n").slice(1).join("\n");
 
@@ -72,7 +90,11 @@ test("rewriteSessionHeader: first line only, rest byte-identical", () => {
 });
 
 test("renameSession: appends pi-native session_info at the leaf", () => {
-	const f = fakeSession(store, { cwd: "/x/p", firstUserText: "q", name: "before" });
+	const f = fakeSession(store, {
+		cwd: "/x/p",
+		firstUserText: "q",
+		name: "before",
+	});
 	renameSession(f, "after name");
 
 	const lines = readFileSync(f, "utf8").trim().split("\n");
@@ -98,7 +120,11 @@ test("moveSession: rewrites cwd, preserves mtime and body, removes original", ()
 	const h = readSessionHeader(moved)!;
 	assert.equal(h.cwd, "/y/q");
 	const stAfter = statSync(moved);
-	assert.equal(Math.round(stAfter.mtimeMs), Math.round(st.mtimeMs), "mtime preserved");
+	assert.equal(
+		Math.round(stAfter.mtimeMs),
+		Math.round(st.mtimeMs),
+		"mtime preserved",
+	);
 	assert.ok(readFileSync(moved, "utf8").includes("body line"), "body intact");
 });
 
@@ -153,7 +179,12 @@ test("selectSession: index, uuid prefix, exact name", () => {
 	const id1 = "aaaaaaaa-1111-4111-8111-111111111111";
 	const id2 = "bbbbbbbb-2222-4222-8222-222222222222";
 	fakeSession(store, { cwd: "/x/p", firstUserText: "one", id: id1 });
-	const f2 = fakeSession(store, { cwd: "/x/p", firstUserText: "two", name: "named-one", id: id2 });
+	const f2 = fakeSession(store, {
+		cwd: "/x/p",
+		firstUserText: "two",
+		name: "named-one",
+		id: id2,
+	});
 	// make f2 newest
 	utimesSync(f2, new Date(), new Date(Date.now() + 60_000));
 
@@ -197,13 +228,42 @@ test("listSessions: survives malformed lines, counts array-form messages, skips 
 	mkdirSync(edge, { recursive: true });
 	const f1 = `${edge}/arr.jsonl`;
 	const ts = new Date().toISOString();
-	writeFileSync(f1, [
-		JSON.stringify({ type: "session", version: 3, id: "id-arr", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "e1", parentId: null, timestamp: ts, message: { role: "user", content: [{ type: "text", text: "array hello" }], timestamp: 1 } }),
-		JSON.stringify({ type: "message", id: "e2", parentId: "e1", timestamp: ts, message: { role: "user", content: [{ type: "image", data: "..." }], timestamp: 2 } }),
-		"{ malformed line",
-		"",
-	].join("\n"));
+	writeFileSync(
+		f1,
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "id-arr",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "e1",
+				parentId: null,
+				timestamp: ts,
+				message: {
+					role: "user",
+					content: [{ type: "text", text: "array hello" }],
+					timestamp: 1,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "e2",
+				parentId: "e1",
+				timestamp: ts,
+				message: {
+					role: "user",
+					content: [{ type: "image", data: "..." }],
+					timestamp: 2,
+				},
+			}),
+			"{ malformed line",
+			"",
+		].join("\n"),
+	);
 
 	const sessions = listSessions(edge);
 	assert.equal(sessions.length, 1);
@@ -212,7 +272,10 @@ test("listSessions: survives malformed lines, counts array-form messages, skips 
 
 	// a file whose header cannot even be read is skipped by the listing
 	const f2 = `${edge}/noperm.jsonl`;
-	writeFileSync(f2, `${JSON.stringify({ type: "session", version: 3, id: "id-np", timestamp: ts, cwd: "/x" })}\n`);
+	writeFileSync(
+		f2,
+		`${JSON.stringify({ type: "session", version: 3, id: "id-np", timestamp: ts, cwd: "/x" })}\n`,
+	);
 	chmodSync(f2, 0o000);
 	assert.equal(listSessions(edge).length, 1);
 	chmodSync(f2, 0o644);
@@ -223,10 +286,25 @@ test("renameSession: file without trailing newline still chains to the leaf", ()
 	mkdirSync(edge, { recursive: true });
 	const f = `${edge}/nonl.jsonl`;
 	const ts = new Date().toISOString();
-	writeFileSync(f, [
-		JSON.stringify({ type: "session", version: 3, id: "id-nl", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "m1", parentId: null, timestamp: ts, message: { role: "user", content: "hi" } }),
-	].join("\n")); // no trailing newline
+	writeFileSync(
+		f,
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "id-nl",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "user", content: "hi" },
+			}),
+		].join("\n"),
+	); // no trailing newline
 
 	renameSession(f, "renamed");
 	const lines = readFileSync(f, "utf8").trim().split("\n");
@@ -236,7 +314,10 @@ test("renameSession: file without trailing newline still chains to the leaf", ()
 });
 
 test("selectSession: empty/missing store returns null", () => {
-	assert.equal(selectSession(getCentralStoreDir(agentDir, "nothing"), "1"), null);
+	assert.equal(
+		selectSession(getCentralStoreDir(agentDir, "nothing"), "1"),
+		null,
+	);
 });
 
 test("moveSession: same source and target dir rewrites in place", () => {

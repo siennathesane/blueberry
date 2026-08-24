@@ -37,7 +37,9 @@ test("writeTrustEntries: false records explicit distrust", async () => {
 
 test("trust file is valid JSON with no temp residue", async () => {
 	await trustPaths(agentDir, ["/x/p"]);
-	const raw = readJsonIfExists<Record<string, boolean>>(`${agentDir}/trust.json`);
+	const raw = readJsonIfExists<Record<string, boolean>>(
+		`${agentDir}/trust.json`,
+	);
 	assert.ok(raw);
 	assert.equal(raw["/x/p"], true);
 	assert.ok(!existsSync(`${agentDir}/trust.json.tmp`));

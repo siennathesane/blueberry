@@ -6,9 +6,11 @@
 import { main, defaultDeps } from "./main.ts";
 import { pathToFileURL } from "node:url";
 
-const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const invokedDirectly =
+ process.argv[1] !== undefined &&
+ import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-	const code = await main(process.argv.slice(2), defaultDeps());
-	process.exit(code);
+ const code = await main(process.argv.slice(2), defaultDeps());
+ process.exit(code);
 }

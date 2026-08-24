@@ -1,12 +1,18 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { adoptSessions } from "../src/core/adopt.ts";
 import { loadRegistry, findBySlug } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { readSessionHeader } from "../src/core/sessions.ts";
 import { encodeCwdToDirName } from "../src/core/util.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -59,7 +65,11 @@ test("adopt: empty-cwd sessions get dir-decoded cwd stamped", () => {
 	fakeSession(store, { cwd: "" }); // empty header cwd — decoder path engages
 	// (blank cwd means header decoding falls back to the mangled dir name)
 	const r = loadRegistry(agentDir);
-	const report = adoptSessions(r, { sourceDir: source, agentDir, pathExists: (p) => existsSync(p) });
+	const report = adoptSessions(r, {
+		sourceDir: source,
+		agentDir,
+		pathExists: (p) => existsSync(p),
+	});
 
 	assert.equal(report.stamped, 1);
 	assert.equal(report.imported[0]?.sessions, 1);
@@ -74,7 +84,11 @@ test("adopt: unresolvable empty-cwd is skipped with guidance", () => {
 	fakeSession(dir, { cwd: "" });
 
 	const r = loadRegistry(agentDir);
-	const report = adoptSessions(r, { sourceDir: source, agentDir, pathExists: () => false });
+	const report = adoptSessions(r, {
+		sourceDir: source,
+		agentDir,
+		pathExists: () => false,
+	});
 
 	assert.equal(report.imported.length, 0);
 	assert.equal(report.skipped.length, 1);
@@ -119,16 +133,25 @@ test("adopt: parentSession chains rewrite within the batch (order-independent)",
 	const dest = getCentralStoreDir(agentDir, "chain");
 	const files = readdirSync(dest).map((n) => `${dest}/${n}`);
 	const newParent = files.find((f) => readSessionHeader(f)!.id === parentId)!;
-	const child = files.map((f) => readSessionHeader(f)!).find((h) => h.parentSession);
+	const child = files
+		.map((f) => readSessionHeader(f)!)
+		.find((h) => h.parentSession);
 	assert.ok(child, "child session retains its parentSession");
-	assert.equal(child!.parentSession, newParent, "link rewritten to the parent's new path");
+	assert.equal(
+		child!.parentSession,
+		newParent,
+		"link rewritten to the parent's new path",
+	);
 });
 
 test("adopt: existing registry project absorbs its sessions without duplication", () => {
 	const root = fakeRepo(area, "known", "git");
 	// pre-register via path
 	const r = loadRegistry(agentDir);
-	const report1 = adoptSessions(r, { sourceDir: `${area}/empty-nowhere`, agentDir });
+	const report1 = adoptSessions(r, {
+		sourceDir: `${area}/empty-nowhere`,
+		agentDir,
+	});
 	assert.equal(report1.imported.length, 0);
 
 	fakeSession(piStore(root), { cwd: root });
@@ -148,6 +171,60 @@ test("adopt: garbage files are skipped, valid ones proceed", () => {
 	assert.equal(report.skipped.length, 1);
 	assert.equal(report.skipped[0]?.reason, "unreadable or invalid header");
 	assert.equal(report.imported.length, 1);
+});
+
+test("adopt: --copy leaves source intact and re-runs are idempotent", () => {
+	const root = fakeRepo(area, "copied", "git");
+	const srcStore = piStore(root);
+	fakeSession(srcStore, { cwd: root, firstUserText: "original" });
+
+	const r = loadRegistry(agentDir);
+	const report1 = adoptSessions(r, { sourceDir: source, agentDir, copy: true });
+
+	assert.equal(report1.imported[0]?.sessions, 1);
+	assert.equal(readdirSync(srcStore).length, 1, "source file untouched");
+	const dest = getCentralStoreDir(agentDir, "copied");
+	assert.equal(readdirSync(dest).length, 1, "copy landed in store");
+	assert.equal(
+		readSessionHeader(readdirSync(dest).map((n) => `${dest}/${n}`)[0]!)?.cwd,
+		root,
+		"copy header rewritten to canonical cwd",
+	);
+
+	// re-run: duplicate detected, no -suffix spawn
+	const report2 = adoptSessions(r, { sourceDir: source, agentDir, copy: true });
+	assert.equal(report2.duplicates, 1);
+	assert.equal(report2.imported.length, 0);
+	assert.equal(readdirSync(dest).length, 1, "no duplicate copies created");
+});
+
+test("adopt: copy mode maps parentSession to an already-adopted parent", () => {
+	const root = fakeRepo(area, "coparent", "git");
+	const srcStore = piStore(root);
+	const parent = fakeSession(srcStore, { cwd: root });
+	fakeSession(srcStore, { cwd: root, parentSession: parent });
+
+	const r = loadRegistry(agentDir);
+	// first run imports both
+	adoptSessions(r, { sourceDir: source, agentDir, copy: true });
+	// second run re-copies ONLY the parent (simulate: remove child from dest)
+	const dest = getCentralStoreDir(agentDir, "coparent");
+	const destFiles = readdirSync(dest).map((n) => `${dest}/${n}`);
+	const childFile = destFiles.find((f) => readSessionHeader(f)?.parentSession);
+	rmSync(childFile!);
+
+	const report3 = adoptSessions(r, { sourceDir: source, agentDir, copy: true });
+	assert.equal(report3.duplicates, 1, "parent detected as duplicate");
+	assert.equal(report3.imported[0]?.sessions, 1, "child re-imported");
+	const destFiles2 = readdirSync(dest).map((n) => `${dest}/${n}`);
+	const parentId = readSessionHeader(parent)!.id;
+	const parentDest = destFiles2.find((f) => readSessionHeader(f)?.id === parentId)!;
+	const childDest = destFiles2.find((f) => readSessionHeader(f)?.parentSession);
+	assert.equal(
+		readSessionHeader(childDest!)?.parentSession,
+		parentDest,
+		"child parentSession points at the existing adopted parent",
+	);
 });
 
 test("adopt: missing source dir is a no-op", () => {

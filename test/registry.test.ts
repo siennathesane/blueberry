@@ -1,6 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";import {
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import {
 	loadRegistry,
 	saveRegistry,
 	mutations,
@@ -74,7 +75,10 @@ test("reattach: no duplicate aliases on repeated moves", () => {
 
 test("findByGitRemote: matches registered remote", () => {
 	const r = loadRegistry(agentDir);
-	mutations.register(r, { root: "/a/repo", gitRemote: "https://github.com/u/r" });
+	mutations.register(r, {
+		root: "/a/repo",
+		gitRemote: "https://github.com/u/r",
+	});
 	assert.ok(findByGitRemote(r, "https://github.com/u/r"));
 	assert.equal(findByGitRemote(r, "https://github.com/u/other"), undefined);
 });
@@ -96,9 +100,18 @@ test("renameSlug: rejects slug-form violations and clashes", () => {
 	const r = loadRegistry(agentDir);
 	mutations.register(r, { root: "/x/apples" });
 	mutations.register(r, { root: "/y/oranges" });
-	assert.throws(() => mutations.renameSlug(agentDir, r, "apples", "Not A Slug"), /slug-form/);
-	assert.throws(() => mutations.renameSlug(agentDir, r, "apples", "oranges"), /already in use/);
-	assert.throws(() => mutations.renameSlug(agentDir, r, "ghost", "x"), /no project/);
+	assert.throws(
+		() => mutations.renameSlug(agentDir, r, "apples", "Not A Slug"),
+		/slug-form/,
+	);
+	assert.throws(
+		() => mutations.renameSlug(agentDir, r, "apples", "oranges"),
+		/already in use/,
+	);
+	assert.throws(
+		() => mutations.renameSlug(agentDir, r, "ghost", "x"),
+		/no project/,
+	);
 });
 
 test("merge: moves sessions, repoints nested children, absorbs identity", () => {
@@ -107,7 +120,10 @@ test("merge: moves sessions, repoints nested children, absorbs identity", () => 
 	const b = mutations.register(r, { root: "/y/b" });
 	const child = mutations.register(r, { root: "/z/child" });
 	mutations.setNested(r, "child", "a");
-	fakeSession(getCentralStoreDir(agentDir, "a"), { cwd: "/x/a", firstUserText: "a1" });
+	fakeSession(getCentralStoreDir(agentDir, "a"), {
+		cwd: "/x/a",
+		firstUserText: "a1",
+	});
 
 	const { survivor, moved } = mutations.merge(agentDir, r, "a", "b");
 	assert.equal(survivor.id, b.id);
@@ -153,7 +169,10 @@ test("forget: rejects when other projects nest into it", () => {
 	mutations.register(r, { root: "/x/parent" });
 	mutations.register(r, { root: "/y/kid" });
 	mutations.setNested(r, "kid", "parent");
-	assert.throws(() => mutations.forget(agentDir, r, "parent", { purge: false }), /unnest/);
+	assert.throws(
+		() => mutations.forget(agentDir, r, "parent", { purge: false }),
+		/unnest/,
+	);
 });
 
 test("setNested: set, clear, self, cycles", () => {
@@ -199,7 +218,9 @@ test("saveRegistry: atomic write leaves valid JSON", async () => {
 	const r = loadRegistry(agentDir);
 	mutations.register(r, { root: "/x/ok" });
 	await saveRegistry(agentDir, r);
-	const parsed = readJsonIfExists<{ version: number }>(`${agentDir}/registry.json`);
+	const parsed = readJsonIfExists<{ version: number }>(
+		`${agentDir}/registry.json`,
+	);
 	assert.equal(parsed?.version, 1);
 });
 
@@ -225,7 +246,9 @@ test("forget: in-repo store leaves nothing to report", () => {
 	const r = loadRegistry(agentDir);
 	const p = mutations.register(r, { root: "/x/inrepo-f" });
 	p.sessionStore = "in-repo";
-	const { storeDir } = mutations.forget(agentDir, r, "inrepo-f", { purge: true });
+	const { storeDir } = mutations.forget(agentDir, r, "inrepo-f", {
+		purge: true,
+	});
 	assert.equal(storeDir, null);
 });
 

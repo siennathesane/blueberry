@@ -56,7 +56,10 @@ export function readJsonIfExists<T>(path: string): T | null {
 }
 
 /** Atomically write a file (temp file in same dir, then rename). */
-export async function atomicWrite(path: string, content: string): Promise<void> {
+export async function atomicWrite(
+	path: string,
+	content: string,
+): Promise<void> {
 	const dir = dirname(path);
 	const tmp = join(dir, `.blueberry-tmp-${randomUUID().slice(0, 8)}`);
 	await writeFile(tmp, content, "utf8");
@@ -64,7 +67,10 @@ export async function atomicWrite(path: string, content: string): Promise<void> 
 }
 
 /** Atomically write JSON with a trailing newline. */
-export async function atomicWriteJson(path: string, data: unknown): Promise<void> {
+export async function atomicWriteJson(
+	path: string,
+	data: unknown,
+): Promise<void> {
 	await atomicWrite(path, JSON.stringify(data, null, 2) + "\n");
 }
 
@@ -107,7 +113,8 @@ export function decodeDirNameToPathCandidates(
 			}
 		}
 		const candidate = "/" + parts.join("/");
-		if (exists(candidate) && !results.includes(candidate)) results.push(candidate);
+		if (exists(candidate) && !results.includes(candidate))
+			results.push(candidate);
 	}
 	return results;
 }

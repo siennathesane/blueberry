@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { boundaryAt, findProjectBoundary, markerPath, readMarkerId, writeMarkerId, getGitRemote } from "../src/core/markers.ts";
+import {
+	boundaryAt,
+	findProjectBoundary,
+	markerPath,
+	readMarkerId,
+	writeMarkerId,
+	getGitRemote,
+} from "../src/core/markers.ts";
 import { tmpDir, fakeRepo, cleanup } from "./helpers.ts";
 
 test("boundaryAt: git directory", () => {
@@ -43,7 +50,10 @@ test("findProjectBoundary: nearest wins from nested dirs", () => {
 
 test("markerPath: per-kind location", () => {
 	assert.equal(markerPath({ root: "/r", kind: "git" }), "/r/.git/blueberry-id");
-	assert.equal(markerPath({ root: "/r", kind: "lore" }), "/r/.lore/blueberry-id");
+	assert.equal(
+		markerPath({ root: "/r", kind: "lore" }),
+		"/r/.lore/blueberry-id",
+	);
 	assert.equal(markerPath({ root: "/r", kind: "worktree" }), "/r/.blueberry/id");
 	assert.equal(markerPath({ root: "/r", kind: "plain" }), "/r/.blueberry/id");
 });

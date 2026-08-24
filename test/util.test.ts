@@ -47,7 +47,10 @@ test("expandTilde: ~ and ~/ prefixes, otherwise untouched", () => {
 });
 
 test("encodeCwdToDirName: matches pi's mangling", () => {
-	assert.equal(encodeCwdToDirName("/Users/sienna/Development/blueberry"), "--Users-sienna-Development-blueberry--");
+	assert.equal(
+		encodeCwdToDirName("/Users/sienna/Development/blueberry"),
+		"--Users-sienna-Development-blueberry--",
+	);
 });
 
 test("decodeDirNameToPathCandidates: round-trips real dirs", () => {
@@ -64,8 +67,14 @@ test("decodeDirNameToPathCandidates: round-trips real dirs", () => {
 });
 
 test("decodeDirNameToPathCandidates: rejects non-pi dir names", () => {
-	assert.deepEqual(decodeDirNameToPathCandidates("Users-sienna-x--", () => true), []);
-	assert.deepEqual(decodeDirNameToPathCandidates("--x--", () => true), ["/x"]);
+	assert.deepEqual(
+		decodeDirNameToPathCandidates("Users-sienna-x--", () => true),
+		[],
+	);
+	assert.deepEqual(
+		decodeDirNameToPathCandidates("--x--", () => true),
+		["/x"],
+	);
 });
 
 test("sanitizeSessionName: matches pi (strip CR/LF, trim)", () => {

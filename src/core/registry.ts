@@ -9,10 +9,20 @@
  *   .lore/blueberry-id, .blueberry/id); the registry is the database.
  * - All writes are atomic.
  */
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson, readJsonIfExists, slugify, ulid } from "./util.ts";
-import { getCentralStoreDir, getInRepoStoreDir, getRegistryPath } from "./agent-dir.ts";
+import {
+	getCentralStoreDir,
+	getInRepoStoreDir,
+	getRegistryPath,
+} from "./agent-dir.ts";
 
 export type SessionStoreKind = "central" | "in-repo";
 
@@ -41,10 +51,16 @@ export function emptyRegistry(): Registry {
 export function loadRegistry(agentDir: string): Registry {
 	const data = readJsonIfExists<Registry>(getRegistryPath(agentDir));
 	if (!data || !Array.isArray(data.projects)) return emptyRegistry();
-	return { version: 1, projects: data.projects.filter((p) => p && typeof p.id === "string") };
+	return {
+		version: 1,
+		projects: data.projects.filter((p) => p && typeof p.id === "string"),
+	};
 }
 
-export async function saveRegistry(agentDir: string, registry: Registry): Promise<void> {
+export async function saveRegistry(
+	agentDir: string,
+	registry: Registry,
+): Promise<void> {
 	mkdirSync(agentDir, { recursive: true });
 	await atomicWriteJson(getRegistryPath(agentDir), registry);
 }
@@ -74,17 +90,30 @@ export function findById(registry: Registry, id: string): Project | undefined {
 	return registry.projects.find((p) => p.id === id);
 }
 
-export function findBySlug(registry: Registry, slug: string): Project | undefined {
+export function findBySlug(
+	registry: Registry,
+	slug: string,
+): Project | undefined {
 	return registry.projects.find((p) => p.slug === slug);
 }
 
 /** Match by current path or any historical alias. */
-export function findByPath(registry: Registry, path: string): Project | undefined {
-	return registry.projects.find((p) => p.canonicalPath === path || p.aliases.includes(path));
+export function findByPath(
+	registry: Registry,
+	path: string,
+): Project | undefined {
+	return registry.projects.find(
+		(p) => p.canonicalPath === path || p.aliases.includes(path),
+	);
 }
 
-export function findByGitRemote(registry: Registry, remote: string): Project | undefined {
-	return registry.projects.find((p) => p.gitRemote === remote && p.gitRemote !== null);
+export function findByGitRemote(
+	registry: Registry,
+	remote: string,
+): Project | undefined {
+	return registry.projects.find(
+		(p) => p.gitRemote === remote && p.gitRemote !== null,
+	);
 }
 
 /** Produce a slug unique within the registry, suffixing -2, -3, ... */
@@ -101,27 +130,57 @@ export function uniqueSlug(registry: Registry, base: string): string {
 
 export interface RegistryMutations {
 	/** Register a new project; returns it added to the registry. */
-	register(registry: Registry, init: { root: string; gitRemote?: string | null; id?: string }): Project;
+	register(
+		registry: Registry,
+		init: { root: string; gitRemote?: string | null; id?: string },
+	): Project;
 	/** Update a project in place (sets updatedAt). */
 	touch(registry: Registry, project: Project): void;
 	/** Rename a project's slug; optionally move its central store directory. */
-	renameSlug(agentDir: string, registry: Registry, oldSlug: string, newSlug: string): Project;
+	renameSlug(
+		agentDir: string,
+		registry: Registry,
+		oldSlug: string,
+		newSlug: string,
+	): Project;
 	/** Point the canonical path at a new location (old path becomes an alias). */
 	reattach(registry: Registry, project: Project, newPath: string): void;
 	/** Merge project `from` into `into`: sessions move, identity absorbed. */
-	merge(agentDir: string, registry: Registry, fromSlug: string, intoSlug: string): { survivor: Project; moved: number };
+	merge(
+		agentDir: string,
+		registry: Registry,
+		fromSlug: string,
+		intoSlug: string,
+	): { survivor: Project; moved: number };
 	/** Remove from registry; optionally delete the central store. */
-	forget(agentDir: string, registry: Registry, slug: string, opts: { purge: boolean }): { removed: Project; storeDir: string | null };
+	forget(
+		agentDir: string,
+		registry: Registry,
+		slug: string,
+		opts: { purge: boolean },
+	): { removed: Project; storeDir: string | null };
 	/** Set/clear nested-session merge (child.mergedInto = parent.id), cycle-safe. */
-	setNested(registry: Registry, childSlug: string, parentSlug: string | null): Project;
+	setNested(
+		registry: Registry,
+		childSlug: string,
+		parentSlug: string | null,
+	): Project;
 	/** Switch session store mode and move files accordingly. */
-	setStoreMode(agentDir: string, registry: Registry, slug: string, mode: SessionStoreKind): Project;
+	setStoreMode(
+		agentDir: string,
+		registry: Registry,
+		slug: string,
+		mode: SessionStoreKind,
+	): Project;
 }
 
 export const mutations: RegistryMutations = {
 	register(registry, init) {
 		const project = newProject(init);
-		project.slug = uniqueSlug(registry, init.root.split("/").filter(Boolean).pop() ?? "project");
+		project.slug = uniqueSlug(
+			registry,
+			init.root.split("/").filter(Boolean).pop() ?? "project",
+		);
 		registry.projects.push(project);
 		return project;
 	},
@@ -137,9 +196,11 @@ export const mutations: RegistryMutations = {
 		const project = findBySlug(registry, oldSlug);
 		if (!project) throw new Error(`no project with slug '${oldSlug}'`);
 		const clean = slugify(newSlug);
-		if (clean !== newSlug) throw new Error(`slug '${newSlug}' is not slug-form (try '${clean}')`);
+		if (clean !== newSlug)
+			throw new Error(`slug '${newSlug}' is not slug-form (try '${clean}')`);
 		const clash = findBySlug(registry, clean);
-		if (clash && clash.id !== project.id) throw new Error(`slug '${clean}' already in use`);
+		if (clash && clash.id !== project.id)
+			throw new Error(`slug '${clean}' already in use`);
 		const oldDir = getCentralStoreDir(agentDir, oldSlug);
 		if (project.sessionStore === "central" && existsSync(oldDir)) {
 			const newDir = getCentralStoreDir(agentDir, clean);
@@ -152,7 +213,10 @@ export const mutations: RegistryMutations = {
 	},
 
 	reattach(registry, project, newPath) {
-		if (project.canonicalPath !== newPath && !project.aliases.includes(project.canonicalPath)) {
+		if (
+			project.canonicalPath !== newPath &&
+			!project.aliases.includes(project.canonicalPath)
+		) {
 			project.aliases.push(project.canonicalPath);
 		}
 		project.canonicalPath = newPath;
@@ -164,8 +228,12 @@ export const mutations: RegistryMutations = {
 		const into = findBySlug(registry, intoSlug);
 		if (!from) throw new Error(`no project with slug '${fromSlug}'`);
 		if (!into) throw new Error(`no project with slug '${intoSlug}'`);
-		if (from.id === into.id) throw new Error("cannot merge a project into itself");
-		if (from.mergedInto) throw new Error(`'${fromSlug}' is nested into another project; unnest first`);
+		if (from.id === into.id)
+			throw new Error("cannot merge a project into itself");
+		if (from.mergedInto)
+			throw new Error(
+				`'${fromSlug}' is nested into another project; unnest first`,
+			);
 
 		// Move central store contents.
 		let moved = 0;
@@ -187,7 +255,8 @@ export const mutations: RegistryMutations = {
 
 		// Absorb identity: aliases and remote fold into the survivor.
 		for (const alias of [from.canonicalPath, ...from.aliases]) {
-			if (alias !== into.canonicalPath && !into.aliases.includes(alias)) into.aliases.push(alias);
+			if (alias !== into.canonicalPath && !into.aliases.includes(alias))
+				into.aliases.push(alias);
 		}
 		if (!into.gitRemote && from.gitRemote) into.gitRemote = from.gitRemote;
 
@@ -225,12 +294,14 @@ export const mutations: RegistryMutations = {
 		}
 		const parent = findBySlug(registry, parentSlug);
 		if (!parent) throw new Error(`no project with slug '${parentSlug}'`);
-		if (parent.id === child.id) throw new Error("cannot nest a project into itself");
+		if (parent.id === child.id)
+			throw new Error("cannot nest a project into itself");
 		// Cycle check: walk parent chain; reaching child means a cycle.
 		let cursor: Project | undefined = parent;
 		let depth = 0;
 		while (cursor && cursor.mergedInto) {
-			if (cursor.mergedInto === child.id) throw new Error("nesting would create a cycle");
+			if (cursor.mergedInto === child.id)
+				throw new Error("nesting would create a cycle");
 			cursor = findById(registry, cursor.mergedInto);
 			if (++depth > 16) throw new Error("nesting chain too deep (cycle?)");
 		}
@@ -245,8 +316,14 @@ export const mutations: RegistryMutations = {
 		if (project.sessionStore === mode) return project;
 
 		// Migrate session files between central and in-repo stores.
-		const fromDir = project.sessionStore === "central" ? getCentralStoreDir(agentDir, project.slug) : getInRepoStoreDir(project.canonicalPath);
-		const toDir = mode === "central" ? getCentralStoreDir(agentDir, project.slug) : getInRepoStoreDir(project.canonicalPath);
+		const fromDir =
+			project.sessionStore === "central"
+				? getCentralStoreDir(agentDir, project.slug)
+				: getInRepoStoreDir(project.canonicalPath);
+		const toDir =
+			mode === "central"
+				? getCentralStoreDir(agentDir, project.slug)
+				: getInRepoStoreDir(project.canonicalPath);
 		if (existsSync(fromDir)) {
 			mkdirSync(toDir, { recursive: true });
 			for (const f of readdirSync(fromDir)) {

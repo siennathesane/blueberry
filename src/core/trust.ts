@@ -20,7 +20,10 @@ export function readTrust(agentDir: string): TrustData {
 	return readJsonIfExists<TrustData>(getTrustPath(agentDir)) ?? {};
 }
 
-export async function writeTrustEntries(agentDir: string, updates: TrustUpdate[]): Promise<TrustData> {
+export async function writeTrustEntries(
+	agentDir: string,
+	updates: TrustUpdate[],
+): Promise<TrustData> {
 	const data = readTrust(agentDir);
 	for (const { path, decision } of updates) {
 		const key = resolve(path);
@@ -35,6 +38,12 @@ export async function writeTrustEntries(agentDir: string, updates: TrustUpdate[]
 }
 
 /** Mark a set of paths trusted (the common case). */
-export async function trustPaths(agentDir: string, paths: string[]): Promise<TrustData> {
-	return writeTrustEntries(agentDir, paths.map((path) => ({ path, decision: true })));
+export async function trustPaths(
+	agentDir: string,
+	paths: string[],
+): Promise<TrustData> {
+	return writeTrustEntries(
+		agentDir,
+		paths.map((path) => ({ path, decision: true })),
+	);
 }

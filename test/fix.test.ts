@@ -5,7 +5,13 @@ import { runFix, runDoctor } from "../src/core/fix.ts";
 import { loadRegistry, mutations, findBySlug } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { readSessionHeader } from "../src/core/sessions.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -28,7 +34,11 @@ test("fix: registers orphan stores by majority header cwd", () => {
 	const r = loadRegistry(agentDir);
 	const report = runFix(r, agentDir);
 
-	assert.ok(report.findings.some((f) => f.kind === "orphan-store-registered" && f.detail.includes("'orphan'")));
+	assert.ok(
+		report.findings.some(
+			(f) => f.kind === "orphan-store-registered" && f.detail.includes("'orphan'"),
+		),
+	);
 	const p = findBySlug(r, "orphan");
 	assert.ok(p, "project registered");
 	assert.equal(p!.canonicalPath, root);
@@ -43,7 +53,11 @@ test("fix: dry-run reports without mutating", () => {
 	const report = runFix(r, agentDir, { dryRun: true });
 
 	assert.equal(report.dryRun, true);
-	assert.ok(report.findings.some((f) => f.kind === "orphan-store-registered" && f.detail.startsWith("would")));
+	assert.ok(
+		report.findings.some(
+			(f) => f.kind === "orphan-store-registered" && f.detail.startsWith("would"),
+		),
+	);
 	assert.equal(r.projects.length, 0, "registry untouched in dry-run");
 });
 
@@ -54,7 +68,12 @@ test("fix: unresolvable orphan store reported without cwd", () => {
 	const r = loadRegistry(agentDir);
 	const report = runFix(r, agentDir, { dryRun: true });
 
-	assert.ok(report.findings.some((f) => f.kind === "orphan-store-unresolvable" && f.detail.includes("'mystery'")));
+	assert.ok(
+		report.findings.some(
+			(f) =>
+				f.kind === "orphan-store-unresolvable" && f.detail.includes("'mystery'"),
+		),
+	);
 });
 
 test("fix: normalizes session cwds to project canonical path", () => {
@@ -95,18 +114,33 @@ test("fix: reports stale projects whose paths are all gone", () => {
 
 	const report = runFix(r, agentDir, { dryRun: true });
 
-	assert.ok(report.findings.some((f) => f.kind === "stale-project" && f.detail.includes("'vanished'")));
+	assert.ok(
+		report.findings.some(
+			(f) => f.kind === "stale-project" && f.detail.includes("'vanished'"),
+		),
+	);
 });
 
 test("fix: flags duplicate projects sharing a git remote", () => {
 	const r = loadRegistry(agentDir);
-	const a = mutations.register(r, { root: "/x/one", gitRemote: "https://github.com/u/dup" });
-	const b = mutations.register(r, { root: "/y/two", gitRemote: "https://github.com/u/dup" });
+	const a = mutations.register(r, {
+		root: "/x/one",
+		gitRemote: "https://github.com/u/dup",
+	});
+	const b = mutations.register(r, {
+		root: "/y/two",
+		gitRemote: "https://github.com/u/dup",
+	});
 	assert.ok(a && b);
 
 	const report = runFix(r, agentDir, { dryRun: true });
 
-	assert.ok(report.findings.some((f) => f.kind === "duplicate-project" && f.detail.includes("bb projects merge")));
+	assert.ok(
+		report.findings.some(
+			(f) =>
+				f.kind === "duplicate-project" && f.detail.includes("bb projects merge"),
+		),
+	);
 });
 
 test("fix: in-repo project reports missing store harmlessly", () => {
@@ -117,7 +151,11 @@ test("fix: in-repo project reports missing store harmlessly", () => {
 
 	const report = runFix(r, agentDir, { dryRun: true });
 
-	assert.ok(report.findings.some((f) => f.kind === "in-repo-store-missing" && f.detail.includes("'inrepo'")));
+	assert.ok(
+		report.findings.some(
+			(f) => f.kind === "in-repo-store-missing" && f.detail.includes("'inrepo'"),
+		),
+	);
 });
 
 test("doctor: is fix --dry-run", () => {

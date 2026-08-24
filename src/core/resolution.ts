@@ -10,9 +10,19 @@
  * minting a new project), never a merge of two different projects' stores.
  */
 import type { Boundary } from "./markers.ts";
-import { findProjectBoundary, getGitRemote, readMarkerId, writeMarkerId } from "./markers.ts";
+import {
+	findProjectBoundary,
+	getGitRemote,
+	readMarkerId,
+	writeMarkerId,
+} from "./markers.ts";
 import type { Project, Registry } from "./registry.ts";
-import { findById, findByGitRemote, findByPath, mutations } from "./registry.ts";
+import {
+	findById,
+	findByGitRemote,
+	findByPath,
+	mutations,
+} from "./registry.ts";
 import { getCentralStoreDir, getInRepoStoreDir } from "./agent-dir.ts";
 import { existsSync } from "node:fs";
 
@@ -64,14 +74,21 @@ export function resolveProject(opts: {
 			status = "marker";
 			if (project.canonicalPath !== boundary.root) {
 				mutations.reattach(registry, project, boundary.root);
-				actions.push(`reattached '${project.slug}' via marker: ${project.aliases[project.aliases.length - 1]} -> ${boundary.root}`);
+				actions.push(
+					`reattached '${project.slug}' via marker: ${project.aliases[project.aliases.length - 1]} -> ${boundary.root}`,
+				);
 				mutated = true;
 			}
 		} else {
 			// Marker from another machine / wiped registry: adopt the identity.
-			project = mutations.register(registry, { root: boundary.root, id: markerId });
+			project = mutations.register(registry, {
+				root: boundary.root,
+				id: markerId,
+			});
 			status = "new";
-			actions.push(`registered '${project.slug}' adopting marker id from ${boundary.root}`);
+			actions.push(
+				`registered '${project.slug}' adopting marker id from ${boundary.root}`,
+			);
 			mutated = true;
 		}
 	} else {
@@ -86,21 +103,31 @@ export function resolveProject(opts: {
 				mutated = true;
 			}
 			writeMarkerId(boundary, project.id);
-			actions.push(`wrote marker at ${boundary.root} (remote now resolves via marker)`);
+			actions.push(
+				`wrote marker at ${boundary.root} (remote now resolves via marker)`,
+			);
 		} else if (!remote) {
 			// 4. Path/alias match (no remote to disambiguate; only safe when the
 			//    canonical path no longer exists — otherwise this is a split).
 			const byPath = findByPath(registry, boundary.root);
-			if (byPath && (byPath.canonicalPath === boundary.root || !existsSync(byPath.canonicalPath))) {
+			if (
+				byPath &&
+				(byPath.canonicalPath === boundary.root ||
+					!existsSync(byPath.canonicalPath))
+			) {
 				project = byPath;
 				status = "path";
 				if (project.canonicalPath !== boundary.root) {
 					mutations.reattach(registry, project, boundary.root);
-					actions.push(`reattached '${project.slug}' via path match: ${boundary.root}`);
+					actions.push(
+						`reattached '${project.slug}' via path match: ${boundary.root}`,
+					);
 					mutated = true;
 				}
 				writeMarkerId(boundary, project.id);
-				actions.push(`wrote marker at ${boundary.root} (path now resolves via marker)`);
+				actions.push(
+					`wrote marker at ${boundary.root} (path now resolves via marker)`,
+				);
 			}
 		}
 	}
@@ -108,7 +135,10 @@ export function resolveProject(opts: {
 	// 5. Mint.
 	if (!project) {
 		const remote = remoteReader(boundary.root);
-		project = mutations.register(registry, { root: boundary.root, gitRemote: remote });
+		project = mutations.register(registry, {
+			root: boundary.root,
+			gitRemote: remote,
+		});
 		mutated = true;
 		actions.push(`registered new project '${project.slug}' at ${boundary.root}`);
 		writeMarkerId(boundary, project.id);
@@ -122,13 +152,17 @@ export function resolveProject(opts: {
 	while (effective.mergedInto) {
 		const next = findById(registry, effective.mergedInto);
 		if (!next) {
-			actions.push(`warning: '${effective.slug}' merged into missing project ${effective.mergedInto}; treating '${effective.slug}' as effective`);
+			actions.push(
+				`warning: '${effective.slug}' merged into missing project ${effective.mergedInto}; treating '${effective.slug}' as effective`,
+			);
 			break;
 		}
 		effective = next;
 		nested = true;
 		if (++depth > NESTED_DEPTH_LIMIT) {
-			actions.push(`warning: nested chain too deep (cycle?); stopping at '${effective.slug}'`);
+			actions.push(
+				`warning: nested chain too deep (cycle?); stopping at '${effective.slug}'`,
+			);
 			break;
 		}
 	}

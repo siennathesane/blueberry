@@ -6,20 +6,36 @@ import { loadRegistry, findBySlug } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { readSessionHeader, listSessions } from "../src/core/sessions.ts";
 import { encodeCwdToDirName } from "../src/core/util.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
 let outLines: string[];
 let errLines: string[];
-let spawnCalls: Array<{ root: string; sessionDir: string; argv: string[]; env: NodeJS.ProcessEnv }>;
+let spawnCalls: Array<{
+	root: string;
+	sessionDir: string;
+	argv: string[];
+	env: NodeJS.ProcessEnv;
+}>;
 
 function deps(cwd: string): CliDeps {
 	return {
 		cwd,
 		agentDir,
 		spawn: async (plan) => {
-			spawnCalls.push({ root: plan.root, sessionDir: plan.sessionDir, argv: plan.argv, env: plan.env });
+			spawnCalls.push({
+				root: plan.root,
+				sessionDir: plan.sessionDir,
+				argv: plan.argv,
+				env: plan.env,
+			});
 			return 0;
 		},
 		out: (l) => outLines.push(l),
@@ -53,7 +69,11 @@ test("cli: launch mode resolves project and spawns pi with env", async () => {
 	assert.equal(spawnCalls.length, 1);
 	assert.equal(spawnCalls[0]!.root, root);
 	assert.equal(spawnCalls[0]!.env["PI_CODING_AGENT_DIR"], agentDir);
-	assert.ok(spawnCalls[0]!.env["PI_CODING_AGENT_SESSION_DIR"]!.includes("/sessions/launch"));
+	assert.ok(
+		spawnCalls[0]!.env["PI_CODING_AGENT_SESSION_DIR"]!.includes(
+			"/sessions/launch",
+		),
+	);
 });
 
 test("cli: unknown first arg passes through to pi launch", async () => {
@@ -70,7 +90,10 @@ test("cli: projects list / rename / forget", async () => {
 	assert.equal(await main(["projects", "list"], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("proj-a")));
 
-	assert.equal(await main(["projects", "rename", "proj-a", "proj-b"], deps(area)), 0);
+	assert.equal(
+		await main(["projects", "rename", "proj-a", "proj-b"], deps(area)),
+		0,
+	);
 	const r = loadRegistry(agentDir);
 	assert.ok(findBySlug(r, "proj-b"));
 	assert.ok(!findBySlug(r, "proj-a"));
@@ -85,7 +108,10 @@ test("cli: projects nest/unnest guardrails and messaging", async () => {
 	await main([], deps(outer));
 	await main([], deps(inner));
 
-	assert.equal(await main(["projects", "nest", "guest", "--into", "host"], deps(area)), 0);
+	assert.equal(
+		await main(["projects", "nest", "guest", "--into", "host"], deps(area)),
+		0,
+	);
 	assert.ok(outLines.some((l) => l.includes("belong to 'host'")));
 
 	assert.equal(await main(["projects", "unnest", "guest"], deps(area)), 0);
@@ -97,23 +123,39 @@ test("cli: sessions list/rename/move/trash end to end", async () => {
 	const rootB = fakeRepo(area, "dst-proj", "git");
 	await main([], deps(rootA));
 	await main([], deps(rootB));
-	fakeSession(getCentralStoreDir(agentDir, "src-proj"), { cwd: rootA, firstUserText: "hello there" });
+	fakeSession(getCentralStoreDir(agentDir, "src-proj"), {
+		cwd: rootA,
+		firstUserText: "hello there",
+	});
 
 	// list
 	assert.equal(await main(["sessions", "list"], deps(rootA)), 0);
 	assert.ok(outLines.some((l) => l.includes("hello there")));
 
 	// rename by index
-	assert.equal(await main(["sessions", "rename", "1", "my-session"], deps(rootA)), 0);
+	assert.equal(
+		await main(["sessions", "rename", "1", "my-session"], deps(rootA)),
+		0,
+	);
 	assert.equal(await main(["sessions", "list", "--json"], deps(rootA)), 0);
-	const listed = JSON.parse(outLines[outLines.length - 1]!) as Array<{ name: string | null }>;
+	const listed = JSON.parse(outLines[outLines.length - 1]!) as Array<{
+		name: string | null;
+	}>;
 	assert.equal(listed[0]?.name, "my-session");
 
 	// move to other project
-	assert.equal(await main(["sessions", "move", "my-session", "dst-proj"], deps(rootA)), 0);
+	assert.equal(
+		await main(["sessions", "move", "my-session", "dst-proj"], deps(rootA)),
+		0,
+	);
 	assert.equal(listSessions(getCentralStoreDir(agentDir, "dst-proj")).length, 1);
 	assert.equal(listSessions(getCentralStoreDir(agentDir, "src-proj")).length, 0);
-	assert.equal(readSessionHeader(listSessions(getCentralStoreDir(agentDir, "dst-proj"))[0]!.file)?.cwd, rootB);
+	assert.equal(
+		readSessionHeader(
+			listSessions(getCentralStoreDir(agentDir, "dst-proj"))[0]!.file,
+		)?.cwd,
+		rootB,
+	);
 
 	// trash
 	assert.equal(await main(["sessions", "trash", "1"], deps(rootB)), 0);
@@ -131,11 +173,34 @@ test("cli: sessions open spawns pi with --session in project root", async () => 
 	const id = readSessionHeader(s)!.id;
 
 	// open from an unrelated directory via --project (the cross-project browser path)
-	assert.equal(await main(["sessions", "open", id.slice(0, 8), "--project", "openable"], deps(area)), 0);
+	assert.equal(
+		await main(
+			["sessions", "open", id.slice(0, 8), "--project", "openable"],
+			deps(area),
+		),
+		0,
+	);
 	const last = spawnCalls[spawnCalls.length - 1]!;
 	assert.equal(last.root, root);
 	assert.ok(last.argv.includes("--session"));
 	assert.ok(last.argv.some((a) => a.endsWith(".jsonl")));
+});
+
+test("cli: adopt --copy leaves the pi source tree untouched", async () => {
+	const root = fakeRepo(area, "clipy", "git");
+	const piSource = `${area}/pi-sessions`;
+	const piStore = `${piSource}/${encodeCwdToDirName(root)}`;
+	fakeSession(piStore, { cwd: root, firstUserText: "ancient" });
+
+	assert.equal(await main(["adopt", piSource, "--copy"], deps(area)), 0);
+	assert.ok(outLines.some((l) => l.includes("imported 1 sessions -> clipy (copied)")));
+	assert.equal(readdirSync(piStore).length, 1, "source file preserved");
+	assert.equal(readdirSync(getCentralStoreDir(agentDir, "clipy")).length, 1);
+
+	// re-run reports duplicates without spawning files
+	assert.equal(await main(["adopt", piSource, "--copy"], deps(area)), 0);
+	assert.ok(outLines.some((l) => l.includes("already present")));
+	assert.equal(readdirSync(getCentralStoreDir(agentDir, "clipy")).length, 1);
 });
 
 test("cli: adopt imports pi history from a source dir", async () => {
@@ -158,10 +223,17 @@ test("cli: fix applies, doctor is read-only", async () => {
 
 	assert.equal(await main(["doctor"], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("would register")));
-	assert.equal(loadRegistry(agentDir).projects.length, 0, "doctor mutated nothing");
+	assert.equal(
+		loadRegistry(agentDir).projects.length,
+		0,
+		"doctor mutated nothing",
+	);
 
 	assert.equal(await main(["fix"], deps(area)), 0);
-	assert.ok(loadRegistry(agentDir).projects.length === 1, "fix registered the orphan");
+	assert.ok(
+		loadRegistry(agentDir).projects.length === 1,
+		"fix registered the orphan",
+	);
 });
 
 test("cli: usage errors exit 2 with usage line", async () => {
@@ -179,7 +251,11 @@ test("cli: --here launch keeps cwd", async () => {
 
 	assert.equal(await main(["--here"], deps(sub)), 0);
 	const last = spawnCalls[spawnCalls.length - 1]!;
-	assert.equal(last.root, sub, "--here keeps the launch directory as session cwd");
+	assert.equal(
+		last.root,
+		sub,
+		"--here keeps the launch directory as session cwd",
+	);
 });
 
 // --- dispatch arms, error paths, and full command flows -----------------------
@@ -201,14 +277,29 @@ test("cli: launch error surfaces message and exit 1", async () => {
 });
 
 test("cli: projects error paths", async () => {
-	assert.equal(await main(["projects", "rename", "missing", "x"], deps(area)), 1);
+	assert.equal(
+		await main(["projects", "rename", "missing", "x"], deps(area)),
+		1,
+	);
 	assert.ok(errLines.some((l) => l.includes("no project with slug 'missing'")));
-	assert.equal(await main(["projects", "merge", "a", "--into", "b"], deps(area)), 1);
+	assert.equal(
+		await main(["projects", "merge", "a", "--into", "b"], deps(area)),
+		1,
+	);
 	assert.equal(await main(["projects", "forget", "nope"], deps(area)), 1);
-	assert.equal(await main(["projects", "nest", "a", "--into", "missing"], deps(area)), 1);
+	assert.equal(
+		await main(["projects", "nest", "a", "--into", "missing"], deps(area)),
+		1,
+	);
 	assert.equal(await main(["projects", "unnest", "missing"], deps(area)), 1);
-	assert.equal(await main(["projects", "sessions", "central", "missing"], deps(area)), 1);
-	assert.equal(await main(["projects", "sessions", "badmode", "x"], deps(area)), 2);
+	assert.equal(
+		await main(["projects", "sessions", "central", "missing"], deps(area)),
+		1,
+	);
+	assert.equal(
+		await main(["projects", "sessions", "badmode", "x"], deps(area)),
+		2,
+	);
 	assert.equal(await main(["projects", "sessions"], deps(area)), 2);
 	assert.equal(await main(["projects", "wat"], deps(area)), 2);
 });
@@ -216,9 +307,15 @@ test("cli: projects error paths", async () => {
 test("cli: projects sessions toggles modes", async () => {
 	const root = fakeRepo(area, "modes", "git");
 	await main([], deps(root));
-	assert.equal(await main(["projects", "sessions", "repo", "modes"], deps(area)), 0);
+	assert.equal(
+		await main(["projects", "sessions", "repo", "modes"], deps(area)),
+		0,
+	);
 	assert.ok(outLines.some((l) => l.includes("live in the repo")));
-	assert.equal(await main(["projects", "sessions", "central", "modes"], deps(area)), 0);
+	assert.equal(
+		await main(["projects", "sessions", "central", "modes"], deps(area)),
+		0,
+	);
 	assert.ok(outLines.some((l) => l.includes("centralized")));
 });
 
@@ -229,7 +326,10 @@ test("cli: projects merge moves sessions end to end", async () => {
 	await main([], deps(rootB));
 	fakeSession(getCentralStoreDir(agentDir, "ma"), { cwd: rootA });
 
-	assert.equal(await main(["projects", "merge", "ma", "--into", "mb"], deps(area)), 0);
+	assert.equal(
+		await main(["projects", "merge", "ma", "--into", "mb"], deps(area)),
+		0,
+	);
 	assert.ok(outLines.some((l) => l.includes("merged 'ma' into 'mb'")));
 	assert.equal(readdirSync(getCentralStoreDir(agentDir, "mb")).length, 1);
 });
@@ -241,7 +341,10 @@ test("cli: sessions error paths and usage", async () => {
 	assert.equal(await main(["sessions", "rename", "99", "x"], deps(root)), 1);
 	assert.ok(errLines.some((l) => l.includes("no session matching '99'")));
 	assert.equal(await main(["sessions", "move", "99", "nowhere"], deps(root)), 1);
-	assert.equal(await main(["sessions", "move", "1", "no-such-project"], deps(root)), 1);
+	assert.equal(
+		await main(["sessions", "move", "1", "no-such-project"], deps(root)),
+		1,
+	);
 	assert.equal(await main(["sessions", "open", "99"], deps(root)), 1);
 	assert.equal(await main(["sessions", "trash", "99"], deps(root)), 1);
 	assert.equal(await main(["sessions", "rename"], deps(root)), 2);
@@ -253,8 +356,14 @@ test("cli: sessions list --all prints across projects", async () => {
 	const rootB = fakeRepo(area, "all-b", "git");
 	await main([], deps(rootA));
 	await main([], deps(rootB));
-	fakeSession(getCentralStoreDir(agentDir, "all-a"), { cwd: rootA, firstUserText: "in a" });
-	fakeSession(getCentralStoreDir(agentDir, "all-b"), { cwd: rootB, firstUserText: "in b" });
+	fakeSession(getCentralStoreDir(agentDir, "all-a"), {
+		cwd: rootA,
+		firstUserText: "in a",
+	});
+	fakeSession(getCentralStoreDir(agentDir, "all-b"), {
+		cwd: rootB,
+		firstUserText: "in b",
+	});
 
 	assert.equal(await main(["sessions", "list", "--all"], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("in a")));
@@ -265,7 +374,9 @@ test("cli: sessions list empty project message", async () => {
 	const root = fakeRepo(area, "empty-list", "git");
 	await main([], deps(root));
 	assert.equal(await main(["sessions", "list"], deps(root)), 0);
-	assert.ok(outLines.some((l) => l.includes("no sessions for 'empty-list' yet")));
+	assert.ok(
+		outLines.some((l) => l.includes("no sessions for 'empty-list' yet")),
+	);
 });
 
 test("cli: fix and doctor via dispatch with --dry-run flag", async () => {
@@ -302,7 +413,9 @@ test("cli: projects list --json and empty-registry message", async () => {
 	const root = fakeRepo(area, "listed", "git");
 	await main([], deps(root));
 	assert.equal(await main(["projects", "list", "--json"], deps(area)), 0);
-	const parsed = JSON.parse(outLines[outLines.length - 1]!) as Array<{ slug: string }>;
+	const parsed = JSON.parse(outLines[outLines.length - 1]!) as Array<{
+		slug: string;
+	}>;
 	assert.ok(parsed.some((p) => p.slug === "listed"));
 });
 
@@ -321,7 +434,10 @@ test("cli: adopt --map flag form stamps and imports", async () => {
 	mkdirSync(`${area}/${dirName}`, { recursive: true });
 	fakeSession(`${area}/${dirName}`, { cwd: "" });
 
-	assert.equal(await main(["adopt", area, "--map", `${dirName}=${root}`], deps(area)), 0);
+	assert.equal(
+		await main(["adopt", area, "--map", `${dirName}=${root}`], deps(area)),
+		0,
+	);
 	assert.ok(outLines.some((l) => l.includes("stamped 1")));
 	assert.ok(outLines.some((l) => l.includes("mappedflag")));
 });

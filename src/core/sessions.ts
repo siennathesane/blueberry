@@ -14,7 +14,18 @@
  * - Renames append pi-native session_info entries (survive /tree, no format crimes).
  * - File mtimes are preserved across moves so "most recent" stays truthful.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sanitizeSessionName, shortEntryId } from "./util.ts";
@@ -45,7 +56,8 @@ export function readSessionHeader(file: string): SessionHeader | null {
 		const fd = readFileSync(file, "utf8");
 		const firstLine = fd.slice(0, fd.indexOf("\n"));
 		const parsed = JSON.parse(firstLine) as SessionHeader;
-		if (parsed?.type === "session" && typeof parsed.id === "string") return parsed;
+		if (parsed?.type === "session" && typeof parsed.id === "string")
+			return parsed;
 		return null;
 	} catch {
 		return null;
@@ -62,8 +74,12 @@ interface ParsedEntry {
 function firstUserTextFrom(content: unknown): string | null {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		const first = content.find((c): c is { type: "text"; text: string } =>
-			typeof c === "object" && c !== null && (c as { type?: string }).type === "text");
+		const first = content.find(
+			(c): c is { type: "text"; text: string } =>
+				typeof c === "object" &&
+				c !== null &&
+				(c as { type?: string }).type === "text",
+		);
 		return first ? first.text : null;
 	}
 	return null;
@@ -92,7 +108,8 @@ export function listSessions(storeDir: string): SessionInfo[] {
 				} catch {
 					continue;
 				}
-				if (entry.type === "session_info" && typeof entry.name === "string") name = entry.name;
+				if (entry.type === "session_info" && typeof entry.name === "string")
+					name = entry.name;
 				if (entry.type === "message" && entry.message) {
 					messageCount++;
 					if (firstUserText === null && entry.message.role === "user") {
@@ -120,7 +137,10 @@ export function listSessions(storeDir: string): SessionInfo[] {
 }
 
 /** Rewrite a session header in place (first line only), preserving the rest. */
-export function rewriteSessionHeader(file: string, mutate: (header: SessionHeader) => SessionHeader): void {
+export function rewriteSessionHeader(
+	file: string,
+	mutate: (header: SessionHeader) => SessionHeader,
+): void {
 	const raw = readFileSync(file, "utf8");
 	const nl = raw.indexOf("\n");
 	const firstLine = nl === -1 ? raw : raw.slice(0, nl);
@@ -129,7 +149,9 @@ export function rewriteSessionHeader(file: string, mutate: (header: SessionHeade
 	try {
 		header = JSON.parse(firstLine) as SessionHeader;
 	} catch (err) {
-		throw new Error(`session file has a malformed header line: ${file} (${(err as Error).message})`);
+		throw new Error(
+			`session file has a malformed header line: ${file} (${(err as Error).message})`,
+		);
 	}
 	const mutated = mutate(header);
 	writeFileSync(file, JSON.stringify(mutated) + rest, "utf8");
@@ -166,10 +188,16 @@ export interface MoveOptions {
 	newCwd: string;
 	/** Map of original file path -> new file path for sessions moved in the same batch. */
 	movedMap?: Map<string, string>;
+	/** Leave the source file in place (copy instead of move). */
+	copy?: boolean;
 }
 
 /** Move a session file to a target store, rewriting its header for the new project. */
-export function moveSession(file: string, targetDir: string, opts: MoveOptions): string {
+export function moveSession(
+	file: string,
+	targetDir: string,
+	opts: MoveOptions,
+): string {
 	const st = statSync(file);
 	const target = join(targetDir, join(file).split("/").pop()!);
 	mkdirSync(targetDir, { recursive: true });
@@ -194,7 +222,7 @@ export function moveSession(file: string, targetDir: string, opts: MoveOptions):
 	}
 	renameSync(staging, finalPath);
 	utimesSync(finalPath, st.atime, st.mtime); // preserve mtime for truthful recency
-	if (finalPath !== file) {
+	if (finalPath !== file && !opts.copy) {
 		// remove original only when we actually placed a copy elsewhere
 		rmSync(file, { force: true });
 	}
@@ -217,7 +245,10 @@ export function trashSession(file: string, trashRoot: string): string {
  * - exact session name
  * - 1-based index into the newest-first listing
  */
-export function selectSession(storeDir: string, selector: string): SessionInfo | null {
+export function selectSession(
+	storeDir: string,
+	selector: string,
+): SessionInfo | null {
 	const sessions = listSessions(storeDir);
 	const trimmed = selector.trim();
 	if (trimmed === "") return null;
@@ -230,7 +261,9 @@ export function selectSession(storeDir: string, selector: string): SessionInfo |
 
 	// uuid prefix
 	if (trimmed.length >= 4) {
-		const byId = sessions.find((s) => s.id === trimmed) ?? sessions.find((s) => s.id.startsWith(trimmed));
+		const byId =
+			sessions.find((s) => s.id === trimmed) ??
+			sessions.find((s) => s.id.startsWith(trimmed));
 		if (byId) return byId;
 	}
 

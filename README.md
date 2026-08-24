@@ -44,7 +44,8 @@ bb sessions move <sel> <project>  # move a session between projects
 bb sessions open <sel>      # resume a session in its project (from anywhere)
 bb sessions trash <sel>     # trash, never delete
 
-bb adopt [dir]              # import ~/.pi/agent history (groups by header cwd, stamps gaps)
+bb adopt [dir] [--copy]       # import ~/.pi/agent history (groups by header cwd, stamps gaps;
+                              #   --copy leaves the pi tree untouched, re-runs skip duplicates)
 bb fix / bb doctor          # reconcile orphans, stale cwds, dangling forks, split-brain
 ```
 

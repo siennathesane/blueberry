@@ -12,21 +12,31 @@
  * the project's central store, preserving mtimes.
  */
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Registry, Project } from "./registry.ts";
 import { findByPath, mutations } from "./registry.ts";
 import { getCentralStoreDir } from "./agent-dir.ts";
-import { moveSession, readSessionHeader, rewriteSessionHeader } from "./sessions.ts";
+import {
+	moveSession,
+	readSessionHeader,
+	rewriteSessionHeader,
+	type MoveOptions,
+} from "./sessions.ts";
 import { decodeDirNameToPathCandidates } from "./util.ts";
 
 export interface AdoptReport {
 	imported: Array<{ project: string; sessions: number }>;
 	skipped: Array<{ file: string; reason: string }>;
 	stamped: number;
+	/** Files skipped because already present in the destination (--copy re-runs). */
+	duplicates: number;
 }
 
 /** Find or create the project owning a given root path (no marker writes). */
-export function ensureProjectForRoot(root: string, registry: Registry): Project {
+export function ensureProjectForRoot(
+	root: string,
+	registry: Registry,
+): Project {
 	const existing = findByPath(registry, root);
 	if (existing) return existing;
 	return mutations.register(registry, { root });
@@ -41,6 +51,8 @@ export interface AdoptOptions {
 	map?: Record<string, string>;
 	/** existence check used to validate decoded paths (injectable for tests) */
 	pathExists?: (p: string) => boolean;
+	/** Leave source files in place (copy instead of move). Re-runs skip files already adopted. */
+	copy?: boolean;
 }
 
 interface Collected {
@@ -50,8 +62,11 @@ interface Collected {
 	root: string;
 }
 
-export function adoptSessions(registry: Registry, opts: AdoptOptions): AdoptReport {
-	const report: AdoptReport = { imported: [], skipped: [], stamped: 0 };
+export function adoptSessions(
+	registry: Registry,
+	opts: AdoptOptions,
+): AdoptReport {
+	const report: AdoptReport = { imported: [], skipped: [], stamped: 0, duplicates: 0 };
 	if (!existsSync(opts.sourceDir)) return report;
 
 	const exists = opts.pathExists ?? existsSync;
@@ -72,7 +87,11 @@ export function adoptSessions(registry: Registry, opts: AdoptOptions): AdoptRepo
 		}
 	}
 
-	function collectFile(file: string, dirName: string | undefined, override: string | undefined): void {
+	function collectFile(
+		file: string,
+		dirName: string | undefined,
+		override: string | undefined,
+	): void {
 		const header = readSessionHeader(file);
 		if (!header) {
 			report.skipped.push({ file, reason: "unreadable or invalid header" });
@@ -80,7 +99,8 @@ export function adoptSessions(registry: Registry, opts: AdoptOptions): AdoptRepo
 		}
 
 		let root: string | null = null;
-		const hasHeaderCwd = typeof header.cwd === "string" && header.cwd.trim() !== "";
+		const hasHeaderCwd =
+			typeof header.cwd === "string" && header.cwd.trim() !== "";
 		if (hasHeaderCwd) {
 			root = header.cwd!;
 		} else if (dirName) {
@@ -128,6 +148,22 @@ export function adoptSessions(registry: Registry, opts: AdoptOptions): AdoptRepo
 		const store = getCentralStoreDir(opts.agentDir, project.slug);
 		const movedMap = new Map<string, string>();
 		const batchFiles = new Set(items.map((i) => i.file));
+		let movedCount = 0;
+
+		const place = (item: Collected): boolean => {
+			const target = join(store, basename(item.file));
+			if (opts.copy && existsSync(target)) {
+				// already adopted on a previous --copy run; map the path so any
+				// children in this batch still rewrite parentSession correctly
+				movedMap.set(item.file, target);
+				return false;
+			}
+			const moveOpts: MoveOptions = { newCwd: project.canonicalPath, movedMap };
+			if (opts.copy) moveOpts.copy = true;
+			const placed = moveSession(item.file, store, moveOpts);
+			movedMap.set(item.file, placed);
+			return true;
+		};
 
 		// Multi-pass move: a child whose parentSession points at another file in
 		// this batch must move AFTER that parent so the link rewrites to the new
@@ -138,22 +174,26 @@ export function adoptSessions(registry: Registry, opts: AdoptOptions): AdoptRepo
 			const deferred: typeof items = [];
 			for (const item of pending) {
 				const parent = readSessionHeader(item.file)?.parentSession;
-				if (typeof parent === "string" && batchFiles.has(parent) && !movedMap.has(parent)) {
+				if (
+					typeof parent === "string" &&
+					batchFiles.has(parent) &&
+					!movedMap.has(parent)
+				) {
 					deferred.push(item);
 					continue;
 				}
-				const target = moveSession(item.file, store, { newCwd: project.canonicalPath, movedMap });
-				movedMap.set(item.file, target);
+				if (place(item)) movedCount++;
+				else report.duplicates++;
 			}
 			if (deferred.length === pending.length) break; // no progress (self-reference): move as-is below
 			pending = deferred;
 		}
 		// Theoretically unreachable; any survivor moves plainly (dangling parents cleared).
 		for (const item of pending) {
-			const target = moveSession(item.file, store, { newCwd: project.canonicalPath, movedMap });
-				movedMap.set(item.file, target);
+			if (place(item)) movedCount++;
+			else report.duplicates++;
 		}
-		report.imported.push({ project: project.slug, sessions: items.length });
+		if (movedCount > 0) report.imported.push({ project: project.slug, sessions: movedCount });
 	}
 
 	return report;
