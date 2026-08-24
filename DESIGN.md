@@ -523,7 +523,158 @@ schema and the update policy, not the ranking math.
 
 ---
 
-## §Theme — blueberry + orange-juice (shipped)
+## §LSP — native language servers (design 2025-08-25; fulfills the
+pi-lens replacement promised in §Search's roadmap)
+
+### Why not pi-lens's approach
+
+pi-lens shipped tree-sitter grammars + heuristic rules + **cached findings
+that lied** (the stale-advisory cascade that plagued this whole session) + an
+"LSP Inactive" banner because it *bundled* its own half-LSP. blueberry runs
+**real language servers speaking the real protocol**: no cached diagnostics,
+ever — the live server is the only truth.
+
+### Ground truth (2025-08-25 machine survey)
+
+Installed: `rust-analyzer`, `gopls`, `clangd`, `deno` (built-in `deno lsp`).
+**Missing: any TypeScript server** — and blueberry's own repo is TS. See open
+questions.
+
+### Principles
+
+1. **Filesystem truth sync.** A watcher pushes didOpen/didChange driven by
+   DISK state. Catches every edit source — pi tools, bash, git checkout,
+   formatters — without intercepting anything. Debounced ~200ms; full-text
+   sync (`TextDocumentSyncKind.Full`) for v1 simplicity; incremental later
+   only if profiling demands it.
+2. **On-demand surfaces, token discipline.** Diagnostics are FETCHED (tool/
+   command), never auto-injected into context. The model's loop becomes:
+   edit → `bb_lsp diagnostics` → fix. promptGuidelines nudge exactly that
+   ("after edits, check bb_lsp diagnostics before claiming done").
+3. **Bounded resources.** Servers spawn per-language on FIRST touch (not
+   session start), idle-reap (default 10m), hard cap 3 concurrent, killed at
+   session_shutdown. rust-analyzer's appetite is respected, not fed blindly.
+4. **Degrade, never block.** No server installed → "no lsp for <lang>" and
+   bb_search/code_fts remains the fallback. Crash → restart w/ backoff →
+   honest "server down" answers.
+5. **House style.** Single `bb_lsp` tool, action enum. CLI mirror `bb lsp`.
+
+### Architecture
+
+```
+src/core/lsp-client.ts   pure protocol: JSON-RPC framing (Content-Length
+                          headers), request/response correlation, timeouts.
+                          Unit-testable against in-memory duplex streams.
+src/core/lsp-manager.ts  lifecycle: server registry (lang→cmd from config),
+                          spawn + initialize handshake (rootUri = project
+                          root), open-doc set, watcher-driven sync, idle
+                          reaper, crash restart w/ backoff.
+extensions/lsp/          the shell: session_start boots the watcher (deferred
+                          per pi's extension rules; session_shutdown kills),
+                          registers bb_lsp + /lsp + statusline segment.
+```
+**Config** lives in blueberry.db's config table (key `lsp`) — default server
+map + per-language overrides + idle timeout; `bb lsp list/status` surfaces
+it. Adding a language = adding a row, not code.
+
+**Language detection:** extension → languageId map. First file of a language
+seen (watcher event or bb_lsp call) spawns that server. No proactive scans.
+
+### The tool — FULL LSP surface (user decision 2025-08-25: completionists)
+
+Single `bb_lsp` tool, action enum — every surface the protocol offers,
+layered by build priority:
+
+**Tier 1 — the agent's daily loop (v1):**
+- `status` — servers, health, uptime, restart counts
+- `diagnostics` — file or project-wide; severity-mapped readable lines with
+  ranges; includes publishDiagnostics pushed by servers (hover-free truth)
+- `definition` / `typeDefinition` / `implementation` — file/line/char →
+  uri:line:char lists (all three: cheap once definition exists)
+- `references` — call sites, with context lines
+- `hover` — types + docs on demand (the model's "what IS this")
+- `documentSymbol` / `workspaceSymbol` — outline + symbol query (feeds a
+  future bb_search symbol join)
+
+**Tier 2 — registered, exposed, used on demand (v1.x):**
+- `completion` — YES, even though the model doesn't type: completion items
+  carry signatures/docs the model can request deliberately ("what methods
+  does this value have") — a discovery surface, not typing aid
+- `signatureHelp` — argument lists at call sites; genuinely useful when the
+  model half-remembers an API
+- `codeAction` — quickfixes LISTED; applying them is execute-one (see gates)
+- `formatting` / `rangeFormatting` — server-formatted diffs, applied via the
+  same file-mutation queue as edit/write (withFileMutationQueue)
+- `callHierarchy` — incoming/outgoing; "who calls this" beyond flat
+  references (recursion, overrides)
+- `typeHierarchy` — supertypes/subtypes; the Rust trait/TS interface walk
+- `selectionRange` — semantic range expansion (statement→block→function)
+- `semanticTokens` — full legend/range fetch (rendering use later; the
+  data's there for §Search symbol joins)
+- `linkedEditingRange` / `foldingRange` / `documentHighlight` /
+  `documentLink` / `documentColor` — the long tail; cheap to expose once
+  the client exists, listed for completeness, used rarely
+
+**Tier 3 — WRITE paths, gated (v1.x, behind §Plan-style approval):**
+- `rename` — symbol-wide rename via server edits; preview → confirm; runs
+  through withFileMutationQueue; result reports files+touched ranges
+- `codeAction execute` — apply a chosen quickfix (organize imports,
+  auto-fix); same gate + queue
+- `codeLens` — registered client capability; resolve-on-demand (lens
+  commands can carry server-side writes → treated as Tier 3)
+
+**Explicitly OUT (with reasons, so future-us doesn't relitigate):**
+- `willSave/waitUntil` save-advice hooks — no save concept to hook
+- workspace edits from server-initiated `applyEdit` — accepted + reported,
+  never auto-applied (same gate as Tier 3)
+- `moniker` / `callHierarchy`-supersets / experimental/* — no consumer yet;
+  capability-registered, ignored until one exists
+
+The rule that keeps this sane: **capabilities are cheap to register, actions
+are explicit.** The client advertises nearly everything (servers unlock their
+best behavior), but every surface is one bb_lsp action away — nothing writes,
+nothing spams context, nothing auto-runs.
+
+### Relation to §Search
+
+Complementary, not competing: FTS = text recall ("where did we talk about
+X"), LSP = semantic precision ("what IS X, who calls it, why is it wrong").
+code_fts stays the no-server fallback; later, bb_search symbol hits can
+link into bb_lsp definition lookups.
+
+### Testing
+
+- Unit: framing codec round-trips, correlation IDs, timeout paths — against
+  in-memory streams, no processes.
+- Integration: a **fake LSP server** — small Node script speaking real
+  protocol over stdio, scripted to emit diagnostics/definitions — full
+  lifecycle/sync/restart tests deterministic and dependency-free.
+- e2e (opt-in tier): real rust-analyzer / deno lsp under the tmux harness,
+  gated on `BB_E2E_LSP=1` + server presence, so CI never needs them.
+
+### Open questions
+
+- [ ] **TypeScript server sourcing** (blueberry itself is TS!): bundle
+      `typescript-language-server` as a blueberry dependency (self-hosting,
+      but adds install weight + spawn cost) vs `npx` on demand vs prompt the
+      user to install globally. Lean: bundle — this repo is the primary
+      dogfood target and "works on our own codebase" is the demo.
+- [ ] Post-edit nudge: after edit/write tool_results, inject a ONE-line
+      "N diagnostics in the touched file" custom message? Tempting (closes
+      the loop without the model remembering to ask) but it's context writes
+      on every edit. Alternative: promptGuidelines only, statusline shows
+      the count.
+- [ ] Statusline segment ("2e 1w")? Cheap and always-visible vs noise.
+- [ ] Daemon mode (servers persist across sessions) — v1 says no (per-session
+      lifecycle, §Data's clean shutdown). Revisit if spawn latency hurts;
+      rust-analyzer warmup on a big repo can exceed an impatient human.
+- [ ] v1 language set: rust-analyzer, gopls, deno lsp, clangd (all present)
+      + typescript per the sourcing decision. Python/zig deferred until
+      asked for.
+- [ ] Tier-3 gate shape: per-action confirm (like /plan's approval) vs
+      session-scoped "trust write actions" toggle vs always-preview-diff.
+      Lean: always-preview (the diff IS the consent).
+
 
 Shipped: `themes/blueberry.json` (default) and `themes/orange-juice.json`.
 orange-juice's core palette came from the user's swatch image (2025-08-24):
