@@ -16,7 +16,12 @@
 import type { Registry, Project } from "./registry.ts";
 import { findBySlug } from "./registry.ts";
 import { storeDirFor } from "./resolution.ts";
-import { listSessions, moveSession, renameSession, type SessionInfo } from "./sessions.ts";
+import {
+	listSessions,
+	moveSession,
+	renameSession,
+	type SessionInfo,
+} from "./sessions.ts";
 import type { MoveOptions } from "./sessions.ts";
 import { readFileSync } from "node:fs";
 
@@ -54,7 +59,8 @@ export function parseSessionFile(file: string): ParsedSession | null {
 	} catch {
 		return null;
 	}
-	if (header["type"] !== "session" || typeof header["id"] !== "string") return null;
+	if (header["type"] !== "session" || typeof header["id"] !== "string")
+		return null;
 	const entries: ParsedLine[] = [];
 	for (const line of lines) {
 		if (line.trim() === "") continue;
@@ -78,7 +84,11 @@ export interface Capped {
 	shownLines: number;
 }
 
-export function capTail(text: string, maxBytes = MAX_VIEW_BYTES, maxLines = MAX_VIEW_LINES): Capped {
+export function capTail(
+	text: string,
+	maxBytes = MAX_VIEW_BYTES,
+	maxLines = MAX_VIEW_LINES,
+): Capped {
 	const lines = text.split("\n");
 	const totalLines = lines.length;
 	let out = lines;
@@ -95,7 +105,11 @@ export function capTail(text: string, maxBytes = MAX_VIEW_BYTES, maxLines = MAX_
 	return { text: joined, truncated, totalLines, shownLines: out.length };
 }
 
-export function capHead(text: string, maxBytes = MAX_VIEW_BYTES, maxLines = MAX_VIEW_LINES): Capped {
+export function capHead(
+	text: string,
+	maxBytes = MAX_VIEW_BYTES,
+	maxLines = MAX_VIEW_LINES,
+): Capped {
 	const lines = text.split("\n");
 	const totalLines = lines.length;
 	let out = lines;
@@ -126,7 +140,9 @@ export function parseAddress(addr: string): Address {
 	const project = trimmed.slice(0, slash);
 	const selector = trimmed.slice(slash + 1);
 	if (project === "" || selector === "") {
-		throw new Error(`invalid address '${addr}' (expected <project>/<selector> or <selector>)`);
+		throw new Error(
+			`invalid address '${addr}' (expected <project>/<selector> or <selector>)`,
+		);
 	}
 	return { project, selector };
 }
@@ -144,7 +160,9 @@ export function resolveAddress(
 	addr: string,
 ): ResolvedAddress {
 	const { project, selector } = parseAddress(addr);
-	const target = project ? findBySlug(registry, project) : findBySlug(registry, currentSlug);
+	const target = project
+		? findBySlug(registry, project)
+		: findBySlug(registry, currentSlug);
 	if (!target) {
 		const known = registry.projects.map((p) => p.slug).join(", ") || "none";
 		throw new Error(`no project '${project ?? currentSlug}' (known: ${known})`);
@@ -157,20 +175,33 @@ export function resolveAddress(
 	if (/^\d+$/.test(trimmed)) {
 		const idx = Number(trimmed) - 1;
 		const session = sessions[idx];
-		if (!session) throw new Error(`index ${trimmed} out of range (project '${target.slug}' has ${sessions.length})`);
+		if (!session)
+			throw new Error(
+				`index ${trimmed} out of range (project '${target.slug}' has ${sessions.length})`,
+			);
 		return { project: target, session };
 	}
 
 	if (trimmed.length >= 4) {
-		const byId = sessions.find((s) => s.id === trimmed) ?? sessions.find((s) => s.id.startsWith(trimmed));
+		const byId =
+			sessions.find((s) => s.id === trimmed) ??
+			sessions.find((s) => s.id.startsWith(trimmed));
 		if (byId) return { project: target, session: byId };
 	}
 
 	const nameMatches = sessions.filter((s) => s.name === trimmed);
-	if (nameMatches.length === 1) return { project: target, session: nameMatches[0]! };
+	if (nameMatches.length === 1)
+		return { project: target, session: nameMatches[0]! };
 	if (nameMatches.length > 1) {
-		const list = nameMatches.map((s, i) => `${i + 1}. ${s.id.slice(0, 8)} ${new Date(s.mtimeMs).toISOString().slice(0, 16)}`).join("\n");
-		throw new Error(`ambiguous name '${trimmed}' in '${target.slug}' — use index or uuid prefix:\n${list}`);
+		const list = nameMatches
+			.map(
+				(s, i) =>
+					`${i + 1}. ${s.id.slice(0, 8)} ${new Date(s.mtimeMs).toISOString().slice(0, 16)}`,
+			)
+			.join("\n");
+		throw new Error(
+			`ambiguous name '${trimmed}' in '${target.slug}' — use index or uuid prefix:\n${list}`,
+		);
 	}
 
 	throw new Error(`no session matching '${trimmed}' in '${target.slug}'`);
@@ -185,7 +216,11 @@ function textOf(content: unknown): string {
 	if (Array.isArray(content)) {
 		return content
 			.map((c) => {
-				if (typeof c === "object" && c !== null && (c as { type?: string }).type === "text") {
+				if (
+					typeof c === "object" &&
+					c !== null &&
+					(c as { type?: string }).type === "text"
+				) {
 					return (c as { text?: string }).text ?? "";
 				}
 				return "";
@@ -197,18 +232,26 @@ function textOf(content: unknown): string {
 }
 
 function contentBlocks(content: unknown): Array<Record<string, unknown>> {
-	if (Array.isArray(content)) return content.filter((c) => typeof c === "object" && c !== null) as Array<Record<string, unknown>>;
+	if (Array.isArray(content))
+		return content.filter((c) => typeof c === "object" && c !== null) as Array<
+			Record<string, unknown>
+		>;
 	return [];
 }
 
-function messageEntry(e: ParsedLine): { role?: string } & Record<string, unknown> | null {
+function messageEntry(
+	e: ParsedLine,
+): ({ role?: string } & Record<string, unknown>) | null {
 	if (e.type !== "message") return null;
 	const m = e.message as { role?: string } | undefined;
 	if (!m || typeof m.role !== "string") return null;
 	return m as { role?: string } & Record<string, unknown>;
 }
 
-export function renderSummary(session: SessionInfo, parsed: ParsedSession): string {
+export function renderSummary(
+	session: SessionInfo,
+	parsed: ParsedSession,
+): string {
 	const models = new Set<string>();
 	let labels = 0;
 	let compactions = 0;
@@ -230,7 +273,9 @@ export function renderSummary(session: SessionInfo, parsed: ParsedSession): stri
 		`messages:   ${session.messageCount}`,
 		`size:       ${session.sizeBytes} bytes`,
 		`first msg:  ${oneLine(session.firstUserText ?? "(none)", 80)}`,
-		models.size > 0 ? `models:     ${[...models].join(", ")}` : `models:     (header only)`,
+		models.size > 0
+			? `models:     ${[...models].join(", ")}`
+			: `models:     (header only)`,
 		`labels: ${labels}  compactions: ${compactions}  branch summaries: ${branchSummaries}  thinking changes: ${thinkingChanges}`,
 		`entries:    ${parsed.entries.length}`,
 	];
@@ -261,10 +306,14 @@ export function renderTree(parsed: ParsedSession): string {
 			case "message": {
 				const m = messageEntry(e);
 				const role = m?.role ?? "?";
-				if (role === "user") return `[user] ${oneLine(textOf(m?.content), 60)} (${id})`;
-				if (role === "assistant") return `[assistant] ${oneLine(textOf(m?.content), 60)} (${id})`;
-				if (role === "toolResult") return `[toolResult] ${String(m?.toolName ?? "?")} (${id})`;
-				if (role === "bashExecution") return `[bash] ${oneLine(String(m?.command ?? ""), 50)} (${id})`;
+				if (role === "user")
+					return `[user] ${oneLine(textOf(m?.content), 60)} (${id})`;
+				if (role === "assistant")
+					return `[assistant] ${oneLine(textOf(m?.content), 60)} (${id})`;
+				if (role === "toolResult")
+					return `[toolResult] ${String(m?.toolName ?? "?")} (${id})`;
+				if (role === "bashExecution")
+					return `[bash] ${oneLine(String(m?.command ?? ""), 50)} (${id})`;
 				return `[${role}] (${id})`;
 			}
 			case "compaction":
@@ -320,7 +369,11 @@ export function numberMessages(parsed: ParsedSession): NumberedMessage[] {
 	return out;
 }
 
-export function renderMessages(parsed: ParsedSession, offset = 0, limit = 80): string {
+export function renderMessages(
+	parsed: ParsedSession,
+	offset = 0,
+	limit = 80,
+): string {
 	const numbered = numberMessages(parsed);
 	const slice = numbered.slice(offset, offset + limit);
 	const out: string[] = [];
@@ -337,7 +390,9 @@ export function renderMessages(parsed: ParsedSession, offset = 0, limit = 80): s
 				if (text !== "") out.push(text);
 				for (const b of contentBlocks(m.content)) {
 					if (b["type"] === "toolCall") {
-						out.push(`  · tool ${b["name"]} (${typeof b["id"] === "string" ? b["id"].slice(0, 8) : "?"})`);
+						out.push(
+							`  · tool ${b["name"]} (${typeof b["id"] === "string" ? b["id"].slice(0, 8) : "?"})`,
+						);
 					}
 				}
 				if (text === "") out.push("(tool calls only)");
@@ -347,7 +402,9 @@ export function renderMessages(parsed: ParsedSession, offset = 0, limit = 80): s
 				const blocks = contentBlocks(m.content);
 				const bytes = JSON.stringify(m.content ?? "").length;
 				const ok = m.isError ? "error" : "ok";
-				out.push(`--- #${item.n} toolResult ${m.toolName} → ${ok} (${bytes}b, ${blocks.length} block(s)) ---`);
+				out.push(
+					`--- #${item.n} toolResult ${m.toolName} → ${ok} (${bytes}b, ${blocks.length} block(s)) ---`,
+				);
 				break;
 			}
 			case "bashExecution":
@@ -373,11 +430,17 @@ export function renderMessages(parsed: ParsedSession, offset = 0, limit = 80): s
 	const header = `[messages ${slice.length > 0 ? `${slice[0]!.n}..${slice[slice.length - 1]!.n}` : "none"} of ${numbered.length} total]`;
 	const body = out.length > 0 ? out.join("\n") : "(no messages in range)";
 	const capped = capTail(`${header}\n${body}`);
-	return capped.truncated ? capped.text + `\n… [truncated; total ${capped.totalLines} lines — narrow with --offset/--limit]` : capped.text;
+	return capped.truncated
+		? capped.text +
+				`\n… [truncated; total ${capped.totalLines} lines — narrow with --offset/--limit]`
+		: capped.text;
 }
 
 /** Full content of one numbered message — everything, including thinking. */
-export function renderMessage(parsed: ParsedSession, messageNumber: number): string {
+export function renderMessage(
+	parsed: ParsedSession,
+	messageNumber: number,
+): string {
 	const numbered = numberMessages(parsed);
 	const item = numbered.find((m) => m.n === messageNumber);
 	if (!item) {
@@ -418,9 +481,12 @@ export function renderMessage(parsed: ParsedSession, messageNumber: number): str
 		out.push(String(m.output ?? ""));
 		if (m.exitCode !== undefined) out.push(`--- exit ${m.exitCode} ---`);
 	} else {
-		if (item.role === "custom") out.push(`customType: ${String(m.customType ?? "?")}`);
-		if (item.role === "branchSummary") out.push(`from: ${String(m.fromId ?? "?")}`);
-		if (item.role === "compactionSummary") out.push(`tokensBefore: ${String(m.tokensBefore ?? "?")}`);
+		if (item.role === "custom")
+			out.push(`customType: ${String(m.customType ?? "?")}`);
+		if (item.role === "branchSummary")
+			out.push(`from: ${String(m.fromId ?? "?")}`);
+		if (item.role === "compactionSummary")
+			out.push(`tokensBefore: ${String(m.tokensBefore ?? "?")}`);
 		out.push(JSON.stringify(m.content ?? null, null, 2));
 		if (m.usage !== undefined) {
 			out.push("--- usage ---");
@@ -449,7 +515,9 @@ export function searchSessions(
 ): SearchHit[] {
 	const needle = query.toLowerCase();
 	if (needle === "") return [];
-	const projects = opts.all ? registry.projects : registry.projects.filter((p) => p.slug === opts.currentSlug);
+	const projects = opts.all
+		? registry.projects
+		: registry.projects.filter((p) => p.slug === opts.currentSlug);
 	const hits: SearchHit[] = [];
 
 	for (const project of projects) {
@@ -469,7 +537,11 @@ export function searchSessions(
 			for (const item of numberMessages(parsed)) {
 				const m = messageEntry(item.entry)!;
 				const texts: string[] = [];
-				if (item.role === "user" || item.role === "assistant" || item.role === "custom") {
+				if (
+					item.role === "user" ||
+					item.role === "assistant" ||
+					item.role === "custom"
+				) {
 					texts.push(textOf(m.content));
 				}
 				for (const t of texts) {
@@ -477,8 +549,16 @@ export function searchSessions(
 					const at = lower.indexOf(needle);
 					if (at >= 0) {
 						const start = Math.max(0, at - 40);
-						const snippet = t.slice(start, at + needle.length + 80).replace(/\s+/g, " ");
-						hits.push({ project: project.slug, session: session.name ?? session.id.slice(0, 8), file: session.file, messageNumber: item.n, snippet });
+						const snippet = t
+							.slice(start, at + needle.length + 80)
+							.replace(/\s+/g, " ");
+						hits.push({
+							project: project.slug,
+							session: session.name ?? session.id.slice(0, 8),
+							file: session.file,
+							messageNumber: item.n,
+							snippet,
+						});
 						break;
 					}
 				}
@@ -490,7 +570,11 @@ export function searchSessions(
 
 export function formatSearchHits(hits: SearchHit[]): string {
 	if (hits.length === 0) return "no matches";
-	const capped = capHead(hits.map((h) => `${h.project}/${h.session} #${h.messageNumber}: ${h.snippet}`).join("\n"));
+	const capped = capHead(
+		hits
+			.map((h) => `${h.project}/${h.session} #${h.messageNumber}: ${h.snippet}`)
+			.join("\n"),
+	);
 	return capped.truncated ? capped.text + "\n… [truncated]" : capped.text;
 }
 
@@ -514,7 +598,11 @@ export function forkSession(opts: {
 	targetProject: Project;
 }): ForkResult {
 	const targetStore = storeDirFor(opts.agentDir, opts.targetProject);
-	const base = (opts.sourceSession.name ?? opts.sourceSession.firstUserText?.trim() ?? opts.sourceSession.id.slice(0, 8))
+	const base = (
+		opts.sourceSession.name ??
+		opts.sourceSession.firstUserText?.trim() ??
+		opts.sourceSession.id.slice(0, 8)
+	)
 		.replace(/\//g, "-")
 		.slice(0, 48)
 		.replace(/^-*|-*$/g, "");

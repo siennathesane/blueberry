@@ -119,6 +119,7 @@ entry becomes a published npm/git source. CLI-first, generic naming, from day on
 CLI `sessions show|search|fork`. 160 tests, coverage ≥90% on all metrics.
 
 Decisions recorded (user, 2025-08-25):
+
 - Single tool with action enum — confirmed; `bb_library` actions: projects, sessions, show, search.
 - Everything inspectable — confirmed; the `message` view is the full drill-down (thinking, tool
   arguments, tool results with details blocks, images noted).
@@ -338,14 +339,24 @@ schema and the update policy, not the ranking math.
 
 ---
 
-## §Theme — orange-juice (shipped)
+## §Theme — blueberry + orange-juice (shipped)
 
-Shipped: `themes/orange-juice.json`. Core palette extracted from the user's
-swatch image (2025-08-24): orange ramp `#e85f2e → #f9db4a`, neutrals
-`#1f1f1f/#2a2a2a/#7f7f7f`, brown `#3e3324`, creams. Supporting colors
-(moss green success, warm red error, warm grays) added deliberately —
-core palette stays dominant. Thinking borders heat up the ramp; search
-matches are yellow-on-brown.
+Shipped: `themes/blueberry.json` (default) and `themes/orange-juice.json`.
+orange-juice's core palette came from the user's swatch image (2025-08-24):
+orange ramp `#e85f2e → #f9db4a`, neutrals `#1f1f1f/#2a2a2a/#7f7f7f`, brown
+`#3e3324`, creams; supporting colors (moss success, warm red, warm grays)
+were deliberate additions — core palette stays dominant.
+
+blueberry (2025-08-24) is the default: indigo-violet base (`#1e1b2e`),
+periwinkle accent `#8f8ff0`, lavender/lilac text ramp, citrine `#e8d44d` as
+the citrus wink (numbers, inline code, search matches), sage strings,
+cool-shifted diff red `#e06c75` so errors don't clash with the base, and the
+signature move: **thinking-level borders run cool → warm** (umber → indigo →
+violet → periwinkle → citrine → orange → amber) — thinking heats from
+contemplation to computation. Orange survives as bash-mode/warning/accent-
+edge color: the juice stays in the pairing. All hues are `vars` for live
+tweaking. Known judgment call: sage strings sit near diff-green by design
+(desaturated to coexist); swap candidate if it reads wrong: dusty rose.
 
 ## §Distribution — what "blueberry" installs (updated 2025-08-25)
 

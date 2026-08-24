@@ -47,21 +47,44 @@ export default function (pi: ExtensionAPI) {
 			"'sessions' lists a project's sessions; 'show' inspects one session (views: summary, tree, " +
 			"messages with tool one-liners, message = full single-message drill-down including thinking " +
 			"and tool results); 'search' scans session text across projects. Read-only.",
-		promptSnippet: "List and inspect sessions across projects (summaries, trees, messages, search)",
+		promptSnippet:
+			"List and inspect sessions across projects (summaries, trees, messages, search)",
 		promptGuidelines: [
 			"Use bb_library when the user references work or decisions from another project or past sessions; start with the summary view and drill down (messages, then message) only as needed.",
 		],
 		parameters: Type.Object({
 			action: Action,
 			address: Type.Optional(
-				Type.String({ description: "[project/]<index|uuid-prefix|name>; bare selector = current project" }),
+				Type.String({
+					description:
+						"[project/]<index|uuid-prefix|name>; bare selector = current project",
+				}),
 			),
-			project: Type.Optional(Type.String({ description: "project slug for 'sessions' and 'search' scoping" })),
+			project: Type.Optional(
+				Type.String({
+					description: "project slug for 'sessions' and 'search' scoping",
+				}),
+			),
 			view: Type.Optional(View),
-			offset: Type.Optional(Type.Integer({ minimum: 0, description: "messages view: skip N messages" })),
-			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, description: "messages view: max messages" })),
-			message: Type.Optional(Type.Integer({ minimum: 1, description: "message view: 1-based message number" })),
-			query: Type.Optional(Type.String({ description: "search action: text to find" })),
+			offset: Type.Optional(
+				Type.Integer({ minimum: 0, description: "messages view: skip N messages" }),
+			),
+			limit: Type.Optional(
+				Type.Integer({
+					minimum: 1,
+					maximum: 200,
+					description: "messages view: max messages",
+				}),
+			),
+			message: Type.Optional(
+				Type.Integer({
+					minimum: 1,
+					description: "message view: 1-based message number",
+				}),
+			),
+			query: Type.Optional(
+				Type.String({ description: "search action: text to find" }),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const agentDir = libraryAgentDir();
@@ -69,7 +92,10 @@ export default function (pi: ExtensionAPI) {
 
 			if (params.action === "projects") {
 				if (registry.projects.length === 0) {
-					return { content: [{ type: "text", text: "no projects registered" }], details: { projects: [] } };
+					return {
+						content: [{ type: "text", text: "no projects registered" }],
+						details: { projects: [] },
+					};
 				}
 				const lines = registry.projects.map((p) => {
 					const nested = p.mergedInto ? ` (nested into ${p.mergedInto})` : "";
@@ -85,13 +111,20 @@ export default function (pi: ExtensionAPI) {
 			const current = res.project;
 
 			if (params.action === "sessions") {
-				const target = params.project ? registry.projects.find((p) => p.slug === params.project) : current;
+				const target = params.project
+					? registry.projects.find((p) => p.slug === params.project)
+					: current;
 				if (!target) {
-					throw new Error(`no project '${params.project}' (known: ${registry.projects.map((p) => p.slug).join(", ") || "none"})`);
+					throw new Error(
+						`no project '${params.project}' (known: ${registry.projects.map((p) => p.slug).join(", ") || "none"})`,
+					);
 				}
 				const sessions = listSessions(storeDirFor(agentDir, target));
 				if (sessions.length === 0) {
-					return { content: [{ type: "text", text: `no sessions in '${target.slug}'` }], details: { project: target.slug, sessions: [] } };
+					return {
+						content: [{ type: "text", text: `no sessions in '${target.slug}'` }],
+						details: { project: target.slug, sessions: [] },
+					};
 				}
 				const lines = sessions.map((s, i) => {
 					const label = s.name ?? s.firstUserText?.slice(0, 50) ?? "(empty)";
@@ -104,12 +137,16 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.action === "search") {
-				if (!params.query || params.query.trim() === "") throw new Error("search requires query");
+				if (!params.query || params.query.trim() === "")
+					throw new Error("search requires query");
 				const scope = params.project ?? null;
 				const opts = { all: scope === null, currentSlug: current.slug };
 				if (scope) {
 					// scoped: run unfiltered and post-filter so an explicit project always wins
-					const hits = searchSessions(registry, agentDir, params.query, { all: true, currentSlug: current.slug });
+					const hits = searchSessions(registry, agentDir, params.query, {
+						all: true,
+						currentSlug: current.slug,
+					});
 					const scoped = hits.filter((h) => h.project === scope);
 					return {
 						content: [{ type: "text", text: formatSearchHits(scoped) }],
@@ -125,15 +162,23 @@ export default function (pi: ExtensionAPI) {
 
 			// action === "show"
 			if (!params.address) throw new Error("show requires address");
-			const resolved = resolveAddress(registry, agentDir, current.slug, params.address);
+			const resolved = resolveAddress(
+				registry,
+				agentDir,
+				current.slug,
+				params.address,
+			);
 			const parsed = parseSessionFile(resolved.session.file);
-			if (!parsed) throw new Error(`cannot parse session file ${resolved.session.file}`);
+			if (!parsed)
+				throw new Error(`cannot parse session file ${resolved.session.file}`);
 
 			const view = params.view ?? "summary";
 			switch (view) {
 				case "summary":
 					return {
-						content: [{ type: "text", text: renderSummary(resolved.session, parsed) }],
+						content: [
+							{ type: "text", text: renderSummary(resolved.session, parsed) },
+						],
 						details: { address: params.address, id: resolved.session.id },
 					};
 				case "tree":
@@ -142,22 +187,40 @@ export default function (pi: ExtensionAPI) {
 						details: { address: params.address, id: resolved.session.id },
 					};
 				case "messages": {
-					const text = renderMessages(parsed, params.offset ?? 0, params.limit ?? 80);
+					const text = renderMessages(
+						parsed,
+						params.offset ?? 0,
+						params.limit ?? 80,
+					);
 					return {
 						content: [{ type: "text", text }],
-						details: { address: params.address, id: resolved.session.id, offset: params.offset ?? 0, limit: params.limit ?? 80 },
+						details: {
+							address: params.address,
+							id: resolved.session.id,
+							offset: params.offset ?? 0,
+							limit: params.limit ?? 80,
+						},
 					};
 				}
 				case "message": {
-					if (params.message === undefined) throw new Error("message view requires 'message' (1-based number from the messages view)");
+					if (params.message === undefined)
+						throw new Error(
+							"message view requires 'message' (1-based number from the messages view)",
+						);
 					const text = renderMessage(parsed, params.message);
 					return {
 						content: [{ type: "text", text }],
-						details: { address: params.address, id: resolved.session.id, message: params.message },
+						details: {
+							address: params.address,
+							id: resolved.session.id,
+							message: params.message,
+						},
 					};
 				}
 				default:
-					throw new Error(`unknown view '${String(view)}' (expected summary, tree, messages, or message)`);
+					throw new Error(
+						`unknown view '${String(view)}' (expected summary, tree, messages, or message)`,
+					);
 			}
 		},
 	});

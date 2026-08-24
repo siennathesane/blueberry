@@ -179,10 +179,15 @@ export async function prepareLaunch(opts: LaunchOptions): Promise<LaunchPlan> {
 
 	mkdirSync(plan.sessionDir, { recursive: true });
 
+	// PI_OFFLINE kills pi's startup network chatter (pi version check, package
+	// update check → the 'Package Updates Available' banner, install telemetry).
+	// Verified in pi source: model calls and model-catalog refresh are NOT gated
+	// by this flag. Runs explicitly needing the checks can clear it.
 	plan.env = {
 		...process.env,
 		PI_CODING_AGENT_DIR: agentDir,
 		PI_CODING_AGENT_SESSION_DIR: plan.sessionDir,
+		PI_OFFLINE: process.env["PI_OFFLINE"] ?? "1",
 	};
 	return plan;
 }

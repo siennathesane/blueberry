@@ -14,12 +14,11 @@ FORCE="${1:-}"
 
 # Packages carried over from the old setup. Remove lines you don't want;
 # blueberry itself is a local path package and is always written to settings.
-# (Plan-mode/todo/search get rewritten inside blueberry, so their old
-# packages are deliberately NOT carried.)
+# (Plan-mode/todo/search get rewritten inside blueberry; pi-lens is replaced
+# by blueberry's own native tooling later — neither is carried.)
 CARRIED_PACKAGES=(
   "npm:pi-subagents"
   "npm:pi-web-access"
-  "npm:pi-lens"
   "npm:pi-mcp-adapter"
 )
 
@@ -39,7 +38,7 @@ packages = [repo_root] + ([l.strip() for l in carried.split(",")] if carried els
 packages = [packages[0]] + [json.loads(p) for p in packages[1:]]
 
 settings = {
-    "theme": "orange-juice",
+    "theme": "blueberry",
     "defaultProvider": "zai",
     "defaultModel": "glm-5.3",
     "defaultThinkingLevel": "high",

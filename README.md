@@ -67,14 +67,14 @@ Session selectors: list index (1-based), UUID prefix, or exact name.
 | `extensions/plan/` | **Rewrite of plan mode** (in design — see `DESIGN.md`) |
 | `extensions/todo/` | **Todos that are actually useful** (in design — see `DESIGN.md`) |
 | `extensions/search/` | **Embedded disk-based code search** (in design — see `DESIGN.md`) |
-| `themes/orange-juice.json` | The orange theme. Hot-reloads when edited. |
+| `themes/blueberry.json` | The blueberry theme (default). `themes/orange-juice.json` too. Both hot-reload when edited. |
 | `prompts/`, `skills/` | Curated prompt templates and skills |
 | `vendored/` | Source copies of upstream packages, **reference only** — see `vendored/VENDORED.md` |
 
 ## Dev loop
 
 - Edit anything under `extensions/`, `prompts/`, `skills/` → `/reload` in a blueberry session.
-- Edit `themes/orange-juice.json` while it's active → applied immediately, no reload needed.
+- Edit the active theme file (`themes/blueberry.json` by default) → applied immediately, no reload needed.
 - `npm install` once, then `npm run typecheck` to type-check everything (`vendored/` excluded).
 - `npm test` runs the suite; `npm run coverage` enforces ≥90% line/branch/function coverage on `src/`.
 

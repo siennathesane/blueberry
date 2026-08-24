@@ -44,6 +44,7 @@ import {
 	forkSession,
 	type ViewKind,
 } from "../core/library.ts";
+import { getVersion } from "../core/version.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -104,15 +105,7 @@ export async function main(
 		return 0;
 	}
 	if (argv.includes("--version") || argv.includes("-v")) {
-		const { readFile } = await import("node:fs/promises");
-		try {
-			const pkg = JSON.parse(
-				await readFile(join(deps.agentDir, "..", "..", "package.json"), "utf8"),
-			) as { version?: string };
-			deps.out(`blueberry ${pkg.version ?? "dev"}`);
-		} catch {
-			deps.out("blueberry dev");
-		}
+		deps.out(`blueberry ${getVersion()}`);
 		return 0;
 	}
 
@@ -412,7 +405,12 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const view = (extractValue(rest, "--view") ?? "summary") as ViewKind;
 				const registry = loadRegistry(deps.agentDir);
 				const { project: current } = await currentProject(deps, projectFlag);
-				const resolved = resolveAddress(registry, deps.agentDir, current.slug, addr);
+				const resolved = resolveAddress(
+					registry,
+					deps.agentDir,
+					current.slug,
+					addr,
+				);
 				const parsed = parseSessionFile(resolved.session.file);
 				if (!parsed) return deps.err(`cannot parse ${resolved.session.file}`), 1;
 				switch (view) {
@@ -436,7 +434,10 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 						break;
 					}
 					default:
-						return usageErr(deps, "sessions show ... --view summary|tree|messages|message");
+						return usageErr(
+							deps,
+							"sessions show ... --view summary|tree|messages|message",
+						);
 				}
 				return 0;
 			}
@@ -457,7 +458,12 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				if (!addr) return usageErr(deps, "sessions fork <project/selector>");
 				const registry = loadRegistry(deps.agentDir);
 				const { project: current } = await currentProject(deps, projectFlag);
-				const resolved = resolveAddress(registry, deps.agentDir, current.slug, addr);
+				const resolved = resolveAddress(
+					registry,
+					deps.agentDir,
+					current.slug,
+					addr,
+				);
 				const result = forkSession({
 					agentDir: deps.agentDir,
 					sourceFile: resolved.session.file,
@@ -470,7 +476,10 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				return 0;
 			}
 			default:
-				return usageErr(deps, "sessions list|rename|move|open|trash|show|search|fork");
+				return usageErr(
+					deps,
+					"sessions list|rename|move|open|trash|show|search|fork",
+				);
 		}
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);
@@ -592,9 +601,9 @@ function positionals(rest: readonly string[], sub: string): string[] {
 			if (
 				tok === "--view" ||
 				tok === "--offset" ||
-			tok === "--limit" ||
-			tok === "--message" ||
-			tok === "--project"
+				tok === "--limit" ||
+				tok === "--message" ||
+				tok === "--project"
 			) {
 				i++; // skip the value
 			}

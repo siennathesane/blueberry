@@ -1,6 +1,12 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, writeFileSync, readFileSync, chmodSync } from "node:fs";
+import {
+	mkdirSync,
+	readdirSync,
+	writeFileSync,
+	readFileSync,
+	chmodSync,
+} from "node:fs";
 import {
 	parseAddress,
 	resolveAddress,
@@ -19,7 +25,13 @@ import {
 import { loadRegistry, mutations, findBySlug } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { listSessions, readSessionHeader } from "../src/core/sessions.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -33,7 +45,10 @@ afterEach(() => {
 });
 
 /** Register a project with a session and return {root, store, file}. */
-function setupProject(name: string, opts?: { sessionName?: string; firstText?: string }) {
+function setupProject(
+	name: string,
+	opts?: { sessionName?: string; firstText?: string },
+) {
 	const root = fakeRepo(area, name, "git");
 	const registry = loadRegistry(agentDir);
 	mutations.register(registry, { root });
@@ -52,37 +67,70 @@ function setupProject(name: string, opts?: { sessionName?: string; firstText?: s
 
 test("parseAddress: bare, project-scoped, multi-slash selector", () => {
 	assert.deepEqual(parseAddress("3"), { selector: "3" });
-	assert.deepEqual(parseAddress("webmail/3"), { project: "webmail", selector: "3" });
-	assert.deepEqual(parseAddress("webmail/my/name"), { project: "webmail", selector: "my/name" });
+	assert.deepEqual(parseAddress("webmail/3"), {
+		project: "webmail",
+		selector: "3",
+	});
+	assert.deepEqual(parseAddress("webmail/my/name"), {
+		project: "webmail",
+		selector: "my/name",
+	});
 	assert.throws(() => parseAddress("/leading"), /invalid address/);
 	assert.throws(() => parseAddress("proj/"), /invalid address/);
 });
 
 test("resolveAddress: index, name, uuid prefix, bare=current, errors", () => {
 	const { root, registry } = setupProject("alpha", { sessionName: "the-one" });
-	const file2 = fakeSession(getCentralStoreDir(agentDir, "alpha"), { cwd: root, firstUserText: "second" });
+	const file2 = fakeSession(getCentralStoreDir(agentDir, "alpha"), {
+		cwd: root,
+		firstUserText: "second",
+	});
 	const id2 = readSessionHeader(file2)!.id;
 
 	// index (2 = second newest via mtime ordering; both created same ms -> force order)
 	// use names and ids which are deterministic instead:
 	const byName = resolveAddress(registry, agentDir, "alpha", "alpha/the-one");
 	assert.equal(byName.session.name, "the-one");
-	const byPrefix = resolveAddress(registry, agentDir, "alpha", `alpha/${id2.slice(0, 8)}`);
+	const byPrefix = resolveAddress(
+		registry,
+		agentDir,
+		"alpha",
+		`alpha/${id2.slice(0, 8)}`,
+	);
 	assert.equal(byPrefix.session.id, id2);
 	// bare selector = current project
 	const bare = resolveAddress(registry, agentDir, "alpha", "the-one");
 	assert.equal(bare.session.name, "the-one");
 
-	assert.throws(() => resolveAddress(registry, agentDir, "alpha", "alpha/9999"), /out of range/);
-	assert.throws(() => resolveAddress(registry, agentDir, "ghost", "ghost/1"), /no project 'ghost'.*known: alpha/);
-	assert.throws(() => resolveAddress(registry, agentDir, "alpha", "alpha/nope"), /no session matching/);
-	assert.throws(() => resolveAddress(registry, agentDir, "alpha", "alpha/"), /invalid address/);
+	assert.throws(
+		() => resolveAddress(registry, agentDir, "alpha", "alpha/9999"),
+		/out of range/,
+	);
+	assert.throws(
+		() => resolveAddress(registry, agentDir, "ghost", "ghost/1"),
+		/no project 'ghost'.*known: alpha/,
+	);
+	assert.throws(
+		() => resolveAddress(registry, agentDir, "alpha", "alpha/nope"),
+		/no session matching/,
+	);
+	assert.throws(
+		() => resolveAddress(registry, agentDir, "alpha", "alpha/"),
+		/invalid address/,
+	);
 });
 
 test("resolveAddress: ambiguous name refuses and lists candidates", () => {
 	const { root, registry } = setupProject("dupes", { sessionName: "same" });
-	fakeSession(getCentralStoreDir(agentDir, "dupes"), { cwd: root, name: "same", firstUserText: "second copy" });
-	assert.throws(() => resolveAddress(registry, agentDir, "dupes", "dupes/same"), /ambiguous name 'same'/);
+	fakeSession(getCentralStoreDir(agentDir, "dupes"), {
+		cwd: root,
+		name: "same",
+		firstUserText: "second copy",
+	});
+	assert.throws(
+		() => resolveAddress(registry, agentDir, "dupes", "dupes/same"),
+		/ambiguous name 'same'/,
+	);
 });
 
 // --- views ----------------------------------------------------------------------
@@ -92,22 +140,119 @@ function richSession(store: string, name: string): string {
 	mkdirSync(store, { recursive: true });
 	const file = `${store}/rich.jsonl`;
 	const ts = new Date().toISOString();
-	const lines = [
-		JSON.stringify({ type: "session", version: 3, id: "rich-id-0001", timestamp: ts, cwd: "/x/rich" }),
-		JSON.stringify({ type: "message", id: "m1", parentId: null, timestamp: ts, message: { role: "user", content: "run the tests please", timestamp: 1 } }),
-		JSON.stringify({ type: "message", id: "m2", parentId: "m1", timestamp: ts, message: { role: "assistant", content: [
-			{ type: "thinking", thinking: "secret internal reasoning" },
-			{ type: "text", text: "Running them now." },
-			{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "npm test" } },
-		], provider: "p", model: "m", usage: null, stopReason: "toolUse", timestamp: 2 } }),
-		JSON.stringify({ type: "message", id: "m3", parentId: "m2", timestamp: ts, message: { role: "toolResult", toolCallId: "call-1", toolName: "bash", content: [{ type: "text", text: "all tests passed\nok" }], isError: false, timestamp: 3 } }),
-		JSON.stringify({ type: "message", id: "m4", parentId: "m3", timestamp: ts, message: { role: "bashExecution", command: "echo hi", output: "hi", exitCode: 0, cancelled: false, truncated: false, timestamp: 4 } }),
-		JSON.stringify({ type: "message", id: "m5", parentId: "m4", timestamp: ts, message: { role: "bashExecution", command: "secret", output: "", excludeFromContext: true, timestamp: 5 } }),
-		JSON.stringify({ type: "model_change", id: "c1", parentId: "m5", timestamp: ts, provider: "zai", modelId: "glm-5.3" }),
-		JSON.stringify({ type: "label", id: "l1", parentId: "c1", timestamp: ts, targetId: "m1", label: "start" }),
-		JSON.stringify({ type: "session_info", id: "s1", parentId: "l1", timestamp: ts, name }),
-		JSON.stringify({ type: "message", id: "m6", parentId: "m5", timestamp: ts, message: { role: "user", content: "branch point test", timestamp: 6 } }),
-	].join("\n") + "\n";
+	const lines =
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "rich-id-0001",
+				timestamp: ts,
+				cwd: "/x/rich",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "user", content: "run the tests please", timestamp: 1 },
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m2",
+				parentId: "m1",
+				timestamp: ts,
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "secret internal reasoning" },
+						{ type: "text", text: "Running them now." },
+						{
+							type: "toolCall",
+							id: "call-1",
+							name: "bash",
+							arguments: { command: "npm test" },
+						},
+					],
+					provider: "p",
+					model: "m",
+					usage: null,
+					stopReason: "toolUse",
+					timestamp: 2,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m3",
+				parentId: "m2",
+				timestamp: ts,
+				message: {
+					role: "toolResult",
+					toolCallId: "call-1",
+					toolName: "bash",
+					content: [{ type: "text", text: "all tests passed\nok" }],
+					isError: false,
+					timestamp: 3,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m4",
+				parentId: "m3",
+				timestamp: ts,
+				message: {
+					role: "bashExecution",
+					command: "echo hi",
+					output: "hi",
+					exitCode: 0,
+					cancelled: false,
+					truncated: false,
+					timestamp: 4,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m5",
+				parentId: "m4",
+				timestamp: ts,
+				message: {
+					role: "bashExecution",
+					command: "secret",
+					output: "",
+					excludeFromContext: true,
+					timestamp: 5,
+				},
+			}),
+			JSON.stringify({
+				type: "model_change",
+				id: "c1",
+				parentId: "m5",
+				timestamp: ts,
+				provider: "zai",
+				modelId: "glm-5.3",
+			}),
+			JSON.stringify({
+				type: "label",
+				id: "l1",
+				parentId: "c1",
+				timestamp: ts,
+				targetId: "m1",
+				label: "start",
+			}),
+			JSON.stringify({
+				type: "session_info",
+				id: "s1",
+				parentId: "l1",
+				timestamp: ts,
+				name,
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "m6",
+				parentId: "m5",
+				timestamp: ts,
+				message: { role: "user", content: "branch point test", timestamp: 6 },
+			}),
+		].join("\n") + "\n";
 	writeFileSync(file, lines);
 	return file;
 }
@@ -164,7 +309,10 @@ test("renderMessages: numbering, verbatim text, tool lines, !! omitted", () => {
 	assert.ok(text.includes("#1 user"));
 	assert.ok(text.includes("run the tests please"));
 	assert.ok(text.includes("Running them now."));
-	assert.ok(!text.includes("secret internal reasoning"), "thinking omitted in messages view");
+	assert.ok(
+		!text.includes("secret internal reasoning"),
+		"thinking omitted in messages view",
+	);
 	assert.ok(text.includes("· tool bash"), "tool call one-liner");
 	assert.ok(text.includes("toolResult bash → ok"), "tool result one-liner");
 	assert.ok(text.includes("$ echo hi"), "visible bash included");
@@ -183,7 +331,10 @@ test("renderMessage: full drill-down including thinking and tool args", () => {
 	const parsed = parseSessionFile(file)!;
 
 	const assistant = renderMessage(parsed, 2);
-	assert.ok(assistant.includes("secret internal reasoning"), "thinking VISIBLE in message view");
+	assert.ok(
+		assistant.includes("secret internal reasoning"),
+		"thinking VISIBLE in message view",
+	);
 	assert.ok(assistant.includes('"command": "npm test"'), "full tool arguments");
 
 	const result = renderMessage(parsed, 3);
@@ -224,9 +375,29 @@ test("renderMessages truncates huge sessions with notice", () => {
 	mkdirSync(store, { recursive: true });
 	const file = `${store}/big.jsonl`;
 	const ts = new Date().toISOString();
-	const lines = [JSON.stringify({ type: "session", version: 3, id: "big-id", timestamp: ts, cwd: "/x" })];
+	const lines = [
+		JSON.stringify({
+			type: "session",
+			version: 3,
+			id: "big-id",
+			timestamp: ts,
+			cwd: "/x",
+		}),
+	];
 	for (let i = 0; i < 400; i++) {
-		lines.push(JSON.stringify({ type: "message", id: `e${i}`, parentId: `e${i - 1}`, timestamp: ts, message: { role: "user", content: `message ${i} ` + "x".repeat(400), timestamp: i } }));
+		lines.push(
+			JSON.stringify({
+				type: "message",
+				id: `e${i}`,
+				parentId: `e${i - 1}`,
+				timestamp: ts,
+				message: {
+					role: "user",
+					content: `message ${i} ` + "x".repeat(400),
+					timestamp: i,
+				},
+			}),
+		);
 	}
 	writeFileSync(file, lines.join("\n") + "\n");
 	const text = renderMessages(parseSessionFile(file)!, 0, 400);
@@ -236,21 +407,36 @@ test("renderMessages truncates huge sessions with notice", () => {
 // --- search -----------------------------------------------------------------------
 
 test("searchSessions: current-only and --all scopes", () => {
-	const a = setupProject("findable-a", { sessionName: "needle-here", firstText: "nothing special" });
+	const a = setupProject("findable-a", {
+		sessionName: "needle-here",
+		firstText: "nothing special",
+	});
 	// register the second project into the SAME registry object (nothing persists between loads)
 	const bRoot = fakeRepo(area, "findable-b", "git");
 	mutations.register(a.registry, { root: bRoot });
-	fakeSession(getCentralStoreDir(agentDir, "findable-b"), { cwd: bRoot, firstUserText: "the needle is in this text" });
+	fakeSession(getCentralStoreDir(agentDir, "findable-b"), {
+		cwd: bRoot,
+		firstUserText: "the needle is in this text",
+	});
 
-	const currentOnly = searchSessions(a.registry, agentDir, "needle", { all: false, currentSlug: "findable-a" });
+	const currentOnly = searchSessions(a.registry, agentDir, "needle", {
+		all: false,
+		currentSlug: "findable-a",
+	});
 	assert.ok(currentOnly.length >= 1, "name hit in current project");
 	assert.ok(currentOnly.every((h) => h.project === "findable-a"));
 
-	const all = searchSessions(a.registry, agentDir, "needle", { all: true, currentSlug: "findable-b" });
+	const all = searchSessions(a.registry, agentDir, "needle", {
+		all: true,
+		currentSlug: "findable-b",
+	});
 	assert.ok(all.some((h) => h.project === "findable-a"));
 	assert.ok(all.some((h) => h.project === "findable-b"));
 
-	const none = searchSessions(a.registry, agentDir, "zzz-no-such-thing", { all: true, currentSlug: "findable-a" });
+	const none = searchSessions(a.registry, agentDir, "zzz-no-such-thing", {
+		all: true,
+		currentSlug: "findable-a",
+	});
 	assert.equal(none.length, 0);
 	assert.equal(formatSearchHits(none), "no matches");
 
@@ -259,8 +445,13 @@ test("searchSessions: current-only and --all scopes", () => {
 });
 
 test("searchSessions: case-insensitive with snippet context", () => {
-	const r = setupProject("caseproj", { firstText: "The NEEDLE was found" }).registry;
-	const hits = searchSessions(r, agentDir, "needle", { all: true, currentSlug: "caseproj" });
+	const r = setupProject("caseproj", {
+		firstText: "The NEEDLE was found",
+	}).registry;
+	const hits = searchSessions(r, agentDir, "needle", {
+		all: true,
+		currentSlug: "caseproj",
+	});
 	assert.ok(hits.length >= 1);
 	assert.ok(hits[0]!.snippet.toLowerCase().includes("needle"));
 });
@@ -297,7 +488,9 @@ test("forkSession: copies into target store, names name@project, source intact",
 });
 
 test("forkSession: unnamed session derives name from first text; slashes stripped", () => {
-	const src = setupProject("src2", { firstText: "fix the parser bug / quickly" });
+	const src = setupProject("src2", {
+		firstText: "fix the parser bug / quickly",
+	});
 	const dstRoot = fakeRepo(area, "dst2", "git");
 	mutations.register(src.registry, { root: dstRoot });
 	const dst = findBySlug(src.registry, "dst2")!;
@@ -331,7 +524,9 @@ test("forkSession: same-store fork collides safely (suffixed copy, source intact
 	assert.notEqual(result.file, session.file, "fork is a distinct file");
 	const files = readdirSync(getCentralStoreDir(agentDir, "self-fork"));
 	assert.equal(files.length, 2, "source + forked copy");
-	const forked = listSessions(getCentralStoreDir(agentDir, "self-fork")).find((s) => s.file === result.file)!;
+	const forked = listSessions(getCentralStoreDir(agentDir, "self-fork")).find(
+		(s) => s.file === result.file,
+	)!;
 	assert.equal(forked.name, "original@self-fork");
 });
 
@@ -342,14 +537,72 @@ function exoticSession(store: string): string {
 	mkdirSync(store, { recursive: true });
 	const file = `${store}/exotic.jsonl`;
 	const ts = new Date().toISOString();
-	const lines = [
-		JSON.stringify({ type: "session", version: 3, id: "exotic-id-01", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "x1", parentId: null, timestamp: ts, message: { role: "custom", customType: "my-ext", content: "injected context", display: true, timestamp: 1 } }),
-		JSON.stringify({ type: "message", id: "x2", parentId: "x1", timestamp: ts, message: { role: "branchSummary", summary: "the abandoned path explored X", fromId: "x1", timestamp: 2 } }),
-		JSON.stringify({ type: "message", id: "x3", parentId: "x2", timestamp: ts, message: { role: "compactionSummary", summary: "early talk about Y", tokensBefore: 5000, timestamp: 3 } }),
-		JSON.stringify({ type: "message", id: "x4", parentId: "x3", timestamp: ts, message: { role: "mystery", weird: true, timestamp: 4 } }),
-		JSON.stringify({ type: "message", id: "x5", parentId: "x4", timestamp: ts, message: { role: "user", content: [{ type: "text", text: "q" }], timestamp: 5, usage: { input: 1, output: 1 } } }),
-	].join("\n") + "\n";
+	const lines =
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "exotic-id-01",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "x1",
+				parentId: null,
+				timestamp: ts,
+				message: {
+					role: "custom",
+					customType: "my-ext",
+					content: "injected context",
+					display: true,
+					timestamp: 1,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "x2",
+				parentId: "x1",
+				timestamp: ts,
+				message: {
+					role: "branchSummary",
+					summary: "the abandoned path explored X",
+					fromId: "x1",
+					timestamp: 2,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "x3",
+				parentId: "x2",
+				timestamp: ts,
+				message: {
+					role: "compactionSummary",
+					summary: "early talk about Y",
+					tokensBefore: 5000,
+					timestamp: 3,
+				},
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "x4",
+				parentId: "x3",
+				timestamp: ts,
+				message: { role: "mystery", weird: true, timestamp: 4 },
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "x5",
+				parentId: "x4",
+				timestamp: ts,
+				message: {
+					role: "user",
+					content: [{ type: "text", text: "q" }],
+					timestamp: 5,
+					usage: { input: 1, output: 1 },
+				},
+			}),
+		].join("\n") + "\n";
 	writeFileSync(file, lines);
 	return file;
 }
@@ -377,7 +630,10 @@ test("renderMessage: exotic roles dump JSON, metadata and usage included", () =>
 	const compaction = renderMessage(parsed, 3);
 	assert.ok(compaction.includes("tokensBefore: 5000"));
 	const user = renderMessage(parsed, 5);
-	assert.ok(user.includes("--- usage ---"), "usage block dumped for generic roles");
+	assert.ok(
+		user.includes("--- usage ---"),
+		"usage block dumped for generic roles",
+	);
 });
 
 test("renderSummary: bare session shows fallback labels", () => {
@@ -386,10 +642,30 @@ test("renderSummary: bare session shows fallback labels", () => {
 	mkdirSync(store, { recursive: true });
 	const file = `${store}/bare.jsonl`;
 	const ts = new Date().toISOString();
-	writeFileSync(file, [
-		JSON.stringify({ type: "session", version: 3, id: "bare-id-0001", timestamp: ts }),
-		JSON.stringify({ type: "message", id: "b1", parentId: null, timestamp: ts, message: { role: "assistant", content: [{ type: "text", text: "just an assistant" }], usage: null, stopReason: "stop", timestamp: 1 } }),
-	].join("\n") + "\n");
+	writeFileSync(
+		file,
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "bare-id-0001",
+				timestamp: ts,
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "b1",
+				parentId: null,
+				timestamp: ts,
+				message: {
+					role: "assistant",
+					content: [{ type: "text", text: "just an assistant" }],
+					usage: null,
+					stopReason: "stop",
+					timestamp: 1,
+				},
+			}),
+		].join("\n") + "\n",
+	);
 	const session = listSessions(store)[0]!;
 	const text = renderSummary(session, parseSessionFile(file)!);
 	assert.ok(text.includes("(unnamed)"));
@@ -414,12 +690,18 @@ test("renderSummary: no model changes shows header-only note", () => {
 
 test("resolveAddress: exact uuid wins, short prefixes skip to name", () => {
 	const { root, registry } = setupProject("uuids", { sessionName: "named" });
-	const file2 = fakeSession(getCentralStoreDir(agentDir, "uuids"), { cwd: root, firstUserText: "second" });
+	const file2 = fakeSession(getCentralStoreDir(agentDir, "uuids"), {
+		cwd: root,
+		firstUserText: "second",
+	});
 	const id2 = readSessionHeader(file2)!.id;
 	const byExact = resolveAddress(registry, agentDir, "uuids", `uuids/${id2}`);
 	assert.equal(byExact.session.id, id2);
 	// 3-char selector: below uuid-prefix length, falls through to name match
-	assert.throws(() => resolveAddress(registry, agentDir, "uuids", "nam"), /no session matching 'nam'/);
+	assert.throws(
+		() => resolveAddress(registry, agentDir, "uuids", "nam"),
+		/no session matching 'nam'/,
+	);
 });
 
 test("renderTree + renderMessage: kitchen-sink fixture covers fallback branches", () => {
@@ -427,15 +709,63 @@ test("renderTree + renderMessage: kitchen-sink fixture covers fallback branches"
 	mkdirSync(store, { recursive: true });
 	const file = `${store}/kitchen.jsonl`;
 	const ts = new Date().toISOString();
-	writeFileSync(file, [
-		JSON.stringify({ type: "session", version: 3, id: "kitchen-id", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "k1", parentId: null, timestamp: ts, message: { role: "user", timestamp: 1 } }), // content undefined -> textOf "" branch
-		JSON.stringify({ type: "message", id: "k2", parentId: "k1", timestamp: ts, message: { role: "toolResult", content: [{ type: "image", data: "zz" }], isError: true, timestamp: 2 } }), // no toolName, image block
-		JSON.stringify({ type: "message", id: "k3", parentId: "k2", timestamp: ts, message: { role: "bashExecution", timestamp: 3 } }), // no command
-		JSON.stringify({ type: "compaction", id: "k4", parentId: "k3", timestamp: ts }), // no tokensBefore
-		JSON.stringify({ type: "branch_summary", id: "k5", parentId: "k4", timestamp: ts }), // no fromId
-		JSON.stringify({ type: "future_thing", id: "k6", parentId: "k5", timestamp: ts, payload: 1 }), // unknown entry type
-	].join("\n") + "\n");
+	writeFileSync(
+		file,
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "kitchen-id",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "k1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "user", timestamp: 1 },
+			}), // content undefined -> textOf "" branch
+			JSON.stringify({
+				type: "message",
+				id: "k2",
+				parentId: "k1",
+				timestamp: ts,
+				message: {
+					role: "toolResult",
+					content: [{ type: "image", data: "zz" }],
+					isError: true,
+					timestamp: 2,
+				},
+			}), // no toolName, image block
+			JSON.stringify({
+				type: "message",
+				id: "k3",
+				parentId: "k2",
+				timestamp: ts,
+				message: { role: "bashExecution", timestamp: 3 },
+			}), // no command
+			JSON.stringify({
+				type: "compaction",
+				id: "k4",
+				parentId: "k3",
+				timestamp: ts,
+			}), // no tokensBefore
+			JSON.stringify({
+				type: "branch_summary",
+				id: "k5",
+				parentId: "k4",
+				timestamp: ts,
+			}), // no fromId
+			JSON.stringify({
+				type: "future_thing",
+				id: "k6",
+				parentId: "k5",
+				timestamp: ts,
+				payload: 1,
+			}), // unknown entry type
+		].join("\n") + "\n",
+	);
 	const parsed = parseSessionFile(file)!;
 
 	const tree = renderTree(parsed);
@@ -454,19 +784,57 @@ test("renderTree + renderMessage: kitchen-sink fixture covers fallback branches"
 	const exoticStore = getCentralStoreDir(agentDir, "exotic2");
 	mkdirSync(exoticStore, { recursive: true });
 	const exotic2 = `${exoticStore}/exotic2.jsonl`;
-	writeFileSync(exotic2, [
-		JSON.stringify({ type: "session", version: 3, id: "ex2", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "y1", parentId: null, timestamp: ts, message: { role: "mystery", timestamp: 1 } }),
-		JSON.stringify({ type: "thinking_level_change", id: "y2", parentId: "y1", timestamp: ts, thinkingLevel: "high" }),
-		JSON.stringify({ type: "message", id: "y3", parentId: "y2", timestamp: ts, message: { role: "toolResult", content: "plain string result", isError: false, timestamp: 2 } }),
-	].join("\n") + "\n");
+	writeFileSync(
+		exotic2,
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "ex2",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "y1",
+				parentId: null,
+				timestamp: ts,
+				message: { role: "mystery", timestamp: 1 },
+			}),
+			JSON.stringify({
+				type: "thinking_level_change",
+				id: "y2",
+				parentId: "y1",
+				timestamp: ts,
+				thinkingLevel: "high",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "y3",
+				parentId: "y2",
+				timestamp: ts,
+				message: {
+					role: "toolResult",
+					content: "plain string result",
+					isError: false,
+					timestamp: 2,
+				},
+			}),
+		].join("\n") + "\n",
+	);
 	const exoticParsed = parseSessionFile(exotic2)!;
 	const exoticTree = renderTree(exoticParsed);
-	assert.ok(exoticTree.includes("[mystery] (y1)"), "unknown message role in tree");
+	assert.ok(
+		exoticTree.includes("[mystery] (y1)"),
+		"unknown message role in tree",
+	);
 	assert.ok(exoticTree.includes("[thinking] high"));
 	// string (non-array) toolResult content: contentBlocks returns []
 	const stringResult = renderMessage(exoticParsed, 2);
-	assert.ok(stringResult.includes("tool: undefined") || stringResult.includes("tool:"), "string content tolerated");
+	assert.ok(
+		stringResult.includes("tool: undefined") || stringResult.includes("tool:"),
+		"string content tolerated",
+	);
 });
 
 test("renderMessage: toolResult details block is fully inspectable", () => {
@@ -474,10 +842,32 @@ test("renderMessage: toolResult details block is fully inspectable", () => {
 	mkdirSync(store, { recursive: true });
 	const file = `${store}/details.jsonl`;
 	const ts = new Date().toISOString();
-	writeFileSync(file, [
-		JSON.stringify({ type: "session", version: 3, id: "det-id", timestamp: ts, cwd: "/x" }),
-		JSON.stringify({ type: "message", id: "d1", parentId: null, timestamp: ts, message: { role: "toolResult", toolName: "t", content: [{ type: "text", text: "r" }], isError: false, details: { hidden: true }, timestamp: 1 } }),
-	].join("\n") + "\n");
+	writeFileSync(
+		file,
+		[
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "det-id",
+				timestamp: ts,
+				cwd: "/x",
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "d1",
+				parentId: null,
+				timestamp: ts,
+				message: {
+					role: "toolResult",
+					toolName: "t",
+					content: [{ type: "text", text: "r" }],
+					isError: false,
+					details: { hidden: true },
+					timestamp: 1,
+				},
+			}),
+		].join("\n") + "\n",
+	);
 	const withDetails = renderMessage(parseSessionFile(file)!, 1);
 	assert.ok(withDetails.includes("--- details ---"));
 	assert.ok(withDetails.includes('"hidden": true'));
@@ -487,23 +877,45 @@ test("branch sweep: degenerate entries, empty results, truncation, fork fallback
 	const store = getCentralStoreDir(agentDir, "sweep");
 	mkdirSync(store, { recursive: true });
 	const ts = new Date().toISOString();
-	const header = JSON.stringify({ type: "session", version: 3, id: "sweep-id", timestamp: ts, cwd: "/x" });
+	const header = JSON.stringify({
+		type: "session",
+		version: 3,
+		id: "sweep-id",
+		timestamp: ts,
+		cwd: "/x",
+	});
 
 	// 1. empty registry resolveAddress -> "known: none"
 	const emptyReg2 = { version: 1 as const, projects: [] };
-	assert.throws(() => resolveAddress(emptyReg2, agentDir, "nowhere", "nowhere/1"), /known: none/);
+	assert.throws(
+		() => resolveAddress(emptyReg2, agentDir, "nowhere", "nowhere/1"),
+		/known: none/,
+	);
 
 	// 2. degenerate entries: no message field, no id, tool-calls-only assistant, image in assistant
 	const file = `${store}/degen.jsonl`;
-	writeFileSync(file, [
-		header,
-		JSON.stringify({ type: "message", id: "g1", parentId: null, timestamp: ts }), // no message field
-		JSON.stringify({ type: "weird", parentId: "g1", timestamp: ts }), // no id
-		JSON.stringify({ type: "message", id: "g2", parentId: "g1", timestamp: ts, message: { role: "assistant", content: [
-			{ type: "image", data: "zz", mimeType: "image/png" },
-			{ type: "toolCall", id: 42, name: "t", arguments: {} }, // non-string id
-		], timestamp: 1 } }),
-	].join("\n") + "\n");
+	writeFileSync(
+		file,
+		[
+			header,
+			JSON.stringify({ type: "message", id: "g1", parentId: null, timestamp: ts }), // no message field
+			JSON.stringify({ type: "weird", parentId: "g1", timestamp: ts }), // no id
+			JSON.stringify({
+				type: "message",
+				id: "g2",
+				parentId: "g1",
+				timestamp: ts,
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "image", data: "zz", mimeType: "image/png" },
+						{ type: "toolCall", id: 42, name: "t", arguments: {} }, // non-string id
+					],
+					timestamp: 1,
+				},
+			}),
+		].join("\n") + "\n",
+	);
 	const parsed = parseSessionFile(file)!;
 	const tree = renderTree(parsed);
 	assert.ok(tree.includes("[?] (g1)"), "message-less entry: role '?' id shown");
@@ -511,7 +923,10 @@ test("branch sweep: degenerate entries, empty results, truncation, fork fallback
 	assert.ok(msgs.includes("(tool calls only)"), "assistant with no text block");
 	assert.ok(msgs.includes("tool t (?)"), "non-string toolCall id falls back");
 	const drill = renderMessage(parsed, 1);
-	assert.ok(drill.includes("[image image/png]"), "image block in assistant drill-down");
+	assert.ok(
+		drill.includes("[image image/png]"),
+		"image block in assistant drill-down",
+	);
 
 	// 3. offset beyond end -> "none" range header + no-messages body
 	const beyond = renderMessages(parsed, 99, 5);
@@ -526,7 +941,15 @@ test("branch sweep: degenerate entries, empty results, truncation, fork fallback
 	// 5. tree truncation past 2000 entries
 	const bigLines = [header];
 	for (let i = 0; i < 2100; i++) {
-		bigLines.push(JSON.stringify({ type: "message", id: `t${i}`, parentId: i === 0 ? null : `t${i - 1}`, timestamp: ts, message: { role: "user", content: `m${i}`, timestamp: i } }));
+		bigLines.push(
+			JSON.stringify({
+				type: "message",
+				id: `t${i}`,
+				parentId: i === 0 ? null : `t${i - 1}`,
+				timestamp: ts,
+				message: { role: "user", content: `m${i}`, timestamp: i },
+			}),
+		);
 	}
 	const bigFile = `${store}/bigtree.jsonl`;
 	writeFileSync(bigFile, bigLines.join("\n") + "\n");
@@ -535,22 +958,64 @@ test("branch sweep: degenerate entries, empty results, truncation, fork fallback
 	// 6. search: custom role content + needle deep in text + truncated hit list
 	const deepStore = getCentralStoreDir(agentDir, "deep");
 	mkdirSync(deepStore, { recursive: true });
-	const deepLines = [JSON.stringify({ type: "session", version: 3, id: "deep-id", timestamp: ts, cwd: "/x" })];
-	deepLines.push(JSON.stringify({ type: "message", id: "c1", parentId: null, timestamp: ts, message: { role: "custom", customType: "ext", content: "injected custom needle here", timestamp: 1 } }));
+	const deepLines = [
+		JSON.stringify({
+			type: "session",
+			version: 3,
+			id: "deep-id",
+			timestamp: ts,
+			cwd: "/x",
+		}),
+	];
+	deepLines.push(
+		JSON.stringify({
+			type: "message",
+			id: "c1",
+			parentId: null,
+			timestamp: ts,
+			message: {
+				role: "custom",
+				customType: "ext",
+				content: "injected custom needle here",
+				timestamp: 1,
+			},
+		}),
+	);
 	for (let i = 0; i < 2100; i++) {
-		deepLines.push(JSON.stringify({ type: "message", id: `d${i}`, parentId: `d${i - 1}`, timestamp: ts, message: { role: "user", content: `${"pad ".repeat(20)}needle number ${i}`, timestamp: i } }));
+		deepLines.push(
+			JSON.stringify({
+				type: "message",
+				id: `d${i}`,
+				parentId: `d${i - 1}`,
+				timestamp: ts,
+				message: {
+					role: "user",
+					content: `${"pad ".repeat(20)}needle number ${i}`,
+					timestamp: i,
+				},
+			}),
+		);
 	}
 	const deepFile = `${deepStore}/deep.jsonl`;
 	writeFileSync(deepFile, deepLines.join("\n") + "\n");
 	const deepReg = loadRegistry(agentDir);
 	mutations.register(deepReg, { root: "/x/deep" }); // slug: deep — matches the store dir above
-	const deepHits = searchSessions(deepReg, agentDir, "needle", { all: true, currentSlug: "deep" });
+	const deepHits = searchSessions(deepReg, agentDir, "needle", {
+		all: true,
+		currentSlug: "deep",
+	});
 	assert.ok(deepHits.length > 2000);
-	assert.ok(deepHits.some((h) => h.snippet.includes("custom") || h.messageNumber === 1), "custom-role content searched");
+	assert.ok(
+		deepHits.some((h) => h.snippet.includes("custom") || h.messageNumber === 1),
+		"custom-role content searched",
+	);
 	const deepFormatted = formatSearchHits(deepHits);
 	assert.ok(deepFormatted.includes("[truncated"));
 	const deepHit = deepHits.find((h) => h.messageNumber > 1)!;
-	assert.ok(deepHit.snippet.startsWith("pad"), "needle deep in text: snippet leads with padding");
+	assert.ok(
+		deepHit.snippet.startsWith("pad"),
+		"needle deep in text: snippet leads with padding",
+	);
 });
 
 test("forkSession: no name and no first text derives from id; empty base falls back", () => {
