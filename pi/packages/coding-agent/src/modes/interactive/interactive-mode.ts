@@ -259,10 +259,10 @@ export function formatResumeCommand(sessionManager: SessionManager): string | un
 	if (!sessionFile || !fs.existsSync(sessionFile)) return undefined;
 
 	// FORK(blueberry): the resume command targets the blueberry launcher
-	// (`bb`), not pi — both --session-dir and --session pass through the
+	// (`blueberry`), not pi — both --session-dir and --session pass through the
 	// bb CLI (PATH_FLAGS absolutizes them). Custom session stores (e.g.
 	// --here launches) keep their --session-dir so resume still lands.
-	const args = ["bb"];
+	const args = ["blueberry"];
 	if (!sessionManager.usesDefaultSessionDir()) {
 		args.push("--session-dir", quoteIfNeeded(sessionManager.getSessionDir()));
 	}

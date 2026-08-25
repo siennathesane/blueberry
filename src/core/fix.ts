@@ -4,7 +4,7 @@
  * Safe rewrites (cwd normalization, dangling parentSession clearing, orphan
  * store registration) apply unless dryRun. Reports are informational.
  * Invariant: fix never deletes session content and never merges two projects
- * automatically — splits are reported with a `bb projects merge` hint.
+ * automatically — splits are reported with a `blueberry projects merge` hint.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -69,7 +69,7 @@ export function runFix(
 			if (!best) {
 				findings.push({
 					kind: "orphan-store-unresolvable",
-					detail: `store '${dir}' has ${sessions.length} sessions but none carry a header cwd; register manually or bb projects merge`,
+					detail: `store '${dir}' has ${sessions.length} sessions but none carry a header cwd; register manually or blueberry projects merge`,
 				});
 				continue;
 			}
@@ -162,7 +162,7 @@ export function runFix(
 		if (!alive) {
 			findings.push({
 				kind: "stale-project",
-				detail: `project '${project.slug}' canonical and alias paths all missing; keep (sessions preserved) or bb projects forget ${project.slug}`,
+				detail: `project '${project.slug}' canonical and alias paths all missing; keep (sessions preserved) or blueberry projects forget ${project.slug}`,
 			});
 		}
 	}
@@ -175,7 +175,7 @@ export function runFix(
 		if (first && first !== project.slug) {
 			findings.push({
 				kind: "duplicate-project",
-				detail: `projects '${first}' and '${project.slug}' share remote ${project.gitRemote}; bb projects merge ${project.slug} --into ${first}`,
+				detail: `projects '${first}' and '${project.slug}' share remote ${project.gitRemote}; blueberry projects merge ${project.slug} --into ${first}`,
 			});
 		} else {
 			seenRemote.set(project.gitRemote, project.slug);

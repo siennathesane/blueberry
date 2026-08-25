@@ -39,7 +39,7 @@ export interface UpdaterIO {
 
 /** Parse "v1.2.3" / "1.2.3" into exactly three comparable numbers.
  * Dirty suffixes ("2.0.0-rc.1") collapse to their release triple [2,0,0] —
- * a prerelease never compares newer than its release, so `bb update` never
+ * a prerelease never compares newer than its release, so `blueberry update` never
  * auto-updates into an rc. */
 export function parseVersion(v: string): number[] {
 	const parts = v.trim().replace(/^v/, "").split(".");

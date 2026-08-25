@@ -1,7 +1,7 @@
 /**
  * bb_cmd — model-facing command graph tool (design 003, R5).
  *
- * Same runner, same state as `bb cmd` CLI verbs. The model can define,
+ * Same runner, same state as `blueberry cmd` CLI verbs. The model can define,
  * inspect, and run command graphs — including invoking templates (the
  * hook-manager replacement: judgment, not events).
  */

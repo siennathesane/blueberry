@@ -38,7 +38,7 @@ export function rewriteTitles(chunk: string, ours: string): string {
 
 /**
  * Rewrite pi's exit resume hint to the blueberry launcher surface.
- * `pi --session-dir <dir> --session <id>` → `bb --session <id>`.
+ * `pi --session-dir <dir> --session <id>` → `blueberry --session <id>`.
  * Pure.
  */
 export function rewriteResumeHint(chunk: string): string {
@@ -49,7 +49,7 @@ export function rewriteResumeHint(chunk: string): string {
 	// wrong store. [^\n]*? stays line-bounded so we never over-match.
 	return chunk.replace(
 		/(?:\x1b\[2m)?To resume this session:[^\n]*?pi (--session-dir \S+ )?--session (\S+)/g,
-		"To resume this session: bb $1--session $2",
+		"To resume this session: blueberry $1--session $2",
 	);
 }
 

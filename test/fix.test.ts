@@ -138,7 +138,7 @@ test("fix: flags duplicate projects sharing a git remote", () => {
 	assert.ok(
 		report.findings.some(
 			(f) =>
-				f.kind === "duplicate-project" && f.detail.includes("bb projects merge"),
+				f.kind === "duplicate-project" && f.detail.includes("blueberry projects merge"),
 		),
 	);
 });

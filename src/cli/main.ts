@@ -306,7 +306,7 @@ async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
 					return 0;
 				}
 				case "run": {
-					// bb cmd run <graph-id> | bb cmd run <template> --arg k=v
+					// blueberry cmd run <graph-id> | blueberry cmd run <template> --arg k=v
 					const target = args[0];
 					if (!target) {
 						deps.err("blueberry: cmd run needs a graph id or template name");
@@ -366,7 +366,7 @@ async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
 									{ detached: true, stdio: "ignore", env: { ...process.env } },
 								);
 						child.unref();
-						deps.out(`bg ${id.slice(0, 8)} (bb cmd ps / logs)`);
+						deps.out(`bg ${id.slice(0, 8)} (blueberry cmd ps / logs)`);
 						return 0;
 					}
 					await runGraph(db, id);
@@ -398,7 +398,7 @@ async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
 					return 0;
 				}
 				case "logs": {
-					// bb cmd logs <graph-id> [node-name]
+					// blueberry cmd logs <graph-id> [node-name]
 					const target = args[0];
 					if (!target) {
 						deps.err("blueberry: cmd logs needs a graph id");
@@ -427,7 +427,7 @@ async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
 				case "template": {
 					const sub = args[0];
 					if (sub === "save") {
-						// bb cmd template save <name> <params=a,b> 'n=cmd'... --dep n:d
+						// blueberry cmd template save <name> <params=a,b> 'n=cmd'... --dep n:d
 						const tname = args[1];
 						if (!tname) {
 							deps.err("blueberry: template save <name> <params> nodes...");
@@ -528,7 +528,7 @@ async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
 				);
 				if (res.updateAvailable) {
 					deps.out(`update available: ${version} → ${res.latestTag} (${platform})`);
-					deps.out("run: bb update");
+					deps.out("run: blueberry update");
 				} else if (res.assetUrl === null) {
 					deps.out(
 						`up to date (${version}); latest release has no ${platform} asset`,
