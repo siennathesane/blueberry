@@ -83,6 +83,20 @@ test("identity: languages are sorted (order churn impossible)", () => {
 	assert.ok(b.includes("go, rust"));
 });
 
+test("identity: simplified technical English directive always present", () => {
+	assert.ok(
+		composeIdentity(baseProbe).includes(
+			"You will speak with the user in simplified technical English.",
+		),
+	);
+	// and it survives every gating variant (no surface removes it)
+	assert.ok(
+		composeIdentity({ ...baseProbe, lspLanguages: [], hasDesignLifecycle: false, hasTodos: false }).includes(
+			"You will speak with the user in simplified technical English.",
+		),
+	);
+});
+
 test("identity: needles convention always present", () => {
 	assert.ok(composeIdentity(baseProbe).includes("todo:<slug>"));
 	assert.ok(composeIdentity(baseProbe).includes("design:<slug>"));

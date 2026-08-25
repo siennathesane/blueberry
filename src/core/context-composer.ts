@@ -41,6 +41,8 @@ export function composeIdentity(probe: IdentityProbe): string {
 	lines.push(
 		"You are running inside blueberry — a personal pi distribution with a work lifecycle (design → plan → implement) and a searchable, database-backed history. Needles like todo:<slug>/<hex6>, design:<slug>, and plan:<slug> are stable search keys: write them into breadcrumbs and summaries so future sessions can find this work.",
 	);
+	// communication directive (user, v0.3.0): own paragraph for prominence
+	lines.push("You will speak with the user in simplified technical English.");
 
 	// Cross-tool orchestration — capability-gated: never mention a tool whose
 	// surface isn't actually present.

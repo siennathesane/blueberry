@@ -43,9 +43,13 @@ export function rewriteTitles(chunk: string, ours: string): string {
  */
 export function rewriteResumeHint(chunk: string): string {
 	if (!chunk.includes("To resume this session:")) return chunk;
+	// Tolerates ANSI styling between the label and the command (the fork
+	// dims the label: \x1b[2m...\x1b[22m) and PRESERVES --session-dir —
+	// custom stores (scratchpad/--here) need it or resume lands in the
+	// wrong store. [^\n]*? stays line-bounded so we never over-match.
 	return chunk.replace(
-		/To resume this session:\s*pi --session-dir \S+ --session (\S+)/g,
-		"To resume this session: bb --session $1",
+		/(?:\x1b\[2m)?To resume this session:[^\n]*?pi (--session-dir \S+ )?--session (\S+)/g,
+		"To resume this session: bb $1--session $2",
 	);
 }
 

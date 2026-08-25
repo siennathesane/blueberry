@@ -55,20 +55,42 @@ test("rewriteTitles: multiple titles in one chunk all become ours", () => {
 	assert.equal(out, `${titleSequence(OURS)}text${titleSequence(OURS)}`);
 });
 
-test("rewriteResumeHint: pi command → bb command", () => {
+test("rewriteResumeHint: pi command → bb command, session-dir preserved", () => {
 	const hint =
 		"To resume this session: pi --session-dir /Users/x/.blueberry/sessions/blueberry --session 01a038b3-bb3e";
 	const out = rewriteResumeHint(hint);
-	assert.equal(out, "To resume this session: bb --session 01a038b3-bb3e");
+	// custom stores keep --session-dir or resume lands in the wrong place
+	assert.equal(
+		out,
+		"To resume this session: bb --session-dir /Users/x/.blueberry/sessions/blueberry --session 01a038b3-bb3e",
+	);
 	// no hint → untouched
 	assert.equal(rewriteResumeHint("normal output"), "normal output");
+});
+
+test("rewriteResumeHint: ANSI-dimmed label (the v0.3.0 leak)", () => {
+	// the fork writes chalk.dim("To resume this session:") — escape codes
+	// sit between the label and the command; the old \s* regex silently
+	// no-matched and the raw pi line leaked to the user
+	const leaked =
+		"\x1b[2mTo resume this session:\x1b[22m pi --session-dir /Users/sienna/.blueberry/sessions/scratchpad --session 01a039d9-9f1b-7282-9820-3c09e8ddce49\n";
+	const out = rewriteResumeHint(leaked);
+	assert.equal(
+		out,
+		"To resume this session: bb --session-dir /Users/sienna/.blueberry/sessions/scratchpad --session 01a039d9-9f1b-7282-9820-3c09e8ddce49\n",
+	);
+	// default-store hint (no --session-dir) still rewrites cleanly
+	assert.equal(
+		rewriteResumeHint("To resume this session: pi --session abc123"),
+		"To resume this session: bb --session abc123",
+	);
 });
 
 test("rewriteChunk: both rewrites compose", () => {
 	const chunk = `work\x1b]0;pi - x\x07To resume this session: pi --session-dir /d --session abc`;
 	const out = rewriteChunk(chunk, OURS);
 	assert.ok(out.includes(titleSequence(OURS)));
-	assert.ok(out.includes("bb --session abc"));
+	assert.ok(out.includes("bb --session-dir /d --session abc"));
 	assert.ok(!out.includes("pi --session-dir"));
 });
 

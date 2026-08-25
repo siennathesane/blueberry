@@ -57,12 +57,16 @@ test("sync: mtime-identical re-ingest is unchanged; orphan refused without flag"
 	mkdirSync(area, { recursive: true });
 	writeFileSync(
 		file,
-		'{"type":"session","version":3,"id":"syn1","timestamp":"2026-01-01T00:00:00Z","cwd":"' + area + '"}\n' +
+		'{"type":"session","version":3,"id":"syn1","timestamp":"2026-01-01T00:00:00Z","cwd":"' +
+			area +
+			'"}\n' +
 			'{"type":"message","id":"m1","parentId":null,"timestamp":"2026-01-01T00:00:01Z","message":{"role":"user","content":"hello"}}\n',
 	);
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('pj', 'pj', ?, ?, ?)",
-	).run(area, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('pj', 'pj', ?, ?, ?)",
+		)
+		.run(area, new Date().toISOString(), new Date().toISOString());
 	const byCwd = (cwd: string | null) => (cwd === area ? "pj" : null);
 	assert.equal(ingestSessionFile(db, file, byCwd).status, "ingested");
 	assert.equal(ingestSessionFile(db, file, byCwd).status, "unchanged");
@@ -80,12 +84,16 @@ test("sync: restoreSession rebuilds JSONL from ingested rows", () => {
 	const file = join(area, "rest.jsonl");
 	writeFileSync(
 		file,
-		'{"type":"session","version":3,"id":"rest1","timestamp":"2026-01-01T00:00:00Z","cwd":"' + area + '"}\n' +
+		'{"type":"session","version":3,"id":"rest1","timestamp":"2026-01-01T00:00:00Z","cwd":"' +
+			area +
+			'"}\n' +
 			'{"type":"message","id":"m1","parentId":null,"timestamp":"2026-01-01T00:00:01Z","message":{"role":"user","content":"restore me"}}\n',
 	);
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, session_store, created_at, updated_at) VALUES ('pj2', 'pj2', ?, 'repo', ?, ?)",
-	).run(area, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, session_store, created_at, updated_at) VALUES ('pj2', 'pj2', ?, 'repo', ?, ?)",
+		)
+		.run(area, new Date().toISOString(), new Date().toISOString());
 	ingestSessionFile(db, file, () => "pj2");
 	rmSync(file);
 	// restoreSession takes a target DIRECTORY and returns the written path
@@ -122,9 +130,11 @@ test("resolution: unknown cwd mints a fresh project", () => {
 // --- todo-store.ts --------------------------------------------------------------------
 
 test("todo-store: self-dep and missing-dep refused", () => {
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('tp', 'tp', ?, ?, ?)",
-	).run(area, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('tp', 'tp', ?, ?, ?)",
+		)
+		.run(area, new Date().toISOString(), new Date().toISOString());
 	const t1 = createTodo(db, "tp", "one");
 	assert.ok(t1.ok && t1.todo, "todo created");
 	const hex1 = hex6Of(t1.todo!.id);

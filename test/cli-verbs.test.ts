@@ -63,7 +63,12 @@ test("main: unknown command routes to launch (runPi) and propagates its code", a
 	let ran = false;
 	const rc = await main(
 		["--print", "hello"],
-		deps({ runPi: (async () => { ran = true; return 42; }) as ReturnType<typeof defaultDeps>["runPi"] }),
+		deps({
+			runPi: (async () => {
+				ran = true;
+				return 42;
+			}) as ReturnType<typeof defaultDeps>["runPi"],
+		}),
 	);
 	// prepareLaunch needs a resolvable project: fakeRepo registers via resolution
 	assert.equal(ran, true);
@@ -73,7 +78,10 @@ test("main: unknown command routes to launch (runPi) and propagates its code", a
 // --- cmd verbs ------------------------------------------------------------------------
 
 test("main: cmd new → run → logs happy path through dispatch", async () => {
-	const rc1 = await main(["cmd", "new", "a=echo one", "b=echo two", "--dep", "b:a"], deps());
+	const rc1 = await main(
+		["cmd", "new", "a=echo one", "b=echo two", "--dep", "b:a"],
+		deps(),
+	);
 	assert.equal(rc1, 0);
 	const graphId = outLines[0]!.trim();
 	assert.match(graphId, /^[0-9a-f-]{36}$/);
@@ -110,7 +118,10 @@ test("main: cmd new rejects bad node spec; cmd run --bg detaches; ps lists nothi
 
 test("main: cmd template save → list → run with --arg", async () => {
 	assert.equal(
-		await main(["cmd", "template", "save", "hello", "who", "say=echo hi $BB_ARG_WHO"], deps()),
+		await main(
+			["cmd", "template", "save", "hello", "who", "say=echo hi $BB_ARG_WHO"],
+			deps(),
+		),
 		0,
 	);
 	assert.match(outLines[0]!, /template 'hello' saved/);
@@ -120,7 +131,10 @@ test("main: cmd template save → list → run with --arg", async () => {
 	assert.match(outLines[0]!, /^hello\s/);
 
 	outLines = [];
-	assert.equal(await main(["cmd", "run", "hello", "--arg", "who=world"], deps()), 0);
+	assert.equal(
+		await main(["cmd", "run", "hello", "--arg", "who=world"], deps()),
+		0,
+	);
 	assert.match(outLines[0]!, /^graph \w+ done$/);
 	const graphId = outLines[0]!.split(" ")[1]!;
 
@@ -152,7 +166,9 @@ test("main: import dry-run scans, reports, writes nothing", async () => {
 	mkdirSync(claudeDir, { recursive: true });
 	writeFileSync(
 		join(claudeDir, "sess-x.jsonl"),
-		'{"type":"user","uuid":"u","parentUuid":null,"sessionId":"sess-x","timestamp":"2026-01-01T00:00:00Z","cwd":"' + area + '","message":{"role":"user","content":"hi"}}\n',
+		'{"type":"user","uuid":"u","parentUuid":null,"sessionId":"sess-x","timestamp":"2026-01-01T00:00:00Z","cwd":"' +
+			area +
+			'","message":{"role":"user","content":"hi"}}\n',
 	);
 	// main reads ~/.claude — can't point it elsewhere without HOME override;
 	// this test pins the dispatch + report surface only (real dirs tested in
