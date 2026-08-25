@@ -405,9 +405,23 @@ date: <yyyy-mm-dd>
 ## Risks & open questions   <!-- REQUIRED (Atlassian); "none identified"
                                is a valid answer — but say it explicitly -->
 
+## Requirements        <!-- REQUIRED (RFC 2119) — the normative inventory.
+                              Numbered, keyworded, testable. This is the
+                              contract section: the plan's steps satisfy
+                              these, the retro audits against them. -->
+<!-- R1. The system MUST ...        (absolute; violating = the design failed)
+     R2. The system SHOULD ...      (strong default; ignoring needs a reason)
+     R3. The system MAY ...         (truly optional; both choices interoperate)
+     R4. The system MUST NOT ...    (absolute prohibition; scope fence)
+     Write each as one testable statement. "The system SHOULD BE fast"
+     is not testable; "sync MUST complete under 2s for 100k sessions"
+     is. Sparing use per RFC 2119 §6: imperatives only where
+     interoperability or harm-limitation demands them. -->
+
 ## Verification        <!-- REQUIRED (PRFAQ: written from the future)
 <!-- "When this ships, ..." — commands, tests, bb_lsp diagnostics,
-     user-visible signals. The plan's steps must satisfy this section. -->
+     user-visible signals. The plan's steps must satisfy this section.
+     Each MUST requirement needs ≥1 matching verification line. -->
 ```
 
 **Completeness mechanics:** the scaffold ships with the question comments in
@@ -416,6 +430,22 @@ line of real content. `bb_design status` reports un-answered sections by
 name; the y-gate refuses with the list until all pass. (Summary is the only
 non-required section.) Source discipline: questions stay as comments in the
 final doc — future readers see what the section was asking for.
+
+**RFC 2119 discipline (added 2025-08-25):** the keyword language is
+normative, not decorative —
+
+- **MUST / MUST NOT** — absolute; a violated MUST means the design failed.
+  Gate check: every MUST in Requirements has ≥1 matching Verification line.
+- **SHOULD / SHOULD NOT** — strong default; deviations are *allowed but must
+  be justified in writing* (in the doc or the deviation's design needle).
+- **MAY** — truly optional; both choices MUST interoperate.
+- Uppercase only (RFC 8174): lowercase "must" is prose, not a requirement.
+- Sparing use (2119 §6): imperatives only where interop or harm demands —
+  requirements inflation is scope creep wearing a badge.
+- Scope is bilateral: Non-goals MUST NOT entries and Requirements MUST
+  entries together draw the fence; neither alone is the whole scope.
+- The retro audits actual behavior against these keywords: unmet MUST =
+honest failure, unmet SHOULD = recorded deviation with reason.
 
 **Plan = a ROW in blueberry.db.** `plans` table: id (uuid-6), design_id (FK
 nullable — plan-only work), project_id, status draft|approved|building|done|
