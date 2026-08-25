@@ -48,6 +48,7 @@ export function rewriteResumeHint(chunk: string): string {
 	// custom stores (scratchpad/--here) need it or resume lands in the
 	// wrong store. [^\n]*? stays line-bounded so we never over-match.
 	return chunk.replace(
+		// deno-lint-ignore no-control-regex: ANSI-tolerant by design (dim-wrapped resume hints)
 		/(?:\x1b\[2m)?To resume this session:[^\n]*?pi (--session-dir \S+ )?--session (\S+)/g,
 		"To resume this session: blueberry $1--session $2",
 	);

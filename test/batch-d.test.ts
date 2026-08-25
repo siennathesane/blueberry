@@ -6,7 +6,7 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "../src/core/db.ts";
 import { mutations, loadRegistry, saveRegistry } from "../src/core/registry.ts";

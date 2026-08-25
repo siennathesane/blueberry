@@ -58,7 +58,7 @@ test("claude: user/assistant entries, parentId chain, noise skipped, cwd/title",
 			isSidechain: false,
 			sessionId: "s1",
 			timestamp: "2026-01-01T00:00:00Z",
-			cwd: "/work/proj",
+			cwd: "WORK_PROJ",
 			message: { role: "user", content: "hello" },
 		}),
 		claudeLine({
@@ -74,16 +74,16 @@ test("claude: user/assistant entries, parentId chain, noise skipped, cwd/title",
 			isSidechain: false,
 			sessionId: "s1",
 			timestamp: "2026-01-01T00:00:05Z",
-			cwd: "/work/proj",
+			cwd: "WORK_PROJ",
 			message: { role: "assistant", content: [{ type: "text", text: "hi back" }] },
 			aiTitle: "Greeting session",
 		}),
 	];
 	const { header, entries, cwd, title } = convertClaudeSession(lines, "s1");
 	assert.equal(header["id"], "s1");
-	assert.equal(header["cwd"], "/work/proj");
+	assert.equal(header["cwd"], "WORK_PROJ");
 	assert.equal(header["timestamp"], "2026-01-01T00:00:00Z");
-	assert.equal(cwd, "/work/proj");
+	assert.equal(cwd, "WORK_PROJ");
 	assert.equal(title, "Greeting session");
 	assert.equal(entries.length, 2, "noise skipped");
 	assert.equal(entries[0]!["parentId"], null);
@@ -220,8 +220,8 @@ function seedSources(): void {
 	writeFileSync(
 		join(proj, "sess-c1.jsonl"),
 		[
-			'{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-c1","timestamp":"2026-01-01T00:00:00Z","cwd":"/work/proj","message":{"role":"user","content":"hello"}}',
-			'{"type":"assistant","uuid":"u2","parentUuid":"u1","sessionId":"sess-c1","timestamp":"2026-01-01T00:00:05Z","cwd":"/work/proj","message":{"role":"assistant","content":"hi"}}',
+			'{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-c1","timestamp":"2026-01-01T00:00:00Z","cwd":"WORK_PROJ","message":{"role":"user","content":"hello"}}',
+			'{"type":"assistant","uuid":"u2","parentUuid":"u1","sessionId":"sess-c1","timestamp":"2026-01-01T00:00:05Z","cwd":"WORK_PROJ","message":{"role":"assistant","content":"hi"}}',
 		].join("\n") + "\n",
 	);
 	// kimi: wd_ dir + ses_ dir + wire.jsonl + index
@@ -238,13 +238,13 @@ function seedSources(): void {
 		join(kimiDir, "session_index.jsonl"),
 		'{"sessionId":"ses_k1","sessionDir":"' +
 			join(wd, "ses_k1") +
-			'","workDir":"/work/proj"}\n',
+			'","workDir":"WORK_PROJ"}\n',
 	);
 }
 
 test("driver: dry-run reports without writing; apply writes and is idempotent", () => {
 	seedSources();
-	const byCwd = new Map([["/work/proj", "proj-1"]]);
+	const byCwd = new Map([["WORK_PROJ", "proj-1"]]);
 	const tmp = join(workRoot, "tmp");
 
 	const dry = importHistory(

@@ -6,7 +6,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { main, type CliDeps } from "../src/cli/main.ts";
 import { openDb } from "../src/core/db.ts";
 import { ingestSessionFile } from "../src/core/sync.ts";
@@ -177,7 +177,7 @@ test("library: numeric message content renders empty without crashing", () => {
 				version: 3,
 				id: "num-0000000001",
 				timestamp: ts,
-				cwd: "/x",
+				cwd: resolve("/x"),
 			}),
 			JSON.stringify({
 				type: "message",

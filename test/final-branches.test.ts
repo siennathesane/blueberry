@@ -5,6 +5,7 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { platform } from "node:os";
 import { chmodSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main, type CliDeps } from "../src/cli/main.ts";
@@ -251,14 +252,22 @@ test("sync: unreadable file in store reports error via syncStores", () => {
 	fakeSession(store, { cwd: root, firstUserText: "fine" });
 	const unreadable = join(store, "locked.jsonl");
 	writeFileSync(unreadable, "{}\n");
-	chmodSync(unreadable, 0o000);
-
-	const db = openDb(agentDir);
-	const report = syncStores(db, agentDir, loadRegistrySync(agentDir));
-	assert.equal(report.errors.length, 1);
-	assert.ok(report.errors[0]!.file.includes("locked"));
-	chmodSync(unreadable, 0o644);
-	db.close();
+	if (platform() !== "win32") {
+		// #32: chmod semantics differ on Windows; unix-only behavior tested
+		chmodSync(unreadable, 0o000);
+		const db = openDb(agentDir);
+		const report = syncStores(db, agentDir, loadRegistrySync(agentDir));
+		assert.equal(report.errors.length, 1);
+		assert.ok(report.errors[0]!.file.includes("locked"));
+		chmodSync(unreadable, 0o644);
+		db.close();
+	} else {
+		// On Windows, skip the unreadable-file test as chmod does not enforce
+		const db = openDb(agentDir);
+		const report = syncStores(db, agentDir, loadRegistrySync(agentDir));
+		assert.equal(report.errors.length, 0);
+		db.close();
+	}
 });
 
 test("sync: SQLITE_BUSY on a held lock reports error without data loss", () => {

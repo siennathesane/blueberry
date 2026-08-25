@@ -136,8 +136,9 @@ test("ingest: idempotent by (mtime,size); changed file re-ingests fully", () => 
 test("ingest: orphan cwds and unparseable files are reported, never crash", () => {
 	const db = openDb(agentDir);
 	const orphanStore = `${area}/orphans`;
+	const orphanCwd = join(area, "orphan-cwd"); // #32: use platform path
 	const f1 = fakeSession(orphanStore, {
-		cwd: "/no/such/project",
+		cwd: orphanCwd,
 		firstUserText: "x",
 	});
 	assert.equal(ingestSessionFile(db, f1, () => null).status, "orphan");

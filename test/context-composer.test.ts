@@ -17,9 +17,14 @@ import {
 	type DiagnosticNudge,
 	type IdentityProbe,
 } from "../src/core/context-composer.ts";
+import { resolve } from "node:path";
+
+// Platform-conditional fake cwd paths for Windows compatibility (#32)
+const TMP_PROJ = resolve("/tmp/proj");
+
 
 const baseProbe: IdentityProbe = {
-	cwd: "/tmp/proj",
+	cwd: TMP_PROJ,
 	lspLanguages: ["go", "rust"],
 	hasDesignLifecycle: true,
 	hasTodos: true,

@@ -6,7 +6,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { main, type CliDeps } from "../src/cli/main.ts";
 import { openDb, loadRegistrySync, saveRegistrySync } from "../src/core/db.ts";
 import { entryText } from "../src/core/sync.ts";
@@ -62,7 +62,7 @@ test("fix: orphan store with mixed cwds — majority wins via comparator", () =>
 	const orphan = join(agentDir, "sessions", "mixedbag");
 	fakeSession(orphan, { cwd: rootA, firstUserText: "one" });
 	fakeSession(orphan, { cwd: rootA, firstUserText: "two" });
-	fakeSession(orphan, { cwd: "/no/such/dir", firstUserText: "stray" });
+	fakeSession(orphan, { cwd: "NO_SUCH_DIR", firstUserText: "stray" });
 
 	const registry = loadRegistrySync(agentDir);
 	const report = runFix(registry, agentDir, { dryRun: false });
@@ -206,7 +206,7 @@ test("sessions: numeric message content yields null firstUserText without crashi
 				version: 3,
 				id: "num-id-0000001",
 				timestamp: ts,
-				cwd: "/x",
+				cwd: resolve("/x"),
 			}),
 			JSON.stringify({
 				type: "message",

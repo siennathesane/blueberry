@@ -1,17 +1,20 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readTrust, writeTrustEntries, trustPaths } from "../src/core/trust.ts";
-import { tmpAgentDir, cleanup } from "./helpers.ts";
+import { tmpAgentDir, cleanup, tmpDir } from "./helpers.ts";
+import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { readJsonIfExists } from "../src/core/util.ts";
 
 let agentDir: string;
+let area: string;
 
 beforeEach(() => {
 	agentDir = tmpAgentDir();
+	area = tmpDir("bb-trust-");
 });
 afterEach(() => {
-	cleanup(agentDir);
+	cleanup(agentDir, area);
 });
 
 test("readTrust: missing file -> {}", () => {
@@ -19,20 +22,23 @@ test("readTrust: missing file -> {}", () => {
 });
 
 test("trust round-trip: set, read, remove", async () => {
-	await trustPaths(agentDir, ["/x/proj-a", "/x/proj-b"]);
+	const projA = join(area, "proj-a");
+	const projB = join(area, "proj-b");
+	await trustPaths(agentDir, [projA, projB]);
 	const t = readTrust(agentDir);
-	assert.equal(t["/x/proj-a"], true);
-	assert.equal(t["/x/proj-b"], true);
+	assert.equal(t[projA], true);
+	assert.equal(t[projB], true);
 
-	await writeTrustEntries(agentDir, [{ path: "/x/proj-a", decision: null }]);
+	await writeTrustEntries(agentDir, [{ path: projA, decision: null }]);
 	const t2 = readTrust(agentDir);
-	assert.equal(t2["/x/proj-a"], undefined);
-	assert.equal(t2["/x/proj-b"], true);
+	assert.equal(t2[projA], undefined);
+	assert.equal(t2[projB], true);
 });
 
 test("writeTrustEntries: false records explicit distrust", async () => {
-	await writeTrustEntries(agentDir, [{ path: "/x/bad", decision: false }]);
-	assert.equal(readTrust(agentDir)["/x/bad"], false);
+	const bad = join(area, "bad");
+	await writeTrustEntries(agentDir, [{ path: bad, decision: false }]);
+	assert.equal(readTrust(agentDir)[bad], false);
 });
 
 test("trust file is valid JSON with no temp residue", async () => {

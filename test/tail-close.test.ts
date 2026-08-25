@@ -7,7 +7,8 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { platform } from "node:os";
+import { join, resolve } from "node:path";
 import {
 	openDb,
 	loadRegistrySync,
@@ -67,11 +68,15 @@ function seedProject(name: string): { root: string; id: string } {
 
 // --- sync.ts: orphan mapping, fts quoting, multi-store -------------------------------
 
+// Platform-conditional fake cwd paths for Windows compatibility (#32)
+const ORPHAN_CWD = resolve("/definitely/not/a/project");
+
+
 test("sync: orphan detail carries cwd text; errors carry detail", () => {
 	seedProject("orphdet");
 	const store = getCentralStoreDir(agentDir, "orphdet");
 	fakeSession(store, {
-		cwd: "/definitely/not/a/project",
+		cwd: ORPHAN_CWD,
 		firstUserText: "orphan body",
 	});
 	const db = openDb(agentDir);
@@ -428,13 +433,23 @@ test("doc-index: unreadable file lands in errors, others proceed", () => {
 		join(dir, "locked.md"),
 		`---\nid: lk8888\n---\n\n## Goal\n\nLocked.`,
 	);
-	chmodSync(join(dir, "locked.md"), 0o000);
-	const db = openDb(agentDir);
-	const r = ingestDesignDocs2(db, area, "p2");
-	assert.equal(r.ingested, 1);
-	assert.equal(r.errors.length, 1);
-	chmodSync(join(dir, "locked.md"), 0o644);
-	db.close();
+	if (platform() !== "win32") {
+		// #32: chmod semantics differ on Windows; unix-only behavior tested
+		chmodSync(join(dir, "locked.md"), 0o000);
+		const db = openDb(agentDir);
+		const r = ingestDesignDocs2(db, area, "p2");
+		assert.equal(r.ingested, 1);
+		assert.equal(r.errors.length, 1);
+		chmodSync(join(dir, "locked.md"), 0o644);
+		db.close();
+	} else {
+		// On Windows, skip the unreadable-file test as chmod does not enforce
+		const db = openDb(agentDir);
+		const r = ingestDesignDocs2(db, area, "p2");
+		assert.equal(r.ingested, 2);
+		assert.equal(r.errors.length, 0);
+		db.close();
+	}
 });
 
 import * as fsmod from "node:fs";
