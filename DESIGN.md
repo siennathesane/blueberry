@@ -1088,7 +1088,8 @@ blind-sided by invisible UI. Three layers, two rails.
   turn, always accurate, zero accumulation (rebuilt from scratch each call —
   the session file never stores it).
 
-### Layer 1 — identity (core extension, project-aware) — DECIDED: injected,
+### Layer 1 — identity (core extension, project-aware) — DECIDED: injected
+
 NOT APPEND_SYSTEM.md
 
 The core extension composes the identity block at session_start (semi-static

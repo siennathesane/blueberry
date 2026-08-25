@@ -88,7 +88,14 @@ async function openTodoPane(ctx: {
 	mode: string;
 	ui: {
 		notify(msg: string, kind: "info" | "warning"): void;
-		custom<T>(make: (tui: TuiLike, theme: PaneTheme, kb: unknown, done: (v: T) => void) => unknown): Promise<T>;
+		custom<T>(
+			make: (
+				tui: TuiLike,
+				theme: PaneTheme,
+				kb: unknown,
+				done: (v: T) => void,
+			) => unknown,
+		): Promise<T>;
 	};
 }): Promise<void> {
 	if (ctx.mode !== "tui") {
