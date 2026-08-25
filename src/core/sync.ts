@@ -68,6 +68,7 @@ export function ingestSessionFile(
 	db: DatabaseSync,
 	file: string,
 	projectIdFor: (cwd: string | null) => string | null,
+	opts?: { allowOrphan?: boolean },
 ): IngestResult {
 	let mtimeMs: number;
 	let size: number;
@@ -108,7 +109,7 @@ export function ingestSessionFile(
 			? header["cwd"]
 			: null;
 	const projectId = projectIdFor(cwd);
-	if (!projectId)
+	if (!projectId && !opts?.allowOrphan)
 		return {
 			status: "orphan",
 			sessionId,

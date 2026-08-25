@@ -120,6 +120,7 @@ usage:
   blueberry cmd run <id|template> [--arg k=v] [--bg]  execute (waits; --bg detaches)
   blueberry cmd ls | ps | logs <id> [node]     inspect
   blueberry cmd template save <name> <p1,p2> 'n=cmd'...  store a template
+  blueberry import [--from claude|kimi|all] [--apply] [--limit N]  import history (dry-run default)
 
 launch flags:
   --here            keep this exact directory as session cwd (may fragment history)
@@ -177,7 +178,83 @@ export async function main(
 
 	// --- cmd (command graph; design 003) ----------------------------------------------
 
-	async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
+	// --- import (history → blueberry.db; #45) -------------------------------------------
+
+async function importCmd(rest: string[], deps: CliDeps): Promise<number> {
+	const { importHistory } = await import("../core/import-history.ts");
+	const source = rest.includes("--from")
+		? (rest[rest.indexOf("--from") + 1] as "claude" | "kimi" | "all")
+		: "all";
+	const apply = rest.includes("--apply");
+	const limitFlag = rest.indexOf("--limit");
+	const limit = limitFlag >= 0 ? Number(rest[limitFlag + 1]) : undefined;
+	const db = openDb(deps.agentDir);
+	try {
+		const registry = loadRegistryDb(db);
+		const byPath = new Map<string, string>();
+		for (const p of registry.projects) {
+			byPath.set(p.canonicalPath, p.id);
+			for (const a of p.aliases) byPath.set(a, p.id);
+		}
+		const { normalizePathForCompare } = await import("../core/util.ts");
+		const home = (await import("node:os")).homedir();
+		const { join } = await import("node:path");
+		const { tmpdir } = await import("node:os");
+		// auto-register projects for encountered cwds (the import's sources
+		// ARE real projects on disk — registration is the natural step, same
+		// as prepareLaunch mints; orphan-refusal then never bites)
+		const { slugify } = await import("../core/util.ts");
+		const { randomUUID } = await import("node:crypto");
+		const { existsSync } = await import("node:fs");
+		const { basename } = await import("node:path");
+		const mint = new Map<string, string>();
+		const regOrMint = (cwd: string | null): string | null => {
+			if (cwd === null) return null;
+			const hit = byPath.get(cwd);
+			if (hit) return hit;
+			const existing = mint.get(cwd);
+			if (existing) return existing;
+			if (!existsSync(cwd)) return null; // gone on disk: stays an orphan
+			let slug = slugify(basename(cwd));
+			const taken = new Set<string>(registry.projects.map((p) => p.slug));
+			let n = 2;
+			while (taken.has(slug)) slug = `${slugify(basename(cwd))}-${n++}`;
+			const id = randomUUID();
+			const now = new Date().toISOString();
+			db.prepare(
+				"INSERT INTO projects (id, slug, canonical_path, session_store, trusted, created_at, updated_at) VALUES (?, ?, ?, 'central', 1, ?, ?)",
+			).run(id, slug, cwd, now, now);
+			mint.set(cwd, id);
+			return id;
+		};
+		const report = importHistory(
+			db,
+			regOrMint,
+			{
+				claude: join(home, ".claude", "projects"),
+				kimi: join(home, ".kimi-code", "sessions"),
+			},
+			{ source, apply, limit },
+			join(tmpdir(), "bb-import"),
+		);
+		const mode = apply ? "imported" : "would import";
+		deps.out(
+			`${mode}: ${report.imported.length} · skipped: ${report.skipped} · errors: ${report.errors.length} (scanned ${report.scanned})`,
+		);
+		for (const s of report.imported.slice(0, 5)) {
+			deps.out(`  ${s.source.padEnd(6)} ${s.cwd ?? "—"} · ${s.messages} msgs`);
+		}
+		if (report.imported.length > 5) deps.out(`  … +${report.imported.length - 5} more`);
+		for (const e of report.errors.slice(0, 3)) {
+			deps.err(`  ${e.sessionId}: ${e.detail}`);
+		}
+		return report.errors.length > 0 && apply ? 1 : 0;
+	} finally {
+		db.close();
+	}
+}
+
+async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
 		const {
 			createGraph,
 			listGraphs,
@@ -497,6 +574,8 @@ export async function main(
 			return updateCmd(rest, deps);
 		case "cmd":
 			return cmdCmd(rest, deps);
+		case "import":
+			return importCmd(rest, deps);
 		default:
 			// anything that isn't a known subcommand is treated as pi launch
 			return launchMode(argv, deps);
