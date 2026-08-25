@@ -90,9 +90,24 @@ test("keybindings: exactly the claims we ship — shift+tab and ctrl+p freed", (
 		"alt+m",
 		"model cycle off ctrl+p (todo pane) — NEVER ctrl+m (aliases Enter)",
 	);
+	assert.deepEqual(
+		DEFAULT_KEYBINDINGS["app.models.toggleProvider"],
+		[],
+		"ctrl+p unbound from provider toggle (ours: todo pane)",
+	);
+	assert.deepEqual(
+		DEFAULT_KEYBINDINGS["app.model.cycleBackward"],
+		[],
+		"ctrl+p unbound from model cycle-back (ours: todo pane)",
+	);
+	assert.deepEqual(
+		DEFAULT_KEYBINDINGS["app.session.togglePath"],
+		[],
+		"ctrl+p unbound from path toggle (ours: todo pane)",
+	);
 	assert.equal(
 		Object.keys(DEFAULT_KEYBINDINGS).length,
-		2,
+		5,
 		"no accidental extra claims",
 	);
 });
@@ -101,8 +116,12 @@ test("keybindings: NO claim aliases a primary key (the ctrl+m==Enter regression 
 	// the contract itself must be safe — the test that was missing
 	validateKeybindings(DEFAULT_KEYBINDINGS);
 	for (const [id, key] of Object.entries(DEFAULT_KEYBINDINGS)) {
-		assert.notEqual(key, "ctrl+m", `${id} still claims ctrl+m`);
+		if (typeof key === "string") {
+			assert.notEqual(key, "ctrl+m", `${id} still claims ctrl+m`);
+		}
 	}
+	// unbind entries (empty arrays) claim nothing and can never alias
+	validateKeybindings({ "app.models.toggleProvider": [] });
 });
 
 test("keybindings: the alias denylist catches the historical bug", () => {
@@ -119,7 +138,10 @@ test("keybindings: the alias denylist catches the historical bug", () => {
 	);
 	// every denylist entry self-rejects (the list stays honest)
 	for (const key of Object.keys(UNSAFE_KEY_ALIASES)) {
-		assert.ok(validateClaimedKey(key) !== null, `denylist entry ${key} must self-reject`);
+		assert.ok(
+			validateClaimedKey(key) !== null,
+			`denylist entry ${key} must self-reject`,
+		);
 	}
 });
 
@@ -128,13 +150,13 @@ test("keybindings: the LIVE ~/.blueberry/keybindings.json matches the contract",
 	if (!existsSync(live)) return; // not installed on this machine (CI): skip silently
 	const parsed = JSON.parse(readFileSync(live, "utf8")) as Record<
 		string,
-		string
+		string | string[]
 	>;
 	for (const [id, key] of Object.entries(DEFAULT_KEYBINDINGS)) {
-		assert.equal(
+		assert.deepEqual(
 			parsed[id],
 			key,
-			`live keybindings drifted: ${id} should be ${key}`,
+			`live keybindings drifted: ${id} should be ${JSON.stringify(key)}`,
 		);
 	}
 });
@@ -145,9 +167,13 @@ test("keybindings: setup.sh writes the same contract (source-level check)", () =
 		"utf8",
 	);
 	for (const [id, key] of Object.entries(DEFAULT_KEYBINDINGS)) {
+		// string claims appear as "id": "key"; unbinds as "id": []
+		const needle = Array.isArray(key)
+			? `"${id}": []`
+			: `"${id}": "${key}"`;
 		assert.ok(
-			setup.includes(`"${id}": "${key}"`),
-			`setup.sh missing claim: ${id}: ${key}`,
+			setup.includes(needle),
+			`setup.sh missing claim: ${id}: ${needle}`,
 		);
 	}
 });

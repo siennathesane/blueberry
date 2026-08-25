@@ -44,26 +44,31 @@ export function terminalTitle(
  * This is the denylist every claim must pass.
  */
 export const UNSAFE_KEY_ALIASES: Record<string, string> = {
-	"ctrl+m": "Enter (CR, 0x0D)",
-	"ctrl+j": "Line Feed (LF, 0x0A) — aliases shift+enter on some terminals",
-	"ctrl+i": "Tab (0x09)",
-	"ctrl+h": "Backspace on some terminals",
-	"ctrl+[": "Escape on some terminals",
+ "ctrl+m": "Enter (CR, 0x0D)",
+ "ctrl+j": "Line Feed (LF, 0x0A) — aliases shift+enter on some terminals",
+ "ctrl+i": "Tab (0x09)",
+ "ctrl+h": "Backspace on some terminals",
+ "ctrl+[": "Escape on some terminals",
 };
 
 /** Every key blueberry claims must pass this or the contract test fails. */
 export function validateClaimedKey(key: string): string | null {
-	return UNSAFE_KEY_ALIASES[key] ?? null;
+ return UNSAFE_KEY_ALIASES[key] ?? null;
 }
 
 /** Validate the whole contract; throws on the first unsafe claim. */
-export function validateKeybindings(bindings: Record<string, string>): void {
-	for (const [id, key] of Object.entries(bindings)) {
-		const alias = validateClaimedKey(key);
-		if (alias !== null) {
-			throw new Error(`keybindings claim unsafe: ${id} → ${key} aliases ${alias}`);
-		}
-	}
+/** A keybinding claim: a key string, or an empty array to unbind an action. */
+export type KeyClaim = string | string[];
+
+export function validateKeybindings(bindings: Record<string, KeyClaim>): void {
+ for (const [id, key] of Object.entries(bindings)) {
+  // empty array = unbind (nothing claimed — always safe)
+  if (Array.isArray(key)) continue;
+  const alias = validateClaimedKey(key);
+  if (alias !== null) {
+   throw new Error(`keybindings claim unsafe: ${id} → ${key} aliases ${alias}`);
+  }
+ }
 }
 
 /**
@@ -77,7 +82,11 @@ export function validateKeybindings(bindings: Record<string, string>): void {
  *   (NEVER ctrl+m — it is byte-identical to Enter; the regression that
  *   shipped 2025-08-25 and made Enter cycle models)
  */
-export const DEFAULT_KEYBINDINGS: Record<string, string> = {
-	"app.thinking.cycle": "ctrl+shift+t",
-	"app.model.cycleForward": "alt+m",
+export const DEFAULT_KEYBINDINGS: Record<string, KeyClaim> = {
+ "app.thinking.cycle": "ctrl+shift+t",
+ "app.model.cycleForward": "alt+m",
+ // ctrl+p is OURS: unbind every pi builtin that claims it (empty = disable)
+ "app.models.toggleProvider": [],
+ "app.model.cycleBackward": [],
+ "app.session.togglePath": [],
 };

@@ -19,6 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { findProjectBoundary } from "../../src/core/markers.ts";
 import { getVersion } from "../../src/core/version.ts";
 import { projectNameFor, terminalTitle } from "../../src/core/identity.ts";
+import { installInterceptor } from "../../src/core/title-guard.ts";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -88,6 +89,18 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", (event, ctx) => {
+		// §Title-guard: transport-level claim. pi writes OSC 0 titles from 8
+		// internal call sites (incl. async paths no event can observe) — we
+		// rewrite every non-ours title at the byte level instead of racing
+		// events. Also rewrites pi's exit resume hint to the bb surface.
+		if (ctx.mode === "tui") {
+			const boundary0 = findProjectBoundary(resolve(ctx.cwd));
+			installInterceptor(
+				process.stdout as unknown as { write(...args: unknown[]): boolean } & object,
+				terminalTitle(projectNameFor(boundary0 ? boundary0.root : ctx.cwd)),
+			);
+		}
+
 		const { cwd, boundary } = applyIdentity(ctx, event.reason);
 
 		// Fragmentation guard (§Sessions): warn when this session is NOT

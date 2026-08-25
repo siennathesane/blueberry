@@ -57,10 +57,13 @@ if [ ! -f "$AGENT_DIR/keybindings.json" ]; then
   cat >"$AGENT_DIR/keybindings.json" <<'KBEOF'
 {
   "app.thinking.cycle": "ctrl+shift+t",
-  "app.model.cycleForward": "alt+m"
+  "app.model.cycleForward": "alt+m",
+  "app.models.toggleProvider": [],
+  "app.model.cycleBackward": [],
+  "app.session.togglePath": []
 }
 KBEOF
-  echo "blueberry: wrote keybindings.json (thinking → ctrl+shift+t, model cycle → alt+m; shift+tab + ctrl+p freed)"
+  echo "blueberry: wrote keybindings.json (thinking → ctrl+shift+t, model cycle → alt+m; ctrl+p fully freed for todo pane)"
 fi
 
 # Carry auth from the old setup if blueberry has none yet.
