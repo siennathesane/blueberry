@@ -523,6 +523,41 @@ actual: added, dropped, reordered) — dreaming substrate.
 - /design + /plan commands: rendered doc view, gate keys, history subcommand
 - strip segments per mode; design:/plan: needles in §Library search
 
+### Mode ring — shift+tab (DECIDED 2025-08-25)
+
+Phases are core framework state, so they get a muscle-memory entry: the
+mode ring. **Blueberry claims shift+tab** (thinking cycling moves to
+`ctrl+shift+t` via blueberry's shipped keybindings.json — a distribution's
+prerogative; `app.thinking.cycle` remap is a stock pi mechanism).
+
+```text
+      shift+tab          shift+tab           shift+tab
+  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+  ▼              │   ▼              │   ▼              │
+ normal ──────▶ design ──────────▶ plan ──────────▶ normal
+ (building)     ◈ scaffolds/        ⬡ decomposition    seeds DAG,
+                 reorients           (design-linked     strip: building
+                                     or plan-only)      N/M + drift
+```
+
+**Legality guards** (forward hops only; no accidental mode loss):
+- normal → design: always legal — scaffolds a new doc or reorients the
+  open one (one `open` design per project)
+- design → plan: requires the design `decided` (y-gate passed); otherwise
+  toast "approve the design first — /design then y"
+- plan → normal: plan approval (y) is the *seeding* transition; shift+tab
+  out of a draft plan prompts confirm ("leave planning? draft kept in db")
+- plan-only entry: normal → plan directly when no design doc exists
+- building is not a fourth mode — it's normal with an active plan (strip
+  shows `⬡ building <title> N/M`)
+
+**Mechanics:** the ring advances the project-wide mode in blueberry.db
+(any session sees it); the extension renders the strip segment on
+model_select/session_start and on each hop; illegal hops toast the reason
+rather than silently no-op. /design /plan /implement remain as explicit
+entries for discoverability. Rebind resistance is zero-config:
+bin/setup.sh writes the keybindings.json remap at install time.
+
 ### Open questions
 
 - [x] Plan-only work: **DB-invisible** — no docs/ stub; the ingest stays
@@ -531,6 +566,147 @@ actual: added, dropped, reordered) — dreaming substrate.
       supersede checkpoint digest** — a logged bb-design breadcrumb recording
       what was dropped and why, searchable forever. Drops are never silent.
 - [ ] /design history render: full life view (rounds, decisions, drift, retro)?
+
+### §Plan layer — exhaustive decomposition (round 2, 2025-08-25)
+
+**The reframe: plan mode = coverage proof.** The plan doesn't list tasks —
+it enumerates the tree of possibilities the design implies, covers each
+branch with work items and test cases, and justifies every omission.
+Grounded in: WBS **100% rule** (children sum to parent at every level —
+applied here to the design doc itself), equivalence partitioning + boundary
+value analysis (EP/BVA), decision tables, FSM edge discipline, and NIST's
+honest conclusion that true exhaustiveness is infeasible — the professional
+standard is *explicit* coverage scope, not implicit completeness.
+
+#### The plan doc format (comprehensive)
+
+```markdown
+---
+id: <hex6>
+design_id: <hex6>          # FK to the design doc
+status: draft|approved|building|done|abandoned
+rev: N
+---
+
+# Plan: <title>
+
+## Steps                        <!-- the decomposition proper -->
+<!-- Each step: imperative, one deliverable, requirement tags, deps,
+     ACCEPTANCE — how we know it's done. Steps without acceptance criteria
+     are wishes, not work items. -->
+
+1. **<imperative title>** `R1,R3` ⟵ 2
+   - Deliverable: <what exists after this step>
+   - Acceptance: <command | test | observable signal>
+
+## Test matrix                  <!-- verification of the design's requirements -->
+<!-- Per requirement R#: case id, type, what it proves, coverage tags.
+     Types: happy, boundary (EP/BVA), state-transition, decision-row,
+     failure. Every MUST requirement ≥1 case (gate-checked). -->
+
+| Case | Type | Proves | Covers | Step |
+|------|------|--------|--------|------|
+| T1   | happy | R1 satisfied | R1 | 1 |
+| T2   | boundary | R2 at partition edges | R2 | 3 |
+
+## Coverage matrix              <!-- design → plan traceability (100% rule) -->
+<!-- EVERY design aspect maps to plan elements. Aspects = each requirement,
+     each audience surface, each lifecycle state, each verification line in
+     the design's own Verification section. An empty row = an uncovered
+     aspect = the gate refuses. This is the aspect-coverage depth metric
+     (user decision: "did we plan for every single aspect of the design?"). -->
+
+| Design aspect | Steps | Cases |
+|---------------|-------|-------|
+| R1: <must text> | 1,2 | T1 |
+| Audience: <surface> | 4 | T5 |
+| State: <lifecycle state> | 2,5 | T3,T4 |
+
+## Scope purity                 <!-- plan → design traceability -->
+<!-- Every step must cite the design aspect that justifies it. Uncited
+     steps are flagged: scope creep (cut or supersede the design) or
+     emergent work (allowed, but recorded in the ledger below). -->
+
+## Consistency passes           <!-- run after decomposition, before approval.
+                                     Results append here; clean audit required
+                                     to open the gate. Re-run at checkpoints. -->
+
+### P1: Design completeness
+<!-- Every design section enumerated? Every MUST covered by ≥1 step AND
+     ≥1 test case? Every design Verification line has a plan element
+     satisfying it? Output: aspect list with green/gap marks. -->
+
+### P2: Plan purity
+<!-- No step invents scope absent from the design. Uncited steps flagged
+     with disposition: cut | emergent (ledgered) | design supersede needed. -->
+
+### P3: Test completeness
+<!-- Every MUST has ≥1 case. Every state/edge enumerated in coverage matrix
+     has a case. Boundary cases exist for every input the design names.
+     Failure cases exist for every happy path. -->
+
+### P4: Dependency sanity
+<!-- No step depends on something the plan doesn't contain. No cycles
+     (DAG legality re-checks at seed). Critical path identified and marked. -->
+
+### Pass record
+<!-- P1: clean | 2 gaps fixed (R5 step added, T7 added)
+     P2: 1 emergent step ledgered
+     P3: clean
+     P4: clean, critical path = steps 1→3→4 -->
+
+## Not enumerated               <!-- REQUIRED omission ledger -->
+<!-- Conscious exclusions with reasons. "We didn't think of X" is a gap;
+     "X: out of scope because Y" is engineering. Retro scores the ledger's
+     honesty against what actually bit during building. -->
+
+- <aspect>: out of scope because <reason>
+
+## Verification plan            <!-- how the DECOMPOSITION itself is verified -->
+<!-- The consistency passes above are the mechanism; this section records
+     when they run: at plan completion (mandatory), at each checkpoint
+     (drift re-audit), at done (retro input). -->
+```
+
+#### Enumeration passes (the workflow)
+
+`bb_plan enumerate --<pass>` runs against the linked design doc and repo,
+appending ranked candidate steps/cases the decomposition missed:
+
+- `--surfaces`: every user/model-visible surface → build + verify steps
+- `--states`: every lifecycle state → entry/exit/transition/error cases
+- `--boundaries`: EP/BVA on every input the design names
+- `--decisions`: interacting conditions → decision-table rows
+- `--failures`: every happy path's unhappy sibling
+
+**Ranked top-15 per pass** (user decision), with an honest "N more
+suggested, not shown" count. The model proposes; the plan absorbs or
+ledger-rejects with reasons.
+
+#### Test-case-as-task seeding (user decision: agreed)
+
+Requirements-bearing cases (MUST-covering) seed as `[test]`-typed DAG tasks;
+the remainder live as checklist content in the test matrix. The board stays
+readable; the MUSTs stay executable.
+
+#### Consistency passes (user decision #4)
+
+After the model believes the plan is complete — and before the y-gate —
+the four passes run mechanically and their record lands in the doc:
+- **bidirectional traceability**: design→plan (nothing missed) and
+  plan→design (nothing invented) — the two directions catch opposite bugs
+- **re-run at checkpoints**: drift during building re-audits the passes;
+  a MUST uncovered mid-flight is a plan amendment, not a surprise
+- **retro input**: the pass records + omission ledger score against actual
+  outcomes — what bit that wasn't enumerated teaches future decomposition
+
+#### Gate (approval = seeding + audit)
+
+The y-gate requires: all REQUIRED design sections answered (design gate),
+coverage matrix complete (every row non-empty), scope purity clean-or-
+ledgered, pass record clean-or-fixed, Not-enumerated non-empty-and-justified.
+Then atomically: tools restore, steps+deps seed the DAG (legality-checked),
+MUST-cases seed as [test] tasks, `plan:<slug>/<hex6>` breadcrumb logged.
 
 ---
 
