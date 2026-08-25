@@ -51,6 +51,17 @@ print(f"blueberry: wrote {settings_path}")
 PY
 fi
 
+# Claim shift+tab for the mode ring: rebalance thinking to ctrl+shift+t
+# (§Design mode ring — a distribution's prerogative via stock pi rebinding)
+if [ ! -f "$AGENT_DIR/keybindings.json" ]; then
+  cat > "$AGENT_DIR/keybindings.json" <<'KBEOF'
+{
+  "app.thinking.cycle": "ctrl+shift+t"
+}
+KBEOF
+  echo "blueberry: wrote keybindings.json (thinking → ctrl+shift+t, shift+tab freed for mode ring)"
+fi
+
 # Carry auth from the old setup if blueberry has none yet.
 if [ ! -f "$AGENT_DIR/auth.json" ] && [ -f "$HOME/.pi/agent/auth.json" ]; then
   cp "$HOME/.pi/agent/auth.json" "$AGENT_DIR/auth.json"

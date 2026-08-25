@@ -4,7 +4,8 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { openDb } from "../src/core/db.ts";
 import {
 	DESIGN_SCAFFOLD,
@@ -30,9 +31,10 @@ import {
 	planProgress,
 	runAllPasses,
 	seedPlan,
+	setPlanStatus,
 	updatePlanBody,
 } from "../src/core/plan-store.ts";
-import { ingestDesignDocs } from "../src/core/doc-index.ts";
+import { ingestDesignDocs, searchDocs } from "../src/core/doc-index.ts";
 import { listTodos } from "../src/core/todo-store.ts";
 import { tmpAgentDir, tmpDir, cleanup } from "./helpers.ts";
 
@@ -309,4 +311,126 @@ test("runAllPasses: full pipeline on a good design+plan", () => {
 test("planBreadcrumb: needle format", () => {
 	const b = planBreadcrumb("p", "cd34ef", "Plan Title", "approved");
 	assert.ok(b.startsWith("plan:p/cd34ef"));
+});
+
+// --- branch closure: design-store edges, plan-store edges ---
+
+test("completeness: untagged MUSTs are not collected (R# prefix required by contract)", () => {
+	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
+	body = body.replace("## Requirements\n", "## Requirements\n\n1. The system MUST do a thing without an R tag.\n");
+	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions", "Verification"]) {
+		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
+	}
+	const r = checkCompleteness(body);
+	// the MUST regex requires an R# prefix: untagged imperatives are prose,
+	// not collected — the doc contract says tag requirements as R#
+	assert.equal(r.requirements.musts.length, 0, "untagged MUST not collected");
+	assert.equal(r.requirements.uncoveredMusts.length, 0);
+});
+
+test("completeness: rid-tagged MUST with empty verification → uncovered", () => {
+	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
+	body = body.replace("## Requirements\n", "## Requirements\n\nR7. The system MUST retry.\n");
+	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
+		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
+	}
+	// Verification left EMPTY
+	const r = checkCompleteness(body);
+	assert.equal(r.requirements.uncoveredMusts.length, 1, "R7 with empty verification flagged");
+	assert.ok(r.requirements.uncoveredMusts[0]!.includes("R7"));
+});
+
+test("writeDesignStatus: malformed frontmatter (no closing ---) left as-is", () => {
+	const path = join(area, "docs", "design", "malformed.md");
+	mkdirSync(join(area, "docs", "design"), { recursive: true });
+	writeFileSync(path, "---\nstatus: open\ntitle: M\n\n# no closing fence\nbody");
+	writeDesignStatus(path, "decided", { supersededBy: "zz0000" });
+	const after = readFileSync(path, "utf8");
+	// status line WAS replaced; the insert bailed (no crash)
+	assert.ok(after.includes("status: decided"));
+});
+
+test("writeDesignStatus: existing superseded-by line replaced, not duplicated", () => {
+	const { path } = scaffoldDesign(area, "Replace Me");
+	writeDesignStatus(path, "superseded", { supersededBy: "aa1111" });
+	writeDesignStatus(path, "superseded", { supersededBy: "bb2222" });
+	const doc = readDesignDoc(path);
+	assert.equal(doc!.supersededBy, "bb2222");
+	const count = (readFileSync(path, "utf8").match(/^superseded-by:/gm) ?? []).length;
+	assert.equal(count, 1, "no duplicate lines");
+});
+
+test("seedPlan: whitespace-only step titles still seed (S<n>. prefix makes them valid)", () => {
+	const body = `## Steps\n\n1. **  **  \`R1\`\n\n2. **Real** \`R2\`\n`;
+	const plan = createPlan(db, PROJECT, body);
+	const result = seedPlan(db, plan, "p", null);
+	// step 1 title is spaces, but seeding prefixes it: "S1.  [R1]" — trims non-empty
+	assert.equal(result.count, 2, JSON.stringify(result.errors));
+	assert.equal(result.errors.length, 0);
+	const todos = listTodos(db, PROJECT);
+	assert.equal(todos.length, 2);
+});
+
+test("P1: design with no Requirements section at all", () => {
+	const r = passDesignCompleteness("## Goal\n\nno reqs here", "## Steps\n\n1. **A**");
+	assert.ok(!r.clean);
+	assert.ok(r.findings[0]!.includes("no Requirements"));
+});
+
+test("planProgress: no linked tasks → 0/0", () => {
+	const plan = createPlan(db, PROJECT, "## Steps\n\n(nothing)");
+	const prog = planProgress(db, plan);
+	assert.equal(prog.total, 0);
+	assert.equal(prog.done, 0);
+});
+
+test("updatePlanBody: unknown plan throws", () => {
+	assert.throws(() => updatePlanBody(db, "no-such-plan", "x"), /no plan/);
+});
+
+// --- final branch closure for the new stores ---
+
+test("completeness: covered rid-tagged MUST with empty verification → uncovered (rid branch)", () => {
+	// R7 in Verification TEXT but verification section itself empty → still uncovered
+	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
+	body = body.replace("## Requirements\n", "## Requirements\n\nR7. The system MUST retry.\n");
+	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
+		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
+	}
+	const r = checkCompleteness(body);
+	assert.equal(r.requirements.uncoveredMusts.length, 1);
+});
+
+test("writeDesignStatus: malformed no-close insert bails cleanly (coverage of closeIdx=-1)", () => {
+	const path = join(area, "docs", "design", "noclose.md");
+	mkdirSync(join(area, "docs", "design"), { recursive: true });
+	// only ONE --- line: never a closing fence
+	writeFileSync(path, "---\nstatus: open\ntitle: N\nbody without fences");
+	writeDesignStatus(path, "abandoned", { supersededBy: "qq1234" });
+	const after = readFileSync(path, "utf8");
+	assert.ok(after.includes("status: abandoned"), "status replaced");
+	assert.ok(!after.includes("superseded-by"), "insert bailed");
+});
+
+test("plan-store: updatePlanBody unknown id throws; setPlanStatus no-op-ish on ghost", () => {
+	assert.throws(() => updatePlanBody(db, "ghost", "x"), /no plan/);
+	// setPlanStatus on a ghost id: no throw (UPDATE matches zero rows)
+	setPlanStatus(db, "ghost", "done");
+	assert.equal(getPlan(db, "ghost"), null);
+});
+
+test("parseSteps: trailing detail lines without a step ignored", () => {
+	const body = "## Steps\n\n1. **A** `R1`\n   - Deliverable: x\n\nstray line not a step\n- not a step either\n";
+	const steps = parseSteps(body);
+	assert.equal(steps.length, 1);
+	assert.equal(steps[0]!.deliverable, "x");
+});
+
+test("doc-index: ingest dir with CRLF frontmatter parses", () => {
+	const path = join(area, "docs", "design", "crlf.md");
+	mkdirSync(join(area, "docs", "design"), { recursive: true });
+	writeFileSync(path, `---\r\nid: crlf99\r\ntitle: CRLF\r\n---\r\n\r\n## Goal\r\n\r\nWindows authored.`);
+	const r = ingestDesignDocs(db, area, PROJECT);
+	assert.equal(r.ingested, 1);
+	assert.ok(searchDocs(db, "windows authored").length >= 1);
 });
