@@ -541,6 +541,7 @@ prerogative; `app.thinking.cycle` remap is a stock pi mechanism).
 ```
 
 **Legality guards** (forward hops only; no accidental mode loss):
+
 - normal → design: always legal — scaffolds a new doc or reorients the
   open one (one `open` design per project)
 - design → plan: requires the design `decided` (y-gate passed); otherwise
@@ -693,6 +694,7 @@ readable; the MUSTs stay executable.
 
 After the model believes the plan is complete — and before the y-gate —
 the four passes run mechanically and their record lands in the doc:
+
 - **bidirectional traceability**: design→plan (nothing missed) and
   plan→design (nothing invented) — the two directions catch opposite bugs
 - **re-run at checkpoints**: drift during building re-audits the passes;
