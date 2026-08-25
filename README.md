@@ -4,11 +4,13 @@ This is my harness. There are many like it, but this one is mine.
 
 A personal agentic coding harness.
 
-Pull requests are not accepted, and issues are not welcome. If you have a feature request, you can send me an email about it, but I will report your email as spam if I suspect it's written by AI.
-
 This harness reflects my specific way of working. I had been a Principal Engineer at multiple tech companies before adopting AI tooling, so this harness reflects my experience, my desires, and my needs. It is not designed for vibe coding, and it is not designed to be generic. Using this harness requires advanced knowledge in engineering practices and it is designed for focused, long-horizon work. I encode my way of working into every aspect of this harness, from the system prompt to mid-conversation context to on-disk storage to built-in tooling.
 
-You are welcome to use this harness as much as you'd like, you can clone it, fork it, or use it as a reference. However it is mine, and I will not accept contributions. You are also welcome to tag me on Threads if you want to discuss it, I'm always happy to chat.
+You are welcome to read the source and use the harness for your own personal, noncommercial purposes. It is licensed under PolyForm Strict (no distribution, no sublicensing, no contributions — see `LICENSE.md`, or run `blueberry --license`). Portions derived from pi-mono remain under MIT per its notice.
+
+Pull requests are not accepted, and GitHub issues are not welcome. If you have a feature request, you can send me an email about it; I will report your email as spam if I suspect it's written by AI.
+
+You are welcome to tag me on Threads if you want to discuss it, I'm always happy to chat.
 
 ## Quick start
 

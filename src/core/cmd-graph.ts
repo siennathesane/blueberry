@@ -70,9 +70,11 @@ export function createGraph(
 	const tx = db.prepare("BEGIN");
 	tx.run();
 	try {
-		db.prepare(
-			"INSERT INTO cmd_graphs (id, project_id, name, origin, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'defined', ?, ?)",
-		).run(id, projectId, name ?? null, origin, now, now);
+		db
+			.prepare(
+				"INSERT INTO cmd_graphs (id, project_id, name, origin, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'defined', ?, ?)",
+			)
+			.run(id, projectId, name ?? null, origin, now, now);
 		const insertNode = db.prepare(
 			"INSERT INTO cmd_nodes (id, graph_id, name, command, cwd, env) VALUES (?, ?, ?, ?, ?, ?)",
 		);
@@ -80,7 +82,14 @@ export function createGraph(
 		for (const n of nodes) {
 			const nid = randomUUID();
 			nameToId.set(n.name, nid);
-			insertNode.run(nid, id, n.name, n.command, n.cwd ?? null, n.env ? JSON.stringify(n.env) : null);
+			insertNode.run(
+				nid,
+				id,
+				n.name,
+				n.command,
+				n.cwd ?? null,
+				n.env ? JSON.stringify(n.env) : null,
+			);
 		}
 		const insertEdge = db.prepare(
 			"INSERT INTO cmd_edges (node_id, dep_id) VALUES (?, ?)",
@@ -101,14 +110,17 @@ export function createGraph(
 	return id;
 }
 
-export function listGraphs(db: DatabaseSync, projectId: string | null): GraphRow[] {
-	return (
-		(projectId === null
-			? db.prepare("SELECT * FROM cmd_graphs ORDER BY created_at DESC").all()
-			: db
-					.prepare("SELECT * FROM cmd_graphs WHERE project_id = ? ORDER BY created_at DESC")
-					.all(projectId)) as unknown as GraphRow[]
-	);
+export function listGraphs(
+	db: DatabaseSync,
+	projectId: string | null,
+): GraphRow[] {
+	return (projectId === null
+		? db.prepare("SELECT * FROM cmd_graphs ORDER BY created_at DESC").all()
+		: db
+				.prepare(
+					"SELECT * FROM cmd_graphs WHERE project_id = ? ORDER BY created_at DESC",
+				)
+				.all(projectId)) as unknown as GraphRow[];
 }
 
 export function getGraph(db: DatabaseSync, id: string): GraphRow | undefined {
@@ -145,22 +157,33 @@ export interface TemplateDef {
 	edges: Array<{ node: string; dep: string }>;
 }
 
-export function saveTemplate(db: DatabaseSync, name: string, def: TemplateDef): void {
+export function saveTemplate(
+	db: DatabaseSync,
+	name: string,
+	def: TemplateDef,
+): void {
 	const now = new Date().toISOString();
-	db.prepare(
-		"INSERT INTO cmd_templates (name, params, nodes, edges, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET params = excluded.params, nodes = excluded.nodes, edges = excluded.edges, updated_at = excluded.updated_at",
-	).run(
-		name,
-		JSON.stringify(def.params),
-		JSON.stringify(def.nodes),
-		JSON.stringify(def.edges),
-		now,
-		now,
-	);
+	db
+		.prepare(
+			"INSERT INTO cmd_templates (name, params, nodes, edges, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET params = excluded.params, nodes = excluded.nodes, edges = excluded.edges, updated_at = excluded.updated_at",
+		)
+		.run(
+			name,
+			JSON.stringify(def.params),
+			JSON.stringify(def.nodes),
+			JSON.stringify(def.edges),
+			now,
+			now,
+		);
 }
 
-export function getTemplate(db: DatabaseSync, name: string): (TemplateDef & { updated_at: string }) | undefined {
-	const row = db.prepare("SELECT * FROM cmd_templates WHERE name = ?").get(name) as
+export function getTemplate(
+	db: DatabaseSync,
+	name: string,
+): (TemplateDef & { updated_at: string }) | undefined {
+	const row = db
+		.prepare("SELECT * FROM cmd_templates WHERE name = ?")
+		.get(name) as
 		| { params: string; nodes: string; edges: string; updated_at: string }
 		| undefined;
 	if (!row) return undefined;
@@ -190,7 +213,8 @@ export function runTemplate(
 	const tpl = getTemplate(db, name);
 	if (!tpl) throw new Error(`no template named '${name}'`);
 	for (const p of tpl.params) {
-		if (args[p] === undefined) throw new Error(`template '${name}' missing arg: ${p}`);
+		if (args[p] === undefined)
+			throw new Error(`template '${name}' missing arg: ${p}`);
 	}
 	// args become BB_ARG_<NAME> env on every node — zero templating syntax
 	const argEnv: Record<string, string> = {};
@@ -216,9 +240,11 @@ export function currentGeneration(db: DatabaseSync): number {
 /** Compaction hook: bump the generation and purge old output (R7). */
 export function bumpGeneration(db: DatabaseSync): number {
 	const next = currentGeneration(db) + 1;
-	db.prepare(
-		"INSERT INTO meta (key, value) VALUES ('cmd_output_generation', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-	).run(String(next));
+	db
+		.prepare(
+			"INSERT INTO meta (key, value) VALUES ('cmd_output_generation', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+		)
+		.run(String(next));
 	purgeOutput(db);
 	return next;
 }
@@ -231,12 +257,23 @@ export function appendOutput(
 ): void {
 	const seq = (
 		db
-			.prepare("SELECT COALESCE(MAX(seq) + 1, 0) AS next FROM cmd_output WHERE node_id = ?")
+			.prepare(
+				"SELECT COALESCE(MAX(seq) + 1, 0) AS next FROM cmd_output WHERE node_id = ?",
+			)
 			.get(nodeId) as { next: number }
 	).next;
-	db.prepare(
-		"INSERT INTO cmd_output (node_id, seq, stream, text, ts, generation) VALUES (?, ?, ?, ?, ?, ?)",
-	).run(nodeId, seq, stream, text, new Date().toISOString(), currentGeneration(db));
+	db
+		.prepare(
+			"INSERT INTO cmd_output (node_id, seq, stream, text, ts, generation) VALUES (?, ?, ?, ?, ?, ?)",
+		)
+		.run(
+			nodeId,
+			seq,
+			stream,
+			text,
+			new Date().toISOString(),
+			currentGeneration(db),
+		);
 }
 
 export function nodeOutput(
@@ -271,7 +308,9 @@ export function nodeOutput(
  */
 export function purgeOutput(db: DatabaseSync): number {
 	const gen = currentGeneration(db);
-	const floorTs = new Date(Date.now() - CMD_OUTPUT_FLOOR_H * 3600_000).toISOString();
+	const floorTs = new Date(
+		Date.now() - CMD_OUTPUT_FLOOR_H * 3600_000,
+	).toISOString();
 	// rows past the floor: subject to the generation rule
 	// older generations have SMALLER numbers: a row expires when it is
 	// more than N generations behind (gen - row_gen > N ⇒ row_gen < gen - N)
@@ -292,13 +331,10 @@ export type RunEvents = {
 export function readySet(db: DatabaseSync, graphId: string): NodeRow[] {
 	const nodes = graphNodes(db, graphId);
 	const deps = nodeDeps(db, graphId);
-	const done = new Set(
-		nodes.filter((n) => n.status === "ok").map((n) => n.id),
-	);
+	const done = new Set(nodes.filter((n) => n.status === "ok").map((n) => n.id));
 	return nodes.filter(
 		(n) =>
-			n.status === "pending" &&
-			(deps.get(n.id) ?? []).every((d) => done.has(d)),
+			n.status === "pending" && (deps.get(n.id) ?? []).every((d) => done.has(d)),
 	);
 }
 
@@ -347,9 +383,11 @@ export function runNode(
 			cwd: node.cwd ?? undefined,
 			env: { ...env },
 		});
-		db.prepare(
-			"UPDATE cmd_nodes SET status = 'running', pid = ?, started_at = ? WHERE id = ?",
-		).run(child.pid ?? null, new Date().toISOString(), node.id);
+		db
+			.prepare(
+				"UPDATE cmd_nodes SET status = 'running', pid = ?, started_at = ? WHERE id = ?",
+			)
+			.run(child.pid ?? null, new Date().toISOString(), node.id);
 		events?.onNodeStart?.(node);
 
 		let written = 0;
@@ -370,9 +408,11 @@ export function runNode(
 			finish(null);
 		});
 		const finish = (code: number | null) => {
-			db.prepare(
-				"UPDATE cmd_nodes SET status = ?, ended_at = ?, exit_code = ? WHERE id = ?",
-			).run(code === 0 ? "ok" : "failed", new Date().toISOString(), code, node.id);
+			db
+				.prepare(
+					"UPDATE cmd_nodes SET status = ?, ended_at = ?, exit_code = ? WHERE id = ?",
+				)
+				.run(code === 0 ? "ok" : "failed", new Date().toISOString(), code, node.id);
 			events?.onNodeEnd?.(node, code);
 			resolve(code);
 		};
@@ -389,10 +429,11 @@ export async function runGraph(
 	graphId: string,
 	events?: RunEvents,
 ): Promise<void> {
-	db.prepare("UPDATE cmd_graphs SET status = 'running', updated_at = ? WHERE id = ?").run(
-		new Date().toISOString(),
-		graphId,
-	);
+	db
+		.prepare(
+			"UPDATE cmd_graphs SET status = 'running', updated_at = ? WHERE id = ?",
+		)
+		.run(new Date().toISOString(), graphId);
 	const inflight = new Set<Promise<unknown>>();
 	for (;;) {
 		// drain finished promises to check for failures
@@ -418,10 +459,8 @@ export async function runGraph(
 	const failed = nodes.some((n) => n.status === "failed");
 	const blocked = blockedByFailure(db, graphId);
 	const status = failed ? "failed" : "done";
-	db.prepare("UPDATE cmd_graphs SET status = ?, updated_at = ? WHERE id = ?").run(
-		status,
-		new Date().toISOString(),
-		graphId,
-	);
+	db
+		.prepare("UPDATE cmd_graphs SET status = ?, updated_at = ? WHERE id = ?")
+		.run(status, new Date().toISOString(), graphId);
 	void blocked;
 }

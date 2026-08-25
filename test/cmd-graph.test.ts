@@ -46,18 +46,28 @@ afterEach(() => {
 // --- R1: store round-trip ---------------------------------------------------------
 
 test("R1: graphs persist as first-class rows; todo tables untouched", () => {
-	const before = db.prepare("SELECT COUNT(*) n FROM todos").get() as { n: number };
+	const before = db.prepare("SELECT COUNT(*) n FROM todos").get() as {
+		n: number;
+	};
 	const id = createGraph(db, null, [{ name: "a", command: "true" }], []);
 	assert.ok(getGraph(db, id), "graph row exists");
 	const nodes = graphNodes(db, id);
 	assert.equal(nodes.length, 1);
 	assert.equal(nodes[0]!.name, "a");
 	assert.equal(nodes[0]!.status, "pending");
-	const after = db.prepare("SELECT COUNT(*) n FROM todos").get() as { n: number };
+	const after = db.prepare("SELECT COUNT(*) n FROM todos").get() as {
+		n: number;
+	};
 	assert.equal(after.n, before.n, "todos untouched");
 	// edge validation: unknown node names reject atomically
 	assert.throws(
-		() => createGraph(db, null, [{ name: "a", command: "true" }], [{ node: "a", dep: "ghost" }]),
+		() =>
+			createGraph(
+				db,
+				null,
+				[{ name: "a", command: "true" }],
+				[{ node: "a", dep: "ghost" }],
+			),
 		/unknown node/,
 	);
 	const count = listGraphs(db, null);
@@ -99,7 +109,10 @@ test("R2/R3: diamond graph — topo order, parallel siblings, failure blocks dow
 	assert.equal(getGraph(db, id)!.status, "failed");
 	// output recorded per node (R3)
 	const out = nodeOutput(db, byName["build"].id);
-	assert.ok(out.some((l) => l.text.includes("built")), "stdout captured");
+	assert.ok(
+		out.some((l) => l.text.includes("built")),
+		"stdout captured",
+	);
 });
 
 test("R3: happy-path diamond completes; all ok", async () => {
@@ -148,9 +161,7 @@ test("R2: readySet excludes unmet deps; includes only pending", () => {
 test("R6: template save → run with args; BB_ARG_* env reaches commands", async () => {
 	saveTemplate(db, "checks", {
 		params: ["file"],
-		nodes: [
-			{ name: "echo-arg", command: 'echo "file=$BB_ARG_FILE"' },
-		],
+		nodes: [{ name: "echo-arg", command: 'echo "file=$BB_ARG_FILE"' }],
 		edges: [],
 	});
 	const tpl = getTemplate(db, "checks");
@@ -180,26 +191,39 @@ test("R7: floor-week-young output survives ANY generation distance; past-floor e
 
 	// young row: survives every generation bump (floor protection)
 	for (let i = 0; i < 6; i++) bumpGeneration(db);
-	assert.equal(nodeOutput(db, young.id).length, 1, "week-young survives 6 generations");
+	assert.equal(
+		nodeOutput(db, young.id).length,
+		1,
+		"week-young survives 6 generations",
+	);
 
 	// past-floor row: backdate ts beyond 168h, then generation decides
 	const old2 = graphNodes(db, id)[0]!;
 	appendOutput(db, old2.id, "out", "past-floor-gen0");
-	db.prepare("UPDATE cmd_output SET ts = ? WHERE node_id = ? AND text = ?").run(
-		new Date(Date.now() - (CMD_OUTPUT_FLOOR_H + 1) * 3600_000).toISOString(),
-		old2.id,
-		"past-floor-gen0",
-	);
+	db
+		.prepare("UPDATE cmd_output SET ts = ? WHERE node_id = ? AND text = ?")
+		.run(
+			new Date(Date.now() - (CMD_OUTPUT_FLOOR_H + 1) * 3600_000).toISOString(),
+			old2.id,
+			"past-floor-gen0",
+		);
 	// distance 0 at gen 6: survives (gen - g = 6 > 3? no: row gen 0, distance 6 > 3 → purge NOW)
 	// wait — the row was appended at the CURRENT generation (6). Backdate ts only:
-	db.prepare("UPDATE cmd_output SET generation = 3 WHERE node_id = ? AND text = ?").run(
-		old2.id,
-		"past-floor-gen0",
-	);
+	db
+		.prepare(
+			"UPDATE cmd_output SET generation = 3 WHERE node_id = ? AND text = ?",
+		)
+		.run(old2.id, "past-floor-gen0");
 	bumpGeneration(db); // → 7, purge pass runs: distance 7-3=4 > 3 → purged
 	const remaining = nodeOutput(db, old2.id).map((l) => l.text);
-	assert.ok(!remaining.includes("past-floor-gen0"), "past-floor, 4 generations back → purged");
-	assert.ok(remaining.includes("young-line"), "young row survives on the same node");
+	assert.ok(
+		!remaining.includes("past-floor-gen0"),
+		"past-floor, 4 generations back → purged",
+	);
+	assert.ok(
+		remaining.includes("young-line"),
+		"young row survives on the same node",
+	);
 	assert.equal(currentGeneration(db), 7);
 });
 
@@ -207,16 +231,21 @@ test("R7: past-floor row within 3 generations survives", () => {
 	const id = createGraph(db, null, [{ name: "n", command: "true" }], []);
 	const node = graphNodes(db, id)[0]!;
 	appendOutput(db, node.id, "out", "recent-gen");
-	db.prepare("UPDATE cmd_output SET ts = ? WHERE node_id = ?").run(
-		new Date(Date.now() - (CMD_OUTPUT_FLOOR_H + 1) * 3600_000).toISOString(),
-		node.id,
-	);
+	db
+		.prepare("UPDATE cmd_output SET ts = ? WHERE node_id = ?")
+		.run(
+			new Date(Date.now() - (CMD_OUTPUT_FLOOR_H + 1) * 3600_000).toISOString(),
+			node.id,
+		);
 	// current generation, past floor: distance 0 → survives
 	bumpGeneration(db);
 	bumpGeneration(db);
-	assert.equal(nodeOutput(db, node.id).length, 1, "within 3 generations of past-floor row survives");
+	assert.equal(
+		nodeOutput(db, node.id).length,
+		1,
+		"within 3 generations of past-floor row survives",
+	);
 });
-
 
 // --- R4: detach contract (state-in-DB is what makes detach possible) ----------------
 

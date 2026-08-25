@@ -74,6 +74,21 @@ export function defaultDeps(): CliDeps {
 	};
 }
 
+const LICENSE_SUMMARY = `blueberry licensing
+
+  blueberry-authored code ....... PolyForm Strict License 1.0.0
+                                   noncommercial use only; no distribution,
+                                   sublicensing, modification, or contributions
+
+  MIT-derived portions (pi/ and
+  code compiled from it) ........ MIT License, (c) 2025 Mario Zechner
+                                   (pi-mono). The MIT grant for those
+                                   portions stands as written.
+
+The full text of both licenses — including the MIT notice required to
+travel with all copies and substantial portions — lives in LICENSE.md
+at the repository root and ships with release binaries.`;
+
 const USAGE = `blueberry — a personal agentic harness
 
 usage:
@@ -100,6 +115,11 @@ usage:
   blueberry fix [--dry-run]
   blueberry doctor
   blueberry update [--check]        self-update from GitHub releases
+  blueberry --license               licensing summary (PolyForm Strict + MIT notice)
+  blueberry cmd new 'n=cmd'... [--dep n:d]...  define a command graph
+  blueberry cmd run <id|template> [--arg k=v]  execute (waits)
+  blueberry cmd ls | ps | logs <id> [node]     inspect
+  blueberry cmd template save <name> <p1,p2> 'n=cmd'...  store a template
 
 launch flags:
   --here            keep this exact directory as session cwd (may fragment history)
@@ -115,61 +135,283 @@ export async function main(
 		deps.out(USAGE);
 		return 0;
 	}
+	if (argv.includes("--license")) {
+		deps.out(LICENSE_SUMMARY);
+		return 0;
+	}
 	if (argv.includes("--version") || argv.includes("-v")) {
 		deps.out(`blueberry ${getVersion()}`);
+		deps.out("license: PolyForm Strict 1.0.0 + MIT notice (blueberry --license)");
 		return 0;
 	}
 
-// --- update (self-update from GitHub releases; §Update) -------------------------
+	// --- update (self-update from GitHub releases; §Update) -------------------------
 
-async function updateCmd(rest: string[], deps: CliDeps): Promise<number> {
-	const { checkForUpdate, performUpdate, UPDATER_REPO } = await import(
-		"../core/updater.ts"
-	);
-	const platform = `${Deno.build.os}-${Deno.build.arch}`;
-	const token = process.env["GITHUB_TOKEN"];
-	const headers = { "User-Agent": "blueberry-updater" };
-	const io: UpdaterIO = {
-		async fetchJson(url, h) {
-			const res = await fetch(url, { headers: { ...headers, ...h } });
-			if (!res.ok) throw new Error(`GitHub API ${res.status} for ${url}`);
-			return await res.json();
-		},
-		async fetchBytes(url, h) {
-			const res = await fetch(url, { headers: { ...headers, ...h } });
-			if (!res.ok) throw new Error(`download failed ${res.status} for ${url}`);
-			return new Uint8Array(await res.arrayBuffer());
-		},
-		execPath: () => Deno.execPath(),
-		writeFile: (path, bytes, mode) => Deno.writeFile(path, bytes, { mode }),
-		rename: (from, to) => Deno.rename(from, to),
-		exists: (path) => existsSync(path),
-	};
-	const version = getVersion();
+	// --- cmd (command graph; design 003) ----------------------------------------------
 
-	try {
-		if (rest.includes("--check")) {
-			const res = await checkForUpdate(version, platform, io, UPDATER_REPO, token);
-			if (res.updateAvailable) {
-				deps.out(`update available: ${version} → ${res.latestTag} (${platform})`);
-				deps.out("run: bb update");
-			} else if (res.assetUrl === null) {
-				deps.out(`up to date (${version}); latest release has no ${platform} asset`);
-			} else {
-				deps.out(`up to date (${version}, latest ${res.latestTag})`);
+	async function cmdCmd(rest: string[], deps: CliDeps): Promise<number> {
+		const {
+			createGraph,
+			listGraphs,
+			getGraph,
+			graphNodes,
+			nodeOutput,
+			runGraph,
+			runTemplate,
+			saveTemplate,
+			getTemplate,
+			purgeOutput,
+		} = await import("../core/cmd-graph.ts");
+		const [verb, ...args] = rest;
+		const db = openDb(deps.agentDir);
+		try {
+			purgeOutput(db); // reaper-on-invocation
+			const project = null; // graphs are project-agnostic for now (003 keeps options open)
+			switch (verb) {
+				case "new": {
+					// bb cmd new 'name=cmd' 'name2=cmd2' [--dep name2:name1] [--name g]
+					const nodes: Array<{ name: string; command: string }> = [];
+					const edges: Array<{ node: string; dep: string }> = [];
+					let name: string | undefined;
+					for (let i = 0; i < args.length; i++) {
+						const a = args[i]!;
+						if (a === "--dep") {
+							const [node, dep] = (args[++i] ?? "").split(":");
+							if (!node || !dep) {
+								deps.err("blueberry: --dep takes node:dep");
+								return 1;
+							}
+							edges.push({ node, dep });
+						} else if (a === "--name") {
+							name = args[++i];
+						} else {
+							const eq = a.indexOf("=");
+							if (eq <= 0) {
+								deps.err(`blueberry: node spec must be name=command, got '${a}'`);
+								return 1;
+							}
+							nodes.push({ name: a.slice(0, eq), command: a.slice(eq + 1) });
+						}
+					}
+					if (nodes.length === 0) {
+						deps.err("blueberry: cmd new needs at least one name=command node");
+						return 1;
+					}
+					const id = createGraph(db, project, nodes, edges, name);
+					deps.out(id);
+					return 0;
+				}
+				case "run": {
+					// bb cmd run <graph-id> | bb cmd run <template> --arg k=v
+					const target = args[0];
+					if (!target) {
+						deps.err("blueberry: cmd run needs a graph id or template name");
+						return 1;
+					}
+					let id = target;
+					if (getTemplate(db, target)) {
+						const targs: Record<string, string> = {};
+						for (const a of args.slice(1)) {
+							if (a.startsWith("--arg ")) void 0;
+						}
+						// --arg k=v (repeatable)
+						for (let i = 1; i < args.length; i++) {
+							if (args[i] === "--arg") {
+								const kv = (args[++i] ?? "").split("=");
+								if (kv.length < 2) {
+									deps.err("blueberry: --arg takes k=v");
+									return 1;
+								}
+								targs[kv[0]!] = kv.slice(1).join("=");
+							}
+						}
+						id = runTemplate(db, target, targs, project);
+					}
+					const resolved = resolveGraph(db, id);
+					if (!resolved) {
+						deps.err(`blueberry: no graph '${id}'`);
+						return 1;
+					}
+					id = resolved;
+					await runGraph(db, id);
+					const g = getGraph(db, id)!;
+					deps.out(`graph ${id.slice(0, 8)} ${g.status}`);
+					return g.status === "failed" ? 1 : 0;
+				}
+				case "ls": {
+					for (const g of listGraphs(db, project)) {
+						deps.out(
+							`${g.id.slice(0, 8)}  ${g.status.padEnd(8)} ${g.origin.padEnd(9)} ${g.name ?? "—"}`,
+						);
+					}
+					return 0;
+				}
+				case "ps": {
+					const running = listGraphs(db, project).filter(
+						(g) => g.status === "running",
+					);
+					for (const g of running) {
+						for (const n of graphNodes(db, g.id)) {
+							if (n.status === "running") {
+								deps.out(
+									`${g.id.slice(0, 8)}  ${String(n.pid ?? "—").padEnd(7)} ${n.name}`,
+								);
+							}
+						}
+					}
+					return 0;
+				}
+				case "logs": {
+					// bb cmd logs <graph-id> [node-name]
+					const target = args[0];
+					if (!target) {
+						deps.err("blueberry: cmd logs needs a graph id");
+						return 1;
+					}
+					const id = resolveGraph(db, target);
+					if (!id) {
+						deps.err(`blueberry: no graph '${target}'`);
+						return 1;
+					}
+					const nodes = args[1]
+						? graphNodes(db, id).filter((n) => n.name === args[1])
+						: graphNodes(db, id);
+					for (const n of nodes) {
+						deps.out(
+							`── ${n.name} [${n.status}${n.exit_code === null ? "" : ` ${n.exit_code}`}] ──`,
+						);
+						for (const l of nodeOutput(db, n.id)) {
+							deps.out(
+								`  ${l.stream === "err" ? "!" : " "} ${l.text.replace(/\n$/, "")}`,
+							);
+						}
+					}
+					return 0;
+				}
+				case "template": {
+					const sub = args[0];
+					if (sub === "save") {
+						// bb cmd template save <name> <params=a,b> 'n=cmd'... --dep n:d
+						const tname = args[1];
+						if (!tname) {
+							deps.err("blueberry: template save <name> <params> nodes...");
+							return 1;
+						}
+						const params = (args[2] ?? "").split(",").filter((p) => p !== "");
+						const nodes: Array<{ name: string; command: string }> = [];
+						const edges: Array<{ node: string; dep: string }> = [];
+						for (let i = 3; i < args.length; i++) {
+							const a = args[i]!;
+							if (a === "--dep") {
+								const [node, dep] = (args[++i] ?? "").split(":");
+								if (node && dep) edges.push({ node, dep });
+							} else {
+								const eq = a.indexOf("=");
+								if (eq <= 0) {
+									deps.err(`blueberry: node spec must be name=command, got '${a}'`);
+									return 1;
+								}
+								nodes.push({ name: a.slice(0, eq), command: a.slice(eq + 1) });
+							}
+						}
+						saveTemplate(db, tname, { params, nodes, edges });
+						deps.out(`template '${tname}' saved (${nodes.length} nodes)`);
+						return 0;
+					}
+					if (sub === "list") {
+						const rows = db
+							.prepare("SELECT name, updated_at FROM cmd_templates ORDER BY name")
+							.all() as Array<{ name: string; updated_at: string }>;
+						for (const r of rows) deps.out(`${r.name.padEnd(20)} ${r.updated_at}`);
+						return 0;
+					}
+					deps.err("blueberry: cmd template save|list");
+					return 1;
+				}
+				default:
+					deps.err(
+						"blueberry: cmd new|run|ls|ps|logs|template — see DESIGN.md §command-graph",
+					);
+					return 1;
 			}
-			return 0;
+		} catch (err) {
+			deps.err(`blueberry: ${(err as Error).message}`);
+			return 1;
+		} finally {
+			db.close();
 		}
-		deps.out(`blueberry ${version} · checking latest release…`);
-		const res = await performUpdate(version, platform, io, UPDATER_REPO, token);
-		deps.out(`updated ${res.from} → ${res.to}`);
-		deps.out(`replaced ${res.path} — restart blueberry to run the new version`);
-		return 0;
-	} catch (err) {
-		deps.err(`blueberry: update failed: ${(err as Error).message}`);
-		return 1;
 	}
-}
+
+	function resolveGraph(
+		db: ReturnType<typeof openDb>,
+		target: string,
+	): string | null {
+		const exact = db
+			.prepare("SELECT id FROM cmd_graphs WHERE id = ?")
+			.get(target) as { id: string } | undefined;
+		if (exact) return exact.id;
+		const rows = db
+			.prepare("SELECT id FROM cmd_graphs WHERE id LIKE ?")
+			.all(`${target}%`) as Array<{ id: string }>;
+		return rows.length === 1 ? rows[0]!.id : null;
+	}
+
+	async function updateCmd(rest: string[], deps: CliDeps): Promise<number> {
+		const { checkForUpdate, performUpdate, UPDATER_REPO } = await import(
+			"../core/updater.ts"
+		);
+		const platform = `${Deno.build.os}-${Deno.build.arch}`;
+		const token = process.env["GITHUB_TOKEN"];
+		const headers = { "User-Agent": "blueberry-updater" };
+		const io: UpdaterIO = {
+			async fetchJson(url, h) {
+				const res = await fetch(url, { headers: { ...headers, ...h } });
+				if (!res.ok) throw new Error(`GitHub API ${res.status} for ${url}`);
+				return await res.json();
+			},
+			async fetchBytes(url, h) {
+				const res = await fetch(url, { headers: { ...headers, ...h } });
+				if (!res.ok) throw new Error(`download failed ${res.status} for ${url}`);
+				return new Uint8Array(await res.arrayBuffer());
+			},
+			execPath: () => Deno.execPath(),
+			writeFile: (path, bytes, mode) => Deno.writeFile(path, bytes, { mode }),
+			rename: (from, to) => Deno.rename(from, to),
+			exists: (path) => existsSync(path),
+		};
+		const version = getVersion();
+
+		try {
+			if (rest.includes("--check")) {
+				const res = await checkForUpdate(
+					version,
+					platform,
+					io,
+					UPDATER_REPO,
+					token,
+				);
+				if (res.updateAvailable) {
+					deps.out(`update available: ${version} → ${res.latestTag} (${platform})`);
+					deps.out("run: bb update");
+				} else if (res.assetUrl === null) {
+					deps.out(
+						`up to date (${version}); latest release has no ${platform} asset`,
+					);
+				} else {
+					deps.out(`up to date (${version}, latest ${res.latestTag})`);
+				}
+				return 0;
+			}
+			deps.out(`blueberry ${version} · checking latest release…`);
+			const res = await performUpdate(version, platform, io, UPDATER_REPO, token);
+			deps.out(`updated ${res.from} → ${res.to}`);
+			deps.out(`replaced ${res.path} — restart blueberry to run the new version`);
+			return 0;
+		} catch (err) {
+			deps.err(`blueberry: update failed: ${(err as Error).message}`);
+			return 1;
+		}
+	}
 
 	const [cmd, ...rest] = argv;
 	switch (cmd) {
@@ -193,6 +435,8 @@ async function updateCmd(rest: string[], deps: CliDeps): Promise<number> {
 			return searchCmd(rest, deps);
 		case "update":
 			return updateCmd(rest, deps);
+		case "cmd":
+			return cmdCmd(rest, deps);
 		default:
 			// anything that isn't a known subcommand is treated as pi launch
 			return launchMode(argv, deps);
