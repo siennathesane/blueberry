@@ -606,7 +606,7 @@ async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 			if (!rest[i]!.startsWith("--")) positional.push(rest[i]!);
 		}
 		const query = positional.join(" ");
-		if (!query) return usageErr(deps, "search <text> [--code] [--context N]");
+		if (!query) return usageErr(deps, "search <text> [--code] [--docs] [--context N]");
 		const db = openDb(deps.agentDir);
 		try {
 			if (rest.includes("--code")) {
@@ -617,6 +617,19 @@ async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 				}
 				for (const h of hits)
 					deps.out(`${h.path}:${h.line}  ${h.text.slice(0, 160)}`);
+				return 0;
+			}
+			if (rest.includes("--docs")) {
+				// refresh design docs from disk, then search the unified index
+				const { project: current } = await currentProject(deps);
+				const { ingestDesignDocs } = await import("../core/doc-index.ts");
+				const report = ingestDesignDocs(db, current.canonicalPath, current.id);
+				if (report.errors.length > 0) {
+					for (const e of report.errors) deps.out(`warn: ${e.file}: ${e.detail}`);
+				}
+				const { searchDocs, formatDocHits } = await import("../core/doc-index.ts");
+				const docHits = searchDocs(db, query);
+				deps.out(formatDocHits(docHits));
 				return 0;
 			}
 			const contextN = Number(rest[rest.indexOf("--context") + 1] ?? "");

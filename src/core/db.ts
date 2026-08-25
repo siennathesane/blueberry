@@ -102,6 +102,33 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
   text, path UNINDEXED, line UNINDEXED
 );
+CREATE TABLE IF NOT EXISTS designs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT,
+  slug TEXT,
+  path TEXT NOT NULL,
+  title TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  supersedes TEXT,
+  superseded_by TEXT,
+  file_mtime_ms INTEGER,
+  ingested_at TEXT
+);
+CREATE TABLE IF NOT EXISTS plans (
+  id TEXT PRIMARY KEY,
+  design_id TEXT,
+  project_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  rev INTEGER NOT NULL DEFAULT 1,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  seeded_at TEXT,
+  seeded_count INTEGER
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(
+  text, source UNINDEXED, uri UNINDEXED
+);
 CREATE TABLE IF NOT EXISTS config (
   key TEXT PRIMARY KEY,
   json TEXT NOT NULL
