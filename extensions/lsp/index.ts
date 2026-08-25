@@ -102,29 +102,46 @@ export default function (pi: ExtensionAPI) {
 		manager = null;
 	});
 
-	// --- model-only diagnostics nudge (§LSP decision: context clues, display:false) ---
+	// --- diagnostics nudges on the context rail (§Context Layer 3) ----------
+	// SUPERSede, don't accumulate: stale diagnostics are lies. The per-file
+	// LATEST nudge rides the ephemeral context event (never persisted, never
+	// cached — rebuilt fresh every LLM call); a clean file drops its nudge.
+	// File set = every file touched by edit/write this session (tracked
+	// in-memory; supersedeNudges keeps only the freshest snapshot per path).
+	const touchedFiles = new Map<string, number>(); // path -> last touch seq
+
 	pi.on("tool_result", async (event, ctx) => {
 		if (event.toolName !== "edit" && event.toolName !== "write") return;
-		if (!manager) return; // not started yet — no servers, no nudge
+		if (!manager) return; // not started yet — no servers, no nudges
 		const input = event.input as { path?: string } | undefined;
 		if (!input?.path) return;
 		const path = resolve(ctx.cwd, input.path);
 		if (!languageIdForFile(path)) return;
+		touchedFiles.set(path, (touchedFiles.get(path) ?? 0) + 1);
+	});
 
-		// wait a moment for the server to push fresh diagnostics
-		setTimeout(() => {
+	pi.on("context", (event) => {
+		if (touchedFiles.size === 0 || !manager) return undefined;
+		const lines: string[] = [];
+		for (const path of touchedFiles.keys()) {
 			const uri = fileUri(path);
-			const diags = manager?.getDiagnostics(uri).get(uri);
-			if (!diags || diags.length === 0) return;
+			const diags = manager.getDiagnostics(uri).get(uri);
+			if (!diags || diags.length === 0) continue; // clean file: no nudge
 			const errors = diags.filter((d) => d.severity <= 2).length;
 			const file = path.split("/").pop();
-			// model-only: invisible to the human, present in context
-			pi.sendMessage({
-				customType: "bb-lsp",
-				content: `lsp: ${errors} error(s)/warning(s) in ${file} after edit`,
-				display: false,
-			});
-		}, 1500);
+			lines.push(`lsp: ${errors} error(s)/warning(s) in ${file}`);
+		}
+		if (lines.length === 0) return undefined;
+		// one ephemeral tail message: the CURRENT truth per touched file
+		event.messages = [
+			...event.messages,
+			{
+				role: "user",
+				content: "[diagnostics]" + "\n" + lines.join("\n"),
+				timestamp: Date.now(),
+			},
+		];
+		return { messages: event.messages };
 	});
 
 	// --- /lsp command (human status) ------------------------------------------------
