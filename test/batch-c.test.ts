@@ -56,6 +56,7 @@ function deps(overrides: Partial<ReturnType<typeof defaultDeps>> = {}) {
 			cwd: area,
 			out: (l: string) => void out.push(l),
 			err: (l: string) => void err.push(l),
+			// deno-lint-ignore require-await: stub by design
 			runPi: (async () => 0) as ReturnType<typeof defaultDeps>["runPi"],
 			...overrides,
 		},
@@ -101,6 +102,7 @@ test("main: import with unknown --from source scans nothing, exits 0", async () 
 // --- launcher: loadPiMain guard + runPi arms -------------------------------------------
 
 test("launcher: setPiMainLoader with a non-function main rejects on run", async () => {
+	// deno-lint-ignore require-await: stub by design
 	setPiMainLoader(async () => 42 as never);
 	try {
 		await assert.rejects(
@@ -178,6 +180,7 @@ test("updater: sidecar-missing asset refuses install", async () => {
 	const bytes = new TextEncoder().encode("B");
 	const shaText = "deadbeef  blueberry-darwin-aarch64\n";
 	const io: UpdaterIO = {
+		// deno-lint-ignore require-await: stub by design
 		async fetchJson() {
 			return {
 				tag_name: "v9.9.9",
@@ -189,6 +192,7 @@ test("updater: sidecar-missing asset refuses install", async () => {
 				],
 			};
 		},
+		// deno-lint-ignore require-await: stub by design
 		async fetchBytes(url: string) {
 			return url.endsWith(".sha256") ? new TextEncoder().encode(shaText) : bytes;
 		},

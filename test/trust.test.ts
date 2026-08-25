@@ -24,7 +24,6 @@ test("readTrust: missing file -> {}", () => {
 test("trust round-trip: set, read, remove", async () => {
 	const projA = join(area, "proj-a");
 	const projB = join(area, "proj-b");
-	const bad = join(area, "bad");
 	await trustPaths(agentDir, [projA, projB]);
 	const t = readTrust(agentDir);
 	assert.equal(t[projA], true);

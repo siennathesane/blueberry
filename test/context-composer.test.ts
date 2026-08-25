@@ -17,10 +17,10 @@ import {
 	type DiagnosticNudge,
 	type IdentityProbe,
 } from "../src/core/context-composer.ts";
-import { platform } from "node:os";
+import { resolve } from "node:path";
 
 // Platform-conditional fake cwd paths for Windows compatibility (#32)
-const TMP_PROJ = platform() === "win32" ? "C:\\Users\\test\\proj" : "/tmp/proj";
+const TMP_PROJ = resolve("/tmp/proj");
 
 
 const baseProbe: IdentityProbe = {

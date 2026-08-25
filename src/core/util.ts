@@ -8,7 +8,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { realpathSync, readFileSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import * as os from "node:os";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

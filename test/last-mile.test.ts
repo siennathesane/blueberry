@@ -6,7 +6,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { main, type CliDeps } from "../src/cli/main.ts";
 import { openDb, loadRegistrySync, saveRegistrySync } from "../src/core/db.ts";
 import { entryText } from "../src/core/sync.ts";
@@ -206,7 +206,7 @@ test("sessions: numeric message content yields null firstUserText without crashi
 				version: 3,
 				id: "num-id-0000001",
 				timestamp: ts,
-				cwd: "FAKE_X",
+				cwd: resolve("/x"),
 			}),
 			JSON.stringify({
 				type: "message",

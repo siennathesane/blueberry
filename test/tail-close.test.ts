@@ -8,7 +8,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { platform } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
 	openDb,
 	loadRegistrySync,
@@ -69,14 +69,14 @@ function seedProject(name: string): { root: string; id: string } {
 // --- sync.ts: orphan mapping, fts quoting, multi-store -------------------------------
 
 // Platform-conditional fake cwd paths for Windows compatibility (#32)
-const ORPHAN_CWD = platform() === "win32" ? "C:\\definitely\\not\\a\\project" : "ORPHAN_CWD";
+const ORPHAN_CWD = resolve("/definitely/not/a/project");
 
 
 test("sync: orphan detail carries cwd text; errors carry detail", () => {
 	seedProject("orphdet");
 	const store = getCentralStoreDir(agentDir, "orphdet");
 	fakeSession(store, {
-		cwd: "ORPHAN_CWD",
+		cwd: ORPHAN_CWD,
 		firstUserText: "orphan body",
 	});
 	const db = openDb(agentDir);

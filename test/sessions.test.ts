@@ -1,6 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { platform } from "node:os";
+import { resolve } from "node:path";
 import {
 	chmodSync,
 	existsSync,
@@ -27,11 +28,12 @@ import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 let agentDir: string;
 let store: string;
 // Platform-conditional fake cwd paths for Windows compatibility (#32)
-const FAKE_CWD_1 = platform() === "win32" ? "C:\\x\\p" : "FAKE_CWD_1";
-const FAKE_CWD_2 = platform() === "win32" ? "C:\\y\\q" : "FAKE_CWD_2";
-const FAKE_CWD_OLD = platform() === "win32" ? "C:\\old" : "FAKE_CWD_OLD";
-const FAKE_CWD_NEW = platform() === "win32" ? "C:\\new" : "FAKE_CWD_NEW";
-const FAKE_CWD_X = platform() === "win32" ? "C:\\x" : "/x";
+// #32: resolve() is a no-op on POSIX and makes the path Windows-native —
+// one pattern, no platform conditionals.
+const FAKE_CWD_1 = resolve("/x/p");
+const FAKE_CWD_2 = resolve("/y/q");
+const FAKE_CWD_OLD = resolve("/old");
+const FAKE_CWD_NEW = resolve("/new");
 
 
 beforeEach(() => {
@@ -43,10 +45,10 @@ afterEach(() => {
 });
 
 test("readSessionHeader: parses pi format, null on garbage", () => {
-	const f = fakeSession(store, { cwd: "FAKE_CWD_1", firstUserText: "hi" });
+	const f = fakeSession(store, { cwd: FAKE_CWD_1, firstUserText: "hi" });
 	const h = readSessionHeader(f)!;
 	assert.equal(h.type, "session");
-	assert.equal(h.cwd, "FAKE_CWD_1");
+	assert.equal(h.cwd, FAKE_CWD_1);
 	assert.equal(typeof h.id, "string");
 
 	writeFileSync(`${store}/bad.jsonl`, "not json at all\n");
@@ -54,11 +56,11 @@ test("readSessionHeader: parses pi format, null on garbage", () => {
 });
 
 test("listSessions: newest first, name + first user text + counts", async () => {
-	fakeSession(store, { cwd: "FAKE_CWD_1", firstUserText: "older question" });
+	fakeSession(store, { cwd: FAKE_CWD_1, firstUserText: "older question" });
 	// ensure distinct mtimes
 	await new Promise((r) => setTimeout(r, 15));
 	const f2 = fakeSession(store, {
-		cwd: "FAKE_CWD_1",
+		cwd: FAKE_CWD_1,
 		firstUserText: "newer question",
 		name: "my-session",
 	});
@@ -80,7 +82,7 @@ test("listSessions: empty and missing stores", () => {
 
 test("rewriteSessionHeader: first line only, rest byte-identical", () => {
 	const f = fakeSession(store, {
-		cwd: "FAKE_CWD_1",
+		cwd: FAKE_CWD_1,
 		firstUserText: "hello",
 		entries: 3,
 	});
@@ -88,18 +90,18 @@ test("rewriteSessionHeader: first line only, rest byte-identical", () => {
 	const beforeLines = before.split("\n").slice(1).join("\n");
 
 	rewriteSessionHeader(f, (h) => {
-		h.cwd = "FAKE_CWD_2";
+		h.cwd = FAKE_CWD_2;
 		return h;
 	});
 
 	const after = readFileSync(f, "utf8");
-	assert.equal(readSessionHeader(f)?.cwd, "FAKE_CWD_2");
+	assert.equal(readSessionHeader(f)?.cwd, FAKE_CWD_2);
 	assert.equal(after.split("\n").slice(1).join("\n"), beforeLines);
 });
 
 test("renameSession: appends pi-native session_info at the leaf", () => {
 	const f = fakeSession(store, {
-		cwd: "FAKE_CWD_1",
+		cwd: FAKE_CWD_1,
 		firstUserText: "q",
 		name: "before",
 	});
@@ -117,16 +119,16 @@ test("renameSession: appends pi-native session_info at the leaf", () => {
 });
 
 test("moveSession: rewrites cwd, preserves mtime and body, removes original", () => {
-	const src = fakeSession(store, { cwd: "FAKE_CWD_1", firstUserText: "body line" });
+	const src = fakeSession(store, { cwd: FAKE_CWD_1, firstUserText: "body line" });
 	const st = statSync(src);
 	const targetDir = `${agentDir}/sessions/other`;
 	mkdirSync(targetDir, { recursive: true });
 
-	const moved = moveSession(src, targetDir, { newCwd: "FAKE_CWD_2" });
+	const moved = moveSession(src, targetDir, { newCwd: FAKE_CWD_2 });
 
 	assert.ok(!existsSync(src), "original removed");
 	const h = readSessionHeader(moved)!;
-	assert.equal(h.cwd, "FAKE_CWD_2");
+	assert.equal(h.cwd, FAKE_CWD_2);
 	const stAfter = statSync(moved);
 	assert.equal(
 		Math.round(stAfter.mtimeMs),
@@ -137,34 +139,34 @@ test("moveSession: rewrites cwd, preserves mtime and body, removes original", ()
 });
 
 test("moveSession: rewrites parentSession when parent moved in same batch, clears when dangling", () => {
-	const parent = fakeSession(store, { cwd: "FAKE_CWD_1" });
-	const child = fakeSession(store, { cwd: "FAKE_CWD_1", parentSession: parent });
+	const parent = fakeSession(store, { cwd: FAKE_CWD_1 });
+	const child = fakeSession(store, { cwd: FAKE_CWD_1, parentSession: parent });
 	const targetDir = `${agentDir}/sessions/other`;
 	mkdirSync(targetDir, { recursive: true });
 
 	const movedMap = new Map<string, string>();
-	const newParent = moveSession(parent, targetDir, { newCwd: "FAKE_CWD_2", movedMap });
+	const newParent = moveSession(parent, targetDir, { newCwd: FAKE_CWD_2, movedMap });
 	movedMap.set(parent, newParent);
-	const newChild = moveSession(child, targetDir, { newCwd: "FAKE_CWD_2", movedMap });
+	const newChild = moveSession(child, targetDir, { newCwd: FAKE_CWD_2, movedMap });
 
 	assert.equal(readSessionHeader(newChild)?.parentSession, newParent);
 
 	// dangling case: child references a parent that was NOT moved
-	const orphan = fakeSession(store, { cwd: "FAKE_CWD_1", parentSession: parent });
-	const movedOrphan = moveSession(orphan, targetDir, { newCwd: "FAKE_CWD_2" });
+	const orphan = fakeSession(store, { cwd: FAKE_CWD_1, parentSession: parent });
+	const movedOrphan = moveSession(orphan, targetDir, { newCwd: FAKE_CWD_2 });
 	assert.equal(readSessionHeader(movedOrphan)?.parentSession, undefined);
 });
 
 test("moveSession: collision suffixes instead of clobbering", () => {
-	const a = fakeSession(store, { cwd: "FAKE_CWD_1", firstUserText: "A" });
+	const a = fakeSession(store, { cwd: FAKE_CWD_1, firstUserText: "A" });
 	const targetDir = `${agentDir}/sessions/other`;
 	mkdirSync(targetDir, { recursive: true });
-	const first = moveSession(a, targetDir, { newCwd: "FAKE_CWD_2" });
+	const first = moveSession(a, targetDir, { newCwd: FAKE_CWD_2 });
 
 	// same filename can't happen with uuid names; force one by copying the same file back and moving again
 	const b = `${store}/${first.split("/").pop()}`;
 	copyFileSync(first, b);
-	const second = moveSession(b, targetDir, { newCwd: "FAKE_CWD_2" });
+	const second = moveSession(b, targetDir, { newCwd: FAKE_CWD_2 });
 
 	assert.notEqual(second, first);
 	assert.ok(existsSync(first), "first preserved");
@@ -173,7 +175,7 @@ test("moveSession: collision suffixes instead of clobbering", () => {
 });
 
 test("trashSession: moves to timestamped trash dir, never deletes", () => {
-	const f = fakeSession(store, { cwd: "FAKE_CWD_1" });
+	const f = fakeSession(store, { cwd: FAKE_CWD_1 });
 	const trashRoot = `${agentDir}/trash`;
 	const trashed = trashSession(f, trashRoot);
 
@@ -186,9 +188,9 @@ test("selectSession: index, uuid prefix, exact name", () => {
 	// deterministic ids: prefixes must not be all-digits (those parse as list indexes)
 	const id1 = "aaaaaaaa-1111-4111-8111-111111111111";
 	const id2 = "bbbbbbbb-2222-4222-8222-222222222222";
-	fakeSession(store, { cwd: "FAKE_CWD_1", firstUserText: "one", id: id1 });
+	fakeSession(store, { cwd: FAKE_CWD_1, firstUserText: "one", id: id1 });
 	const f2 = fakeSession(store, {
-		cwd: "FAKE_CWD_1",
+		cwd: FAKE_CWD_1,
 		firstUserText: "two",
 		name: "named-one",
 		id: id2,
@@ -339,8 +341,8 @@ test("selectSession: empty/missing store returns null", () => {
 
 test("moveSession: same source and target dir rewrites in place", () => {
 	const edge = getCentralStoreDir(agentDir, "edge-self");
-	const f = fakeSession(edge, { cwd: "FAKE_CWD_OLD", firstUserText: "self" });
-	const result = moveSession(f, edge, { newCwd: "FAKE_CWD_NEW" });
+	const f = fakeSession(edge, { cwd: FAKE_CWD_OLD, firstUserText: "self" });
+	const result = moveSession(f, edge, { newCwd: FAKE_CWD_NEW });
 	assert.equal(result, f);
-	assert.equal(readSessionHeader(f)?.cwd, "FAKE_CWD_NEW");
+	assert.equal(readSessionHeader(f)?.cwd, FAKE_CWD_NEW);
 });

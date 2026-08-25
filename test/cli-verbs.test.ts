@@ -6,11 +6,10 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main, defaultDeps } from "../src/cli/main.ts";
-import { openDb } from "../src/core/db.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, cleanup } from "./helpers.ts";
+import { tmpAgentDir, tmpDir, cleanup } from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -24,6 +23,7 @@ function deps(overrides: Partial<ReturnType<typeof defaultDeps>> = {}) {
 		cwd: area,
 		out: (l: string) => void outLines.push(l),
 		err: (l: string) => void errLines.push(l),
+		// deno-lint-ignore require-await: stub by design
 		runPi: (async () => 0) as ReturnType<typeof defaultDeps>["runPi"],
 		...overrides,
 	};
@@ -64,6 +64,7 @@ test("main: unknown command routes to launch (runPi) and propagates its code", a
 	const rc = await main(
 		["--print", "hello"],
 		deps({
+			// deno-lint-ignore require-await: stub by design
 			runPi: (async () => {
 				ran = true;
 				return 42;
