@@ -19,8 +19,14 @@ import {
 	visibleCells,
 	type Intent,
 	type PaneState,
+	type PaneTheme,
 	type TodoCard,
 } from "../../src/core/todo-pane.ts";
+
+/** Minimal TUI surface the pane needs (requestRender). */
+interface TuiLike {
+	requestRender(force?: boolean): void;
+}
 import {
 	addDep,
 	breadcrumb,
@@ -76,49 +82,69 @@ function keyToIntent(data: string): Intent | null {
 	return null;
 }
 
+/** Open the interactive todo pane (shared by /todo and ctrl+p). */
+async function openTodoPane(ctx: {
+	cwd: string;
+	mode: string;
+	ui: {
+		notify(msg: string, kind: "info" | "warning"): void;
+		custom<T>(make: (tui: TuiLike, theme: PaneTheme, kb: unknown, done: (v: T) => void) => unknown): Promise<T>;
+	};
+}): Promise<void> {
+	if (ctx.mode !== "tui") {
+		ctx.ui.notify("todo pane requires interactive mode", "warning");
+		return;
+	}
+	let cards = loadCards(ctx.cwd);
+	const cwd = ctx.cwd;
+	let state: PaneState = { cursor: 0, detail: false };
+	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+		let cachedLines: string[] | undefined;
+		const component: Component = {
+			render(width: number): string[] {
+				let lines = cachedLines;
+				if (!lines) {
+					lines = renderTodoPane(width, theme, cards, state);
+					cachedLines = lines;
+				}
+				return lines;
+			},
+			invalidate(): void {
+				cachedLines = undefined;
+			},
+			handleInput(data: string): void {
+				const intent = keyToIntent(data);
+				if (!intent) return;
+				// refresh on open so the pane reflects tool mutations
+				const next = applyInput(state, intent, visibleCells(cards).length);
+				if (next === CLOSED) {
+					done();
+					return;
+				}
+				state = next;
+				cards = loadCards(cwd);
+				cachedLines = undefined;
+				tui.requestRender();
+			},
+		};
+		return component;
+	});
+}
+
 export default function (pi: ExtensionAPI) {
+	// ctrl+p opens the pane (claimed via keybindings.json: model cycle → ctrl+m)
+	pi.registerShortcut("ctrl+p", {
+		description: "Open the todo pane",
+		handler: async (ctx) => {
+			await openTodoPane(ctx);
+		},
+	});
+
 	// --- /todo pane on live data -------------------------------------------
 	pi.registerCommand("todo", {
 		description: "Todo pane",
 		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("todo pane requires interactive mode", "warning");
-				return;
-			}
-			let cards = loadCards(ctx.cwd);
-			const cwd = ctx.cwd;
-			let state: PaneState = { cursor: 0, detail: false };
-			await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-				let cachedLines: string[] | undefined;
-				const component: Component = {
-					render(width: number): string[] {
-						let lines = cachedLines;
-						if (!lines) {
-							lines = renderTodoPane(width, theme, cards, state);
-							cachedLines = lines;
-						}
-						return lines;
-					},
-					invalidate(): void {
-						cachedLines = undefined;
-					},
-					handleInput(data: string): void {
-						const intent = keyToIntent(data);
-						if (!intent) return;
-						// refresh on open so the pane reflects tool mutations
-						const next = applyInput(state, intent, visibleCells(cards).length);
-						if (next === CLOSED) {
-							done();
-							return;
-						}
-						state = next;
-						cards = loadCards(cwd);
-						cachedLines = undefined;
-						tui.requestRender();
-					},
-				};
-				return component;
-			});
+			await openTodoPane(ctx);
 		},
 	});
 

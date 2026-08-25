@@ -18,6 +18,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { findProjectBoundary } from "../../src/core/markers.ts";
 import { getVersion } from "../../src/core/version.ts";
+import { projectNameFor, terminalTitle } from "../../src/core/identity.ts";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -81,7 +82,7 @@ export default function (pi: ExtensionAPI) {
 				},
 				invalidate() {},
 			}));
-			ctx.ui.setTitle(`blueberry — ${name}`);
+			ctx.ui.setTitle(terminalTitle(name));
 		}
 		return { cwd, boundary };
 	};
@@ -109,16 +110,18 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	// pi re-asserts its terminal title when the session name changes; re-claim it.
-	pi.on("session_info_changed", (_event, ctx) => {
-		if (ctx.mode === "tui") {
-			const cwd = resolve(ctx.cwd);
-			const boundary = findProjectBoundary(cwd);
-			ctx.ui.setTitle(
-				`blueberry — ${lastSegment(boundary ? boundary.root : cwd)}`,
-			);
-		}
-	});
+	// pi re-asserts its title from several internal events (startup .finally,
+	// session switch, model change...). Self-healing: re-claim on every event
+	// we can see — worst case the title is wrong for one sub-turn.
+	const claimTitle = (ctx: { cwd: string; mode: string; ui: { setTitle(t: string): void } }) => {
+		if (ctx.mode !== "tui") return;
+		const boundary = findProjectBoundary(resolve(ctx.cwd));
+		const name = projectNameFor(boundary ? boundary.root : ctx.cwd);
+		ctx.ui.setTitle(terminalTitle(name));
+	};
+	pi.on("session_info_changed", (_event, ctx) => claimTitle(ctx));
+	pi.on("model_select", (_event, ctx) => claimTitle(ctx));
+	pi.on("agent_start", (_event, ctx) => claimTitle(ctx));
 
 	// §Data sync: ingest this session's JSONL into blueberry.db at compaction
 	// and shutdown. Fire-and-forget — sync failures must never disturb the
