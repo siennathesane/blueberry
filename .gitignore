@@ -5,3 +5,7 @@ coverage/
 .DS_Store
 .pi/tasks/
 .env
+
+# deno-compiled build artifacts (deno task compile regenerates)
+bin/blueberry-bin
+bin/blueberry-pi

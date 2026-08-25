@@ -19,8 +19,8 @@ import {
 import { resolveProject, storeDirFor } from "./resolution.ts";
 import { trustPaths } from "./trust.ts";
 import { getAgentDir } from "./agent-dir.ts";
-import { isAbsolute, join, resolve as resolvePath } from "node:path";
-import { mkdirSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -223,31 +223,75 @@ export type PiSpawner = (plan: LaunchPlan) => Promise<number>;
 
 export function defaultSpawnPi(plan: LaunchPlan): Promise<number> {
 	return new Promise((resolvePromise, reject) => {
-		// The fork: blueberry execs its own pi build (pi/packages/coding-agent),
-		// never the global npm install. DB-only session persistence is armed via
-		// BLUEBERRY_DB — every session write lands in blueberry.db, no .jsonl.
-		// The DB path derives from the agent dir (same rule as db.ts openDb), so
-		// BLUEBERRY_AGENT_DIR test sandboxes get a sandbox DB for free.
-		const bundle =
-			process.env["BLUEBERRY_PI_BUNDLE"] ??
-			resolvePath(
-				fileURLToPath(import.meta.url),
-				"../../../pi/packages/coding-agent/dist/bundle/cli.js",
-			);
+		// The fork runtime, in resolution order:
+		// 1. BLUEBERRY_PI_BUNDLE env (authoritative override; tests + packaging)
+		// 2. sibling `blueberry-pi` binary beside this executable — the
+		//    packaged (deno compile) mode. CRITICAL: when this CLI is itself a
+		//    compiled binary, process.execPath points at US — spawning it with
+		//    a bundle path re-enters our own main() in an infinite loop (the
+		//    compiled-mode `help` hang). The sibling check must come first.
+		// 3. repo dev layout: the fork bundle under pi/, run by the live
+		//    runtime (deno under `deno run`)
+		// DB-only session persistence is armed via BLUEBERRY_DB, derived from
+		// the agent dir (same rule as db.ts openDb) — test sandboxes get
+		// sandbox DBs for free.
 		const agentDir =
 			plan.env["PI_CODING_AGENT_DIR"] ?? join(homedir(), ".blueberry");
-		const child = spawn(process.execPath, [bundle, ...plan.argv], {
-			cwd: plan.root,
-			env: {
-				...plan.env,
-				BLUEBERRY_DB: process.env["BLUEBERRY_DB"] ?? join(agentDir, "blueberry.db"),
-			},
-			stdio: "inherit",
-		});
-		for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-			process.on(sig, () => child.kill(sig));
+		const envWithDb = {
+			...plan.env,
+			BLUEBERRY_DB: process.env["BLUEBERRY_DB"] ?? join(agentDir, "blueberry.db"),
+		};
+		const wire = (child: ReturnType<typeof spawn>) => {
+			for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+				process.on(sig, () => child.kill(sig));
+			}
+			child.on("error", reject);
+			child.on("close", (code) => resolvePromise(code ?? 0));
+		};
+
+		const override = process.env["BLUEBERRY_PI_BUNDLE"];
+		if (override !== undefined && override !== "") {
+			wire(spawn(process.execPath, [override, ...plan.argv], {
+				cwd: plan.root,
+				env: envWithDb,
+				stdio: "inherit",
+			}));
+			return;
 		}
-		child.on("error", reject);
-		child.on("close", (code) => resolvePromise(code ?? 0));
+
+		let sibling: string | null = null;
+		try {
+			const candidate = join(dirname(Deno.execPath()), "blueberry-pi");
+			sibling = existsSync(candidate) ? candidate : null;
+		} catch {
+			sibling = null;
+		}
+		if (sibling !== null) {
+			wire(spawn(sibling, plan.argv, {
+				cwd: plan.root,
+				env: envWithDb,
+				stdio: "inherit",
+			}));
+			return;
+		}
+
+		const bundle = resolvePath(
+			fileURLToPath(import.meta.url),
+			"../../../pi/packages/coding-agent/dist/bundle/cli.js",
+		);
+		if (existsSync(bundle)) {
+			wire(spawn(process.execPath, [bundle, ...plan.argv], {
+				cwd: plan.root,
+				env: envWithDb,
+				stdio: "inherit",
+			}));
+			return;
+		}
+
+		reject(
+			new Error(
+				"no pi runtime: set BLUEBERRY_PI_BUNDLE or place blueberry-pi beside the blueberry binary",
+			),
+		);
 	});
 }

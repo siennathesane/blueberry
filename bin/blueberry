@@ -2,6 +2,13 @@
 # blueberry — CLI + pi launcher shim.
 # Management commands pass through; bare invocation launches pi in this project.
 # Alias it: alias bb='/path/to/blueberry'
+#
+# Deno-only (no node in the product surface): prefer a compiled binary when
+# one exists next to this shim (bin/blueberry-bin via `deno task compile`),
+# else fall back to `deno run` from the repo.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec node "$HERE/src/cli/entry.ts" "$@"
+if [ -x "$HERE/bin/blueberry-bin" ]; then
+  exec "$HERE/bin/blueberry-bin" "$@"
+fi
+exec deno run -A --no-check "$HERE/src/cli/entry.ts" "$@"

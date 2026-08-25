@@ -23,6 +23,25 @@ import type { FileEntry, SessionEntry, SessionHeader } from "./session-manager.t
 import type { SessionStore } from "./session-store.ts";
 
 const DDL = [
+	// projects/aliases: the store maps header cwd → project_id; on a fresh
+	// DB (fork binary first, `bb` never ran) these wouldn't exist — schema is
+	// byte-identical to blueberry's db.ts, IF NOT EXISTS makes order moot.
+	`CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  slug TEXT UNIQUE NOT NULL,
+  canonical_path TEXT NOT NULL,
+  git_remote TEXT,
+  session_store TEXT NOT NULL DEFAULT 'central',
+  merged_into TEXT,
+  trusted INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`,
+	`CREATE TABLE IF NOT EXISTS aliases (
+  project_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  PRIMARY KEY (project_id, path)
+)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   project_id TEXT,
@@ -52,6 +71,8 @@ const DDL = [
 
 /** Extract searchable text + role from an entry (parity: blueberry sync.ts entryText). */
 function entryText(entry: FileEntry): { role: string; text: string } | null {
+	// SAFETY: FileEntry is SessionHeader | SessionEntry, both object-literal
+	// unions; string-key probing reads missing keys as undefined, never throws.
 	const e = entry as unknown as Record<string, unknown>;
 	if (e["type"] === "session_info") {
 		const name = e["name"];
@@ -112,19 +133,24 @@ export class BlueberryDbStore implements SessionStore {
 	private projectIdFor(cwd: string | null): string | null {
 		if (cwd === null) return null;
 		const target = normalizeForCompare(cwd);
-		const projects = this.db.prepare("SELECT id, canonical_path FROM projects").all() as Array<{
-			id: string;
-			canonical_path: string;
-		}>;
-		for (const p of projects) {
-			if (normalizeForCompare(p.canonical_path) === target) return p.id;
-		}
-		const aliases = this.db.prepare("SELECT project_id, path FROM aliases").all() as Array<{
-			project_id: string;
-			path: string;
-		}>;
-		for (const a of aliases) {
-			if (normalizeForCompare(a.path) === target) return a.project_id;
+		try {
+			const projects = this.db.prepare("SELECT id, canonical_path FROM projects").all() as Array<{
+				id: string;
+				canonical_path: string;
+			}>;
+			for (const p of projects) {
+				if (normalizeForCompare(p.canonical_path) === target) return p.id;
+			}
+			const aliases = this.db.prepare("SELECT project_id, path FROM aliases").all() as Array<{
+				project_id: string;
+				path: string;
+			}>;
+			for (const a of aliases) {
+				if (normalizeForCompare(a.path) === target) return a.project_id;
+			}
+		} catch {
+			// unreadable registry tables degrade to an unattributed session
+			// (sessions.project_id is nullable) — persistence must not die here
 		}
 		return null;
 	}

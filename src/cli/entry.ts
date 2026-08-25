@@ -1,16 +1,15 @@
 /**
- * bin/blueberry entry shim. Kept separate from main.ts so the command layer
- * stays fully testable and this file is the only uncovered surface
- * (excluded from coverage via package.json).
+ * blueberry CLI entry. Kept separate from main.ts so the command layer stays
+ * fully testable and this file is the only uncovered surface.
+ *
+ * Runtime-portable dispatch: `import.meta.main` is true when this module is
+ * the entrypoint under `deno run` AND under `deno compile`; `Deno.args` is
+ * user args in both modes (a compiled binary's process.argv has no script
+ * slot — the old argv[1]-identity check silently no-op'd when compiled).
  */
 import { main, defaultDeps } from "./main.ts";
-import { pathToFileURL } from "node:url";
 
-const invokedDirectly =
- process.argv[1] !== undefined &&
- import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (invokedDirectly) {
- const code = await main(process.argv.slice(2), defaultDeps());
- process.exit(code);
+if (import.meta.main) {
+	const code = await main(Deno.args, defaultDeps());
+	process.exit(code);
 }
