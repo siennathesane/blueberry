@@ -56,7 +56,7 @@ jobs:
         run: bash bin/compile.sh
 
       - name: Upload artifacts to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/blueberry-${{ matrix.os }}-${{ matrix.arch }}*
