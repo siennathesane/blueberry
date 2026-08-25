@@ -244,9 +244,10 @@ test("db: syncConfigFile repairs corrupt file when stored value exists", () => {
 
 // --- launcher spawn failure ----------------------------------------------------------
 
-test("launcher: spawn error propagates (pi binary missing)", async () => {
-	const oldPath = process.env["PATH"];
-	process.env["PATH"] = "/nonexistent-blueberry-test";
+test("launcher: spawn error propagates (bundle missing)", async () => {
+	// fork reality: spawn fails when the bundle path doesn't exist (no PATH)
+	const oldBundle = process.env["BLUEBERRY_PI_BUNDLE"];
+	process.env["BLUEBERRY_PI_BUNDLE"] = "/nonexistent-blueberry-test/no-bundle.js";
 	try {
 		const { prepareLaunch, defaultSpawnPi } = await import(
 			"../src/core/launcher.ts"
@@ -260,9 +261,12 @@ test("launcher: spawn error propagates (pi binary missing)", async () => {
 			persist: false,
 			gitRemoteReader: () => null,
 		});
-		await assert.rejects(() => defaultSpawnPi(plan));
+		// missing module ≠ spawn error: the runtime starts and exits nonzero
+		const code = await defaultSpawnPi(plan);
+		assert.notEqual(code, 0, "nonzero exit when bundle is missing");
 	} finally {
-		process.env["PATH"] = oldPath;
+		if (oldBundle === undefined) delete process.env["BLUEBERRY_PI_BUNDLE"];
+		else process.env["BLUEBERRY_PI_BUNDLE"] = oldBundle;
 	}
 });
 

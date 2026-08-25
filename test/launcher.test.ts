@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import {
 	prepareLaunch,
 	rewriteArgsForCwd,
@@ -221,16 +221,17 @@ test("prepareLaunch: nested project follows merge to parent root and store", asy
 	assert.equal(plan.sessionDir, getCentralStoreDir(agentDir, "ship"));
 });
 
-test("defaultSpawnPi: execs pi with plan cwd/env and propagates its exit code", async () => {
-	const stubBin = `${area}/stubbin`;
-	mkdirSync(stubBin, { recursive: true });
-	const stub = `${stubBin}/pi`;
-	writeFileSync(stub, '#!/bin/sh\necho "$BB_MARKER:$PWD"\nexit 42\n');
-	chmodSync(stub, 0o755);
-
+test("defaultSpawnPi: execs the fork bundle with plan cwd/env and propagates its exit code", async () => {
+	// fork reality: spawn process.execPath with the bundle (overridable via
+	// BLUEBERRY_PI_BUNDLE for tests/packaging), never `pi` from PATH
+	const stub = `${area}/stub-bundle.js`;
+	writeFileSync(
+		stub,
+		'console.log(`cwd:${Deno.cwd()}`); Deno.exit(42);\n',
+	);
 	const root = fakeRepo(area, "spawn", "git");
-	const oldPath = process.env["PATH"];
-	process.env["PATH"] = `${stubBin}:${oldPath}`;
+	const oldBundle = process.env["BLUEBERRY_PI_BUNDLE"];
+	process.env["BLUEBERRY_PI_BUNDLE"] = stub;
 	try {
 		const plan = {
 			root,
@@ -240,8 +241,9 @@ test("defaultSpawnPi: execs pi with plan cwd/env and propagates its exit code", 
 			actions: [],
 		};
 		const code = await defaultSpawnPi(plan);
-		assert.equal(code, 42, "propagates pi's exit code");
+		assert.equal(code, 42, "propagates the fork process exit code");
 	} finally {
-		process.env["PATH"] = oldPath;
+		if (oldBundle === undefined) delete process.env["BLUEBERRY_PI_BUNDLE"];
+		else process.env["BLUEBERRY_PI_BUNDLE"] = oldBundle;
 	}
 });

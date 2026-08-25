@@ -168,12 +168,7 @@ test("keybindings: setup.sh writes the same contract (source-level check)", () =
 	);
 	for (const [id, key] of Object.entries(DEFAULT_KEYBINDINGS)) {
 		// string claims appear as "id": "key"; unbinds as "id": []
-		const needle = Array.isArray(key)
-			? `"${id}": []`
-			: `"${id}": "${key}"`;
-		assert.ok(
-			setup.includes(needle),
-			`setup.sh missing claim: ${id}: ${needle}`,
-		);
+		const needle = Array.isArray(key) ? `"${id}": []` : `"${id}": "${key}"`;
+		assert.ok(setup.includes(needle), `setup.sh missing claim: ${id}: ${needle}`);
 	}
 });

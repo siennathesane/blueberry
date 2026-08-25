@@ -19,9 +19,11 @@ import {
 import { resolveProject, storeDirFor } from "./resolution.ts";
 import { trustPaths } from "./trust.ts";
 import { getAgentDir } from "./agent-dir.ts";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { isAbsolute, join, resolve as resolvePath } from "node:path";
 import { mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 /** Flags whose values are path-like (absolutized before chdir). */
 const PATH_FLAGS = new Set([
@@ -221,9 +223,25 @@ export type PiSpawner = (plan: LaunchPlan) => Promise<number>;
 
 export function defaultSpawnPi(plan: LaunchPlan): Promise<number> {
 	return new Promise((resolvePromise, reject) => {
-		const child = spawn("pi", plan.argv, {
+		// The fork: blueberry execs its own pi build (pi/packages/coding-agent),
+		// never the global npm install. DB-only session persistence is armed via
+		// BLUEBERRY_DB — every session write lands in blueberry.db, no .jsonl.
+		// The DB path derives from the agent dir (same rule as db.ts openDb), so
+		// BLUEBERRY_AGENT_DIR test sandboxes get a sandbox DB for free.
+		const bundle =
+			process.env["BLUEBERRY_PI_BUNDLE"] ??
+			resolvePath(
+				fileURLToPath(import.meta.url),
+				"../../../pi/packages/coding-agent/dist/bundle/cli.js",
+			);
+		const agentDir =
+			plan.env["PI_CODING_AGENT_DIR"] ?? join(homedir(), ".blueberry");
+		const child = spawn(process.execPath, [bundle, ...plan.argv], {
 			cwd: plan.root,
-			env: plan.env,
+			env: {
+				...plan.env,
+				BLUEBERRY_DB: process.env["BLUEBERRY_DB"] ?? join(agentDir, "blueberry.db"),
+			},
 			stdio: "inherit",
 		});
 		for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {

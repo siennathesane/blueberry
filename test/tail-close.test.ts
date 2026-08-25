@@ -334,7 +334,7 @@ async function fs_readFakeServer(): Promise<string> {
 			"utf8",
 		)
 		.split("const FAKE_SERVER = `")[1]!
-		.split("`;")[0];
+		.split("`;")[0]!;
 }
 
 test("lsp-manager: diagnostics push with empty array clears entry", async () => {

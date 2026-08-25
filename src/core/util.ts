@@ -21,9 +21,8 @@ export function ulid(now: number = Date.now()): string {
 		time = Math.floor(time / 32);
 	}
 	let randPart = "";
-	const bytes = randomBytes(16);
-	for (let i = 0; i < 16; i++) {
-		randPart += CROCKFORD[bytes[i] % 32];
+	for (const byte of randomBytes(16)) {
+		randPart += CROCKFORD[byte % 32]!;
 	}
 	return timePart + randPart;
 }
@@ -96,7 +95,7 @@ export function decodeDirNameToPathCandidates(
 ): string[] {
 	const match = /^--(.*)--$/.exec(dirName);
 	if (!match) return [];
-	const segments = match[1].split("-");
+	const segments = match[1]!.split("-");
 	if (segments.length === 0 || segments.length > 12) return [];
 
 	// All 2^(n-1) join variants, filtered by existence.
@@ -104,12 +103,12 @@ export function decodeDirNameToPathCandidates(
 	const n = segments.length;
 	const total = 1 << (n - 1);
 	for (let mask = 0; mask < total; mask++) {
-		const parts: string[] = [segments[0]];
+		const parts: string[] = [segments[0]!];
 		for (let i = 1; i < n; i++) {
 			if (mask & (1 << (i - 1))) {
 				parts[parts.length - 1] = parts[parts.length - 1] + "-" + segments[i];
 			} else {
-				parts.push(segments[i]);
+				parts.push(segments[i]!);
 			}
 		}
 		const candidate = "/" + parts.join("/");
