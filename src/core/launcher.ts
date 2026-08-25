@@ -19,11 +19,9 @@ import {
 import { resolveProject, storeDirFor } from "./resolution.ts";
 import { trustPaths } from "./trust.ts";
 import { getAgentDir } from "./agent-dir.ts";
-import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { isAbsolute, join, resolve as resolvePath } from "node:path";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
 
 /** Flags whose values are path-like (absolutized before chdir). */
 const PATH_FLAGS = new Set([
@@ -218,80 +216,83 @@ async function finalizeResolution(
 	}
 }
 
-/** Spawn pi per the plan. Returns pi's exit code. Injectable for tests. */
-export type PiSpawner = (plan: LaunchPlan) => Promise<number>;
+/**
+ * Run the fork's pi IN-PROCESS (single-binary product): our entrypoint is the
+ * one `main`; the forked pi framework is loaded as a library and its main()
+ * is called directly. No subprocess, no sibling binary, no pre-built bundle —
+ * `deno compile` folds the fork sources into OUR binary.
+ */
 
-export function defaultSpawnPi(plan: LaunchPlan): Promise<number> {
-	return new Promise((resolvePromise, reject) => {
-		// The fork runtime, in resolution order:
-		// 1. BLUEBERRY_PI_BUNDLE env (authoritative override; tests + packaging)
-		// 2. sibling `blueberry-pi` binary beside this executable — the
-		//    packaged (deno compile) mode. CRITICAL: when this CLI is itself a
-		//    compiled binary, process.execPath points at US — spawning it with
-		//    a bundle path re-enters our own main() in an infinite loop (the
-		//    compiled-mode `help` hang). The sibling check must come first.
-		// 3. repo dev layout: the fork bundle under pi/, run by the live
-		//    runtime (deno under `deno run`)
-		// DB-only session persistence is armed via BLUEBERRY_DB, derived from
-		// the agent dir (same rule as db.ts openDb) — test sandboxes get
-		// sandbox DBs for free.
-		const agentDir =
-			plan.env["PI_CODING_AGENT_DIR"] ?? join(homedir(), ".blueberry");
-		const envWithDb = {
-			...plan.env,
-			BLUEBERRY_DB: process.env["BLUEBERRY_DB"] ?? join(agentDir, "blueberry.db"),
-		};
-		const wire = (child: ReturnType<typeof spawn>) => {
-			for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-				process.on(sig, () => child.kill(sig));
-			}
-			child.on("error", reject);
-			child.on("close", (code) => resolvePromise(code ?? 0));
-		};
+/** The fork's exported main(), called as a library function. */
+export type PiMain = (args: string[]) => unknown;
 
-		const override = process.env["BLUEBERRY_PI_BUNDLE"];
-		if (override !== undefined && override !== "") {
-			wire(spawn(process.execPath, [override, ...plan.argv], {
-				cwd: plan.root,
-				env: envWithDb,
-				stdio: "inherit",
-			}));
-			return;
-		}
+let piMainLoader: (() => Promise<PiMain>) | null = null;
 
-		let sibling: string | null = null;
-		try {
-			const candidate = join(dirname(Deno.execPath()), "blueberry-pi");
-			sibling = existsSync(candidate) ? candidate : null;
-		} catch {
-			sibling = null;
-		}
-		if (sibling !== null) {
-			wire(spawn(sibling, plan.argv, {
-				cwd: plan.root,
-				env: envWithDb,
-				stdio: "inherit",
-			}));
-			return;
-		}
+/** Test seam: swap how the fork main is obtained (null restores the default). */
+export function setPiMainLoader(loader: (() => Promise<PiMain>) | null): void {
+	piMainLoader = loader;
+}
 
-		const bundle = resolvePath(
-			fileURLToPath(import.meta.url),
-			"../../../pi/packages/coding-agent/dist/bundle/cli.js",
+async function loadPiMain(): Promise<PiMain> {
+	const mod = await import("../../pi/packages/coding-agent/src/main.ts");
+	const fn = mod.main as PiMain;
+	if (typeof fn !== "function") throw new Error("fork main() is not callable");
+	return fn;
+}
+
+/** Run the fork pi in-process per the plan. Returns pi's exit code. */
+export type PiRunner = (plan: LaunchPlan) => Promise<number>;
+
+/** Env keys the handover owns (restored afterward — tests run in-process). */
+const HANDOVER_ENV = [
+	"PI_CODING_AGENT_DIR",
+	"PI_CODING_AGENT_SESSION_DIR",
+	"PI_OFFLINE",
+	"BLUEBERRY_DB",
+	"PI_CODING_AGENT",
+	"AI_AGENT",
+] as const;
+
+export async function defaultRunPi(plan: LaunchPlan): Promise<number> {
+	const agentDir =
+		plan.env["PI_CODING_AGENT_DIR"] ?? join(homedir(), ".blueberry");
+
+	const savedEnv: Record<string, string | undefined> = {};
+	for (const key of HANDOVER_ENV) savedEnv[key] = process.env[key];
+	process.env["PI_CODING_AGENT_DIR"] = agentDir;
+	process.env["PI_CODING_AGENT_SESSION_DIR"] = plan.sessionDir;
+	process.env["PI_OFFLINE"] ??= "1";
+	// DB-only persistence: derived from the agent dir (same rule as db.ts
+	// openDb) — BLUEBERRY_AGENT_DIR test sandboxes get sandbox DBs for free.
+	process.env["BLUEBERRY_DB"] ??= join(agentDir, "blueberry.db");
+	// Replicate the fork's own cli.ts bootstrap — WE are the entry now.
+	process.env["PI_CODING_AGENT"] = "true";
+	process.env["AI_AGENT"] = "pi";
+	try {
+		process.emitWarning = (() => {}) as typeof process.emitWarning;
+	} catch {
+		// deno may pin emitWarning; harmless
+	}
+
+	const prevCwd = Deno.cwd();
+	const prevExitCode = process.exitCode;
+	try {
+		const { configureHttpDispatcher } = await import(
+			"../../pi/packages/coding-agent/src/core/http-dispatcher.ts"
 		);
-		if (existsSync(bundle)) {
-			wire(spawn(process.execPath, [bundle, ...plan.argv], {
-				cwd: plan.root,
-				env: envWithDb,
-				stdio: "inherit",
-			}));
-			return;
+		configureHttpDispatcher();
+		process.chdir(plan.root);
+		const piMain = piMainLoader ? await piMainLoader() : await loadPiMain();
+		await piMain(plan.argv);
+		// node types exitCode as string | number; our contract is number
+		return Number(process.exitCode ?? 0);
+	} finally {
+		process.chdir(prevCwd);
+		for (const key of HANDOVER_ENV) {
+			const v = savedEnv[key];
+			if (v === undefined) delete process.env[key];
+			else process.env[key] = v;
 		}
-
-		reject(
-			new Error(
-				"no pi runtime: set BLUEBERRY_PI_BUNDLE or place blueberry-pi beside the blueberry binary",
-			),
-		);
-	});
+		process.exitCode = prevExitCode;
+	}
 }

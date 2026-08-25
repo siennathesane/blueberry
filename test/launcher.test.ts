@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import {
 	prepareLaunch,
 	rewriteArgsForCwd,
-	defaultSpawnPi,
+	defaultRunPi,
+	setPiMainLoader,
 } from "../src/core/launcher.ts";
 import { findBySlug } from "../src/core/registry.ts";
 import { loadRegistrySync } from "../src/core/db.ts";
@@ -221,29 +222,41 @@ test("prepareLaunch: nested project follows merge to parent root and store", asy
 	assert.equal(plan.sessionDir, getCentralStoreDir(agentDir, "ship"));
 });
 
-test("defaultSpawnPi: execs the fork bundle with plan cwd/env and propagates its exit code", async () => {
-	// fork reality: spawn process.execPath with the bundle (overridable via
-	// BLUEBERRY_PI_BUNDLE for tests/packaging), never `pi` from PATH
-	const stub = `${area}/stub-bundle.js`;
-	writeFileSync(
-		stub,
-		'console.log(`cwd:${Deno.cwd()}`); Deno.exit(42);\n',
-	);
-	const root = fakeRepo(area, "spawn", "git");
-	const oldBundle = process.env["BLUEBERRY_PI_BUNDLE"];
-	process.env["BLUEBERRY_PI_BUNDLE"] = stub;
+test("defaultRunPi: calls the fork main in-process with plan cwd/env, propagates exit code, restores state", async () => {
+	// single-binary reality: the fork main is a library call, verified via the
+	// test loader seam — no subprocess anywhere
+	const seen: { cwd?: string; argv?: string[]; db?: string; agentDir?: string } = {};
+	const root = fakeRepo(area, "runpi", "git");
+	const prevCwd = Deno.cwd();
+	setPiMainLoader(async () => async (argv: string[]) => {
+		seen.cwd = Deno.cwd();
+		seen.argv = argv;
+		seen.db = process.env["BLUEBERRY_DB"];
+		seen.agentDir = process.env["PI_CODING_AGENT_DIR"];
+		process.exitCode = 42;
+	});
 	try {
 		const plan = {
 			root,
-			sessionDir: `${agentDir}/sessions/spawn`,
-			argv: [],
-			env: { ...process.env, BB_MARKER: "sentinel" },
+			sessionDir: `${agentDir}/sessions/runpi`,
+			argv: ["--print", "x"],
+			env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
 			actions: [],
 		};
-		const code = await defaultSpawnPi(plan);
-		assert.equal(code, 42, "propagates the fork process exit code");
+		const code = await defaultRunPi(plan);
+		assert.equal(code, 42, "propagates the fork exit code");
+		// realPath both sides: macOS tmpdirs are /var → /private/var symlinks
+		assert.equal(
+			seen.cwd,
+			Deno.realPathSync(root),
+			"cwd handed over to plan root",
+		);
+		assert.deepEqual(seen.argv, ["--print", "x"], "argv passed through");
+		assert.ok(seen.db?.endsWith("blueberry.db"), "BLUEBERRY_DB set from agent dir");
+		assert.equal(seen.agentDir, agentDir, "agent dir handed over");
+		assert.equal(Deno.cwd(), prevCwd, "cwd restored after the run");
+		assert.equal(process.env["BLUEBERRY_DB"], undefined, "handover env restored");
 	} finally {
-		if (oldBundle === undefined) delete process.env["BLUEBERRY_PI_BUNDLE"];
-		else process.env["BLUEBERRY_PI_BUNDLE"] = oldBundle;
+		setPiMainLoader(null);
 	}
 });

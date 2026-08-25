@@ -364,45 +364,10 @@ test("adopt: self-referencing parentSession moves without dangling rewrite", () 
 	assert.equal(readdirSync(dest).length, 1);
 });
 
-// --- launcher: signal handler forwards to child ------------------------------------------
-
-test("launcher: SIGINT handler kills the spawned child", async () => {
-	const stubBin = `${area}/sigbin`;
-	mkdirSync(stubBin, { recursive: true });
-	const stub = join(stubBin, "pi");
-	writeFileSync(stub, "#!/bin/sh\nsleep 30\n");
-	chmodSync(stub, 0o755);
-	const oldPath = process.env["PATH"];
-	process.env["PATH"] = `${stubBin}:${oldPath}`;
-	try {
-		const { prepareLaunch, defaultSpawnPi } = await import(
-			"../src/core/launcher.ts"
-		);
-		const root = fakeRepo(area, "sigproj", "git");
-		const plan = await prepareLaunch({
-			cwd: root,
-			argv: [],
-			agentDir,
-			registry: loadRegistry(agentDir),
-			persist: false,
-			gitRemoteReader: () => null,
-		});
-		const spawned = defaultSpawnPi(plan);
-		await new Promise((r) => setTimeout(r, 150));
-		const started = Date.now();
-		process.emit("SIGINT");
-		const code = await spawned;
-		const elapsed = Date.now() - started;
-		assert.ok(
-			elapsed < 5000,
-			`child died promptly (${elapsed}ms), not after its 30s sleep`,
-		);
-		// signal-kill resolves close(null) as 0 — the launcher's convention
-		assert.equal(code, 0);
-	} finally {
-		process.env["PATH"] = oldPath;
-	}
-});
+// --- launcher signals --------------------------------------------------------------
+// (obsolete, deleted 2025-08-25) "SIGINT handler kills the spawned child":
+// the spawn model is gone — the fork main runs IN-PROCESS (single binary);
+// pi owns its own signal handling. No child exists to forward signals to.
 
 // --- main.ts: command catch arms ------------------------------------------------------------
 
@@ -412,7 +377,7 @@ test("cli: sync/restore/search catch a broken agent dir cleanly", async () => {
 	const deps: CliDeps = {
 		cwd: area,
 		agentDir: broken, // openDb will throw (path is a file)
-		spawn: async () => 0,
+		runPi: async () => 0,
 		out: () => {},
 		err: () => {},
 	};
@@ -426,7 +391,7 @@ test("cli: sessions show message/messages views succeed via dispatch", async () 
 	await main([], {
 		cwd: root,
 		agentDir,
-		spawn: async () => 0,
+		runPi: async () => 0,
 		out: (l) => out_log(l),
 		err: () => {},
 		gitRemoteReader: () => null,
@@ -440,7 +405,7 @@ test("cli: sessions show message/messages views succeed via dispatch", async () 
 	const deps2: CliDeps = {
 		cwd: root,
 		agentDir,
-		spawn: async () => 0,
+		runPi: async () => 0,
 		out: (l) => out.push(l),
 		err: () => {},
 		gitRemoteReader: () => null,

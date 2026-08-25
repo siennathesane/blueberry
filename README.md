@@ -2,11 +2,11 @@
 
 This is my harness. There are many like it, but this one is mine.
 
-A personal agentic coding harness based on [pi](https://github.com/earendil-works/pi-mono). 
+A personal agentic coding harness. One binary, one state file, zero ceremony.
 
-Pull requests are not accepted, and issues are not welcome. If you have a feature request, you can send me an email about it, but if I will report your email as spam if I suspect it's written by AI.
+Pull requests are not accepted, and issues are not welcome. If you have a feature request, you can send me an email about it, but I will report your email as spam if I suspect it's written by AI.
 
-This harness reflects my specific way of working. I had been a Principal Engineer at multiple tech companies before adopting AI tooling, so this harness reflects my experience, my desires, and my needs. It is not designed for vibe coding, and it is not designed to be generic. Using this harness requires advanced knowledge in engineering practices and it designed for focused, long-horizon work. I encode my way of working into every aspect of this harness, from the system prompt to mid-conversation context to on-disk storage to built-in tooling.
+This harness reflects my specific way of working. I had been a Principal Engineer at multiple tech companies before adopting AI tooling, so this harness reflects my experience, my desires, and my needs. It is not designed for vibe coding, and it is not designed to be generic. Using this harness requires advanced knowledge in engineering practices and it is designed for focused, long-horizon work. I encode my way of working into every aspect of this harness, from the system prompt to mid-conversation context to on-disk storage to built-in tooling.
 
 You are welcome to use this harness as much as you'd like, you can clone it, fork it, or use it as a reference. However it is mine, and I will not accept contributions. You are also welcome to tag me on Threads if you want to discuss it, I'm always happy to chat.
 
@@ -15,23 +15,36 @@ You are welcome to use this harness as much as you'd like, you can clone it, for
 ```bash
 ./bin/setup.sh        # one-time: create ~/.blueberry, write settings, install carried packages
 alias bb='~/Development/blueberry/bin/blueberry'
-bb                    # launch pi in this project (alias this in your shell)
+bb                    # launch the agent in this project
 ```
 
-`bin/blueberry` is both the launcher and the management CLI. As a launcher it resolves the
-project you're in, canonicalizes to its root, and runs stock `pi` with
-`PI_CODING_AGENT_DIR=~/.blueberry` and a per-project session store — completely separate from
-`~/.pi/agent`. Override the directory with `BLUEBERRY_AGENT_DIR`.
+`bin/blueberry` is one binary with two faces: the management CLI and the
+agent itself. A launch resolves the project you're in, canonicalizes to its
+root, and runs the agent **in-process** — the forked pi framework
+(`pi/`) is loaded as a library, not spawned. State lives in
+`~/.blueberry/blueberry.db` (override the directory with
+`BLUEBERRY_AGENT_DIR`).
+
+For a release artifact: `bash bin/compile.sh` type-checks, tests, compiles
+the single binary, smoke-proves DB-only persistence, and emits
+`dist/blueberry-<os>-<arch>` + `.sha256`. `bb update` then self-updates
+from GitHub releases (checksum-verified, atomic swap).
 
 First run: if `setup.sh` couldn't copy your existing `auth.json`, run `/login` once inside blueberry.
 
-## Sessions are per-project
+## Sessions are per-project, database-backed
 
-No matter how deep in the tree you launch from, sessions land in the project's store and
-resume correctly: launching from `extensions/todo/` behaves identically to launching from
-the root. Identity travels with the repo (`.git/blueberry-id`, `.lore/blueberry-id`), so
-moving or re-cloning a project auto-reattaches its history — worst case is a split you can
-merge, never lost sessions.
+No matter how deep in the tree you launch from, sessions land in the
+project's store and resume correctly: launching from `extensions/todo/`
+behaves identically to launching from the root. Identity travels with the
+repo (`.git/blueberry-id`, `.lore/blueberry-id`), so moving or re-cloning a
+project auto-reattaches its history — worst case is a split you can merge,
+never lost sessions.
+
+**Every session write lands in `blueberry.db`** (sessions, entries, FTS
+index). No JSONL files are ever created; `bb restore` can rebuild the
+pi-compatible resume files from the DB if you ever need them. Sessions
+survive crashes — persistence doesn't wait for clean shutdown.
 
 ```bash
 bb                          # launch (canonicalized to project root)
@@ -43,7 +56,7 @@ bb projects rename|merge|forget|nest|unnest   # identity surgery
 bb projects sessions central|repo <slug>     # per-project store location
 
 bb sessions list [--all]    # newest first; names, first prompts, message counts
-bb sessions rename <sel> <name>   # pi-native rename (survives /tree)
+bb sessions rename <sel> <name>   # rename (survives /tree)
 bb sessions move <sel> <project>  # move a session between projects
 bb sessions open <sel>      # resume a session in its project (from anywhere)
 bb sessions trash <sel>     # trash, never delete
@@ -54,9 +67,12 @@ bb sessions search <text> [--all]   # scan session text across projects
 bb sessions fork <[proj/]sel>       # name@project copy in the current store
 # the model gets the same powers via the bb_library tool (single tool, action enum)
 
-bb adopt [dir] [--copy]       # import ~/.pi/agent history (groups by header cwd, stamps gaps;
-                              #   --copy leaves the pi tree untouched, re-runs skip duplicates)
-bb fix / bb doctor          # reconcile orphans, stale cwds, dangling forks, split-brain
+bb adopt [dir] [--copy]       # import legacy ~/.pi/agent history (groups by header cwd, stamps gaps;
+                              #   --copy leaves the old tree untouched, re-runs skip duplicates)
+bb sync / bb restore          # manual DB reconcile / rebuild resume files from the DB
+bb search <text> [--code]     # FTS5 search: session history + code, with context neighborhoods
+bb fix / bb doctor            # reconcile orphans, stale cwds, dangling forks, split-brain
+bb update [--check]           # self-update from GitHub releases (sha256-verified, atomic)
 ```
 
 Session selectors: list index (1-based), UUID prefix, or exact name.
@@ -65,26 +81,29 @@ Session selectors: list index (1-based), UUID prefix, or exact name.
 
 | Path | Purpose |
 | ------ | --------- |
-| `src/core/` | Session & project management: registry, markers, resolution, trust, JSONL surgery, adopt, fix |
-| `src/cli/` | `blueberry`/`bb` command dispatch + launch mode (dependency-injected, fully tested) |
-| `extensions/core/` | Branding + session-start guard (warns when a launch would fragment history) |
-| `extensions/plan/` | **Rewrite of plan mode** (in design — see `DESIGN.md`) |
-| `extensions/todo/` | **Todos that are actually useful** (in design — see `DESIGN.md`) |
-| `extensions/search/` | **Embedded disk-based code search** (in design — see `DESIGN.md`) |
-| `themes/blueberry.json` | The blueberry theme (default). `themes/orange-juice.json` too. Both hot-reload when edited. |
-| `prompts/`, `skills/` | Curated prompt templates and skills |
-| `vendored/` | Source copies of upstream packages, **reference only** — see `vendored/VENDORED.md` |
+| `src/core/` | Session & project management, DB stores, todo DAG, search, LSP client/manager, design/plan lifecycle, context composer, updater |
+| `src/cli/` | `bb` command dispatch + launch mode (dependency-injected, fully tested) |
+| `pi/` | **The fork** (vendored for modification — see `pi/FORK.md`): DB-only session persistence, in-process library runtime |
+| `extensions/core/` | Identity (branding, title guard, session-start guard) + §Context: zero-eviction system-prompt identity, per-turn state & datetime rail |
+| `extensions/plan/` | Design → plan → implement lifecycle: `bb_design`/`bb_plan` tools, shift+tab mode ring, completeness gate |
+| `extensions/todo/` | DAG todo store, `bb_todo` tool, ctrl+p kanban pane, checkpoint digests |
+| `extensions/search/` | `bb_search` — history + code search (FTS5) |
+| `extensions/lsp/` | `bb_lsp` — real servers, real protocol, 23 actions, diagnostics nudges |
+| `extensions/library/` | `bb_library` — cross-project session access for the model |
+| `themes/` | `blueberry` (default) and `orange-juice`; hot-reload when edited |
+| `vendored/` | Source copies of other upstream packages, **reference only** — see `vendored/VENDORED.md` |
 
-## Dev loop
+## Dev loop (Deno-only)
 
-- Edit anything under `extensions/`, `prompts/`, `skills/` → `/reload` in a blueberry session.
-- Edit the active theme file (`themes/blueberry.json` by default) → applied immediately, no reload needed.
-- `npm install` once, then `npm run typecheck` to type-check everything (`vendored/` excluded).
-- `npm test` runs the suite; `npm run coverage` enforces ≥90% line/branch/function coverage on `src/`.
+- Edit anything under `extensions/`, `themes/` → `/reload` in a blueberry session.
+- `deno task check` — type-check the whole graph (including the fork).
+- `deno task test` — the suite (470 tests). `deno task coverage` enforces ≥95%.
+- `deno task compile` → `bash bin/compile.sh` for release artifacts.
+- Fork changes: edit `pi/packages/**`, rebuild via `cd pi/packages/coding-agent && npm run build` when the bundle is needed; `deno compile` embeds sources directly.
 
 ## Conventions
 
 - The default branch is **`mainline`**, never `main`.
-- Extensions are TypeScript, loaded directly via jiti — no build step for runtime.
-- Never point the `pi` manifest at `vendored/`. Vendored code is reading material for rewrites,
-  not loadable code. Record provenance in `vendored/VENDORED.md`.
+- The DB is the log of record; JSONL is an export format.
+- The system prompt is frozen per session (zero cache eviction); all volatile context rides the ephemeral message rail.
+- Never point the extension manifest at `vendored/`. Vendored code is reading material for rewrites, not loadable code. Record provenance in `vendored/VENDORED.md`.

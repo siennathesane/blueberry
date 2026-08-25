@@ -86,7 +86,7 @@ test("cli: search --context 2 applies a tight window", async () => {
 	const deps: CliDeps = {
 		cwd: root,
 		agentDir,
-		spawn: async () => 0,
+		runPi: async () => 0,
 		out: () => {},
 		err: () => {},
 		gitRemoteReader: () => null,

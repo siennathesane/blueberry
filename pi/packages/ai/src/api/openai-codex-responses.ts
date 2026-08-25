@@ -392,7 +392,9 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
 							method: "POST",
 							headers: sseHeaders,
-							body: sseBody,
+							// FORK(blueberry): undici 8.9 type-level BodyInit rejects
+							// string | Uint8Array here though runtime accepts both
+							body: sseBody as BodyInit,
 							signal: combinedSignal.signal,
 						});
 					} catch (error) {

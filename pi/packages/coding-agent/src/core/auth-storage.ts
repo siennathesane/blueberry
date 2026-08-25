@@ -147,10 +147,12 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 				continue;
 			}
 			if (signal?.aborted) {
-				await release();
+				// FORK(blueberry): assigned in try above; catch paths continue
+				await release!();
 				signal.throwIfAborted();
 			}
-			return release;
+			// FORK(blueberry): same invariant as above
+			return release!;
 		}
 	}
 

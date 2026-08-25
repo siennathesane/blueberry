@@ -10,6 +10,6 @@
 import { main, defaultDeps } from "./main.ts";
 
 if (import.meta.main) {
-	const code = await main(Deno.args, defaultDeps());
-	process.exit(code);
+ const code = await main(Deno.args, defaultDeps());
+ process.exit(code);
 }

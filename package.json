@@ -1,58 +1,55 @@
 {
-  "name": "blueberry",
-  "version": "0.1.0",
-  "private": true,
-  "description": "A personal pi distribution. Blueberry pi, served with orange juice.",
-  "keywords": [
-    "pi-package"
-  ],
-  "type": "module",
-  "scripts": {
-    "setup": "bash bin/setup.sh",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/cli/entry.ts' --test-coverage-lines=95 --test-coverage-branches=95 --test-coverage-functions=95"
-  },
-  "bin": {
-    "blueberry": "./bin/blueberry"
-  },
-  "engines": {
-    "node": ">=23.6"
-  },
-  "pi": {
-    "extensions": [
-      "./extensions/core/index.ts",
-      "./extensions/library/index.ts",
-      "./extensions/lsp/index.ts",
-      "./extensions/plan/index.ts",
-      "./extensions/search/index.ts",
-      "./extensions/todo/index.ts"
-    ],
-    "skills": [
-      "./skills"
-    ],
-    "prompts": [
-      "./prompts"
-    ],
-    "themes": [
-      "./themes"
-    ]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "@types/node": "*",
-    "typebox": "*",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "typescript-language-server": "^6.0.0"
-  }
+	"name": "blueberry",
+	"version": "0.2.0",
+	"private": true,
+	"description": "A personal pi distribution. Blueberry pi, served with orange juice.",
+	"keywords": [
+		"pi-package"
+	],
+	"type": "module",
+	"scripts": {
+		"setup": "bash bin/setup.sh",
+		"typecheck": "tsc --noEmit",
+		"test": "node --test",
+		"coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/cli/entry.ts' --test-coverage-lines=95 --test-coverage-branches=95 --test-coverage-functions=95"
+	},
+	"bin": {
+		"blueberry": "./bin/blueberry"
+	},
+	"engines": {
+		"node": ">=23.6"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/core/index.ts",
+			"./extensions/library/index.ts",
+			"./extensions/lsp/index.ts",
+			"./extensions/plan/index.ts",
+			"./extensions/search/index.ts",
+			"./extensions/todo/index.ts"
+		],
+		"skills": [
+			"./skills"
+		],
+		"prompts": [
+			"./prompts"
+		],
+		"themes": [
+			"./themes"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	},
+	"devDependencies": {
+		"@types/node": "*",
+		"typebox": "*",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"typescript-language-server": "^6.0.0"
+	}
 }

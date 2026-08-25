@@ -1174,3 +1174,23 @@ not a carried package. Carried from the old setup: `pi-subagents`, `pi-web-acces
 rpiv-todo, fff. Still dropped pending confirmation: `pi-background-tasks`, `pi-goal`.
 For distribution: package source flips from local path to published npm/git name; the
 launcher, registry, and CLI are the product surface.
+
+## §Update — self-update from GitHub releases (decided 2025-08-25)
+
+`bb update [--check]` against `github.com/siennathesane/blueberry/releases/latest`.
+Contract with `bin/compile.sh` artifacts:
+
+- assets named `blueberry-<os>-<arch>` + `.sha256` sidecars (shasum format)
+- download → **sidecar sha256 verify — missing sidecar or mismatch = refuse**
+  (unverified bytes never touch disk as an executable)
+- atomic swap: same-dir temp (0755) → rename over the running binary
+  (same-dir rename is atomic on POSIX; the old inode lives until exit)
+- **prerelease tags never compare newer** than their release ("2.0.0-rc.1"
+  parses to [2,0,0]) — `bb update` never auto-updates into an rc
+- dev-mode refusal: the swap target must be a compiled binary, not the
+  `deno`/`node` runtime itself (`isCompiledBinary`)
+- `GITHUB_TOKEN` env is honored for private-repo auth
+
+Pure core in `src/core/updater.ts` (injectable IO, offline-tested); CLI layer
+supplies deno-real fetch/fs. Tests pin the security branches: tamper =
+refuse, no-sidecar = refuse, deno-on-PATH = refuse, rc = not newer.

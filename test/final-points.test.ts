@@ -33,7 +33,7 @@ function deps(cwd: string): CliDeps {
 	return {
 		cwd,
 		agentDir,
-		spawn: async () => 0,
+		runPi: async () => 0,
 		out: (l) => out.push(l),
 		err: () => {},
 		gitRemoteReader: () => null,

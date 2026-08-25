@@ -12,14 +12,15 @@
  * main() is dependency-injected (cwd, io, spawn) so the command layer is
  * fully testable; bin/blueberry supplies the real process bindings.
  */
+import { existsSync } from "node:fs";
 import { mutations, findBySlug } from "../core/registry.ts";
 import { loadRegistrySync, saveRegistrySync } from "../core/db.ts";
 import { getAgentDir, getTrashDir } from "../core/agent-dir.ts";
 import { resolveProject, storeDirFor } from "../core/resolution.ts";
 import {
 	prepareLaunch,
-	defaultSpawnPi,
-	type PiSpawner,
+	defaultRunPi,
+	type PiRunner,
 } from "../core/launcher.ts";
 import { adoptSessions, type AdoptOptions } from "../core/adopt.ts";
 import { runFix, runDoctor } from "../core/fix.ts";
@@ -43,6 +44,7 @@ import {
 	type ViewKind,
 } from "../core/library.ts";
 import { getVersion } from "../core/version.ts";
+import type { UpdaterIO } from "../core/updater.ts";
 import { openDb, loadRegistryDb } from "../core/db.ts";
 import { syncStores, restoreMissing } from "../core/sync.ts";
 import {
@@ -56,7 +58,7 @@ import { join } from "node:path";
 export interface CliDeps {
 	cwd: string;
 	agentDir: string;
-	spawn: PiSpawner;
+	runPi: PiRunner;
 	out: (line: string) => void;
 	err: (line: string) => void;
 	gitRemoteReader?: (root: string) => string | null;
@@ -66,16 +68,16 @@ export function defaultDeps(): CliDeps {
 	return {
 		cwd: process.cwd(),
 		agentDir: getAgentDir(),
-		spawn: defaultSpawnPi,
+		runPi: defaultRunPi,
 		out: (l) => process.stdout.write(l + "\n"),
 		err: (l) => process.stderr.write(l + "\n"),
 	};
 }
 
-const USAGE = `blueberry — a personal pi distribution
+const USAGE = `blueberry — a personal agentic harness
 
 usage:
-  blueberry [flags] [pi-args...]          launch pi in this project (canonicalized)
+  blueberry [flags] [args...]             launch the agent in this project (canonicalized to its root)
   blueberry projects list [--json]
   blueberry projects rename <slug> <new>
   blueberry projects merge <from> --into <to>
@@ -97,6 +99,7 @@ usage:
   blueberry search <text> [--code] [--context N]  FTS5 search (history + code)
   blueberry fix [--dry-run]
   blueberry doctor
+  blueberry update [--check]        self-update from GitHub releases
 
 launch flags:
   --here            keep this exact directory as session cwd (may fragment history)
@@ -116,6 +119,57 @@ export async function main(
 		deps.out(`blueberry ${getVersion()}`);
 		return 0;
 	}
+
+// --- update (self-update from GitHub releases; §Update) -------------------------
+
+async function updateCmd(rest: string[], deps: CliDeps): Promise<number> {
+	const { checkForUpdate, performUpdate, UPDATER_REPO } = await import(
+		"../core/updater.ts"
+	);
+	const platform = `${Deno.build.os}-${Deno.build.arch}`;
+	const token = process.env["GITHUB_TOKEN"];
+	const headers = { "User-Agent": "blueberry-updater" };
+	const io: UpdaterIO = {
+		async fetchJson(url, h) {
+			const res = await fetch(url, { headers: { ...headers, ...h } });
+			if (!res.ok) throw new Error(`GitHub API ${res.status} for ${url}`);
+			return await res.json();
+		},
+		async fetchBytes(url, h) {
+			const res = await fetch(url, { headers: { ...headers, ...h } });
+			if (!res.ok) throw new Error(`download failed ${res.status} for ${url}`);
+			return new Uint8Array(await res.arrayBuffer());
+		},
+		execPath: () => Deno.execPath(),
+		writeFile: (path, bytes, mode) => Deno.writeFile(path, bytes, { mode }),
+		rename: (from, to) => Deno.rename(from, to),
+		exists: (path) => existsSync(path),
+	};
+	const version = getVersion();
+
+	try {
+		if (rest.includes("--check")) {
+			const res = await checkForUpdate(version, platform, io, UPDATER_REPO, token);
+			if (res.updateAvailable) {
+				deps.out(`update available: ${version} → ${res.latestTag} (${platform})`);
+				deps.out("run: bb update");
+			} else if (res.assetUrl === null) {
+				deps.out(`up to date (${version}); latest release has no ${platform} asset`);
+			} else {
+				deps.out(`up to date (${version}, latest ${res.latestTag})`);
+			}
+			return 0;
+		}
+		deps.out(`blueberry ${version} · checking latest release…`);
+		const res = await performUpdate(version, platform, io, UPDATER_REPO, token);
+		deps.out(`updated ${res.from} → ${res.to}`);
+		deps.out(`replaced ${res.path} — restart blueberry to run the new version`);
+		return 0;
+	} catch (err) {
+		deps.err(`blueberry: update failed: ${(err as Error).message}`);
+		return 1;
+	}
+}
 
 	const [cmd, ...rest] = argv;
 	switch (cmd) {
@@ -137,6 +191,8 @@ export async function main(
 			return restoreCmd(deps);
 		case "search":
 			return searchCmd(rest, deps);
+		case "update":
+			return updateCmd(rest, deps);
 		default:
 			// anything that isn't a known subcommand is treated as pi launch
 			return launchMode(argv, deps);
@@ -170,7 +226,7 @@ async function launchMode(
 			...(deps.gitRemoteReader ? { gitRemoteReader: deps.gitRemoteReader } : {}),
 		});
 		for (const action of plan.actions) deps.err(`blueberry: ${action}`);
-		return await deps.spawn(plan);
+		return await deps.runPi(plan);
 	} catch (err) {
 		deps.err(`blueberry: ${(err as Error).message}`);
 		return 1;
@@ -397,7 +453,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 					projectSlug: project.slug,
 					persist: false,
 				});
-				return await deps.spawn(plan);
+				return await deps.runPi(plan);
 			}
 			case "trash": {
 				const sel = args[0];

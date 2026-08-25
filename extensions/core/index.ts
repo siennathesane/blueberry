@@ -78,11 +78,10 @@ export default function (pi: ExtensionAPI) {
 				const db = openDb(agentDir);
 				try {
 					probe.hasTodos =
-						(db
-							.prepare("SELECT COUNT(*) AS n FROM todos")
-							.get() as { n: number }).n > 0;
+						(db.prepare("SELECT COUNT(*) AS n FROM todos").get() as { n: number }).n >
+						0;
 				} finally {
-						db.close();
+					db.close();
 				}
 			} catch {
 				// probe failure = minimal identity, never a broken session
@@ -113,9 +112,7 @@ export default function (pi: ExtensionAPI) {
 		const root = boundary ? boundary.root : resolve(cwd);
 		try {
 			const { openDb, loadRegistryDb } = await import("../../src/core/db.ts");
-			const { normalizePathForCompare } = await import(
-				"../../src/core/util.ts",
-			);
+			const { normalizePathForCompare } = await import("../../src/core/util.ts");
 			const db = openDb(agentDir);
 			try {
 				const modeRow = db
@@ -134,7 +131,7 @@ export default function (pi: ExtensionAPI) {
 				if (project) {
 					if (state.mode === "design") {
 						const { findOpenDesign, checkCompleteness } = await import(
-							"../../src/core/design-store.ts",
+							"../../src/core/design-store.ts"
 						);
 						const open = findOpenDesign(db, project.id);
 						if (open) {
@@ -243,7 +240,9 @@ export default function (pi: ExtensionAPI) {
 			// SAFETY: process.stdout satisfies the structural write(...args)
 			// surface; the cast bridges Node's overloaded stream typing only.
 			installInterceptor(
-				process.stdout as unknown as { write(...args: unknown[]): boolean } & object,
+				process.stdout as unknown as {
+					write(...args: unknown[]): boolean;
+				} & object,
 				terminalTitle(projectNameFor(boundary0 ? boundary0.root : ctx.cwd)),
 			);
 		}
@@ -273,7 +272,11 @@ export default function (pi: ExtensionAPI) {
 	// pi re-asserts its title from several internal events (startup .finally,
 	// session switch, model change...). Self-healing: re-claim on every event
 	// we can see — worst case the title is wrong for one sub-turn.
-	const claimTitle = (ctx: { cwd: string; mode: string; ui: { setTitle(t: string): void } }) => {
+	const claimTitle = (ctx: {
+		cwd: string;
+		mode: string;
+		ui: { setTitle(t: string): void };
+	}) => {
 		if (ctx.mode !== "tui") return;
 		const boundary = findProjectBoundary(resolve(ctx.cwd));
 		const name = projectNameFor(boundary ? boundary.root : ctx.cwd);

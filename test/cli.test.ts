@@ -30,7 +30,7 @@ function deps(cwd: string): CliDeps {
 	return {
 		cwd,
 		agentDir,
-		spawn: async (plan) => {
+		runPi: async (plan) => {
 			spawnCalls.push({
 				root: plan.root,
 				sessionDir: plan.sessionDir,
@@ -433,7 +433,7 @@ test("cli: fix errors cleanly when a store path is a file", async () => {
 test("cli: defaultDeps wires process io and actually invokes them", () => {
 	const d = defaultDeps();
 	assert.equal(typeof d.cwd, "string");
-	assert.equal(typeof d.spawn, "function");
+	assert.equal(typeof d.runPi, "function");
 	// exercise the io arrows (stdout/stderr writes)
 	d.out("blueberry-io-probe");
 	d.err("blueberry-io-probe");

@@ -43,7 +43,7 @@ function deps(cwd: string): CliDeps {
 	return {
 		cwd,
 		agentDir,
-		spawn: async () => 0,
+		runPi: async () => 0,
 		out: (l) => outLines.push(l),
 		err: (l) => errLines.push(l),
 		gitRemoteReader: () => null,
@@ -242,16 +242,16 @@ test("db: syncConfigFile repairs corrupt file when stored value exists", () => {
 	db.close();
 });
 
-// --- launcher spawn failure ----------------------------------------------------------
+// --- launcher fork-load failure ------------------------------------------------------
 
-test("launcher: spawn error propagates (bundle missing)", async () => {
-	// fork reality: spawn fails when the bundle path doesn't exist (no PATH)
-	const oldBundle = process.env["BLUEBERRY_PI_BUNDLE"];
-	process.env["BLUEBERRY_PI_BUNDLE"] = "/nonexistent-blueberry-test/no-bundle.js";
+test("launcher: fork main load failure propagates", async () => {
+	const { prepareLaunch, defaultRunPi, setPiMainLoader } = await import(
+		"../src/core/launcher.ts"
+	);
+	setPiMainLoader(async () => {
+		throw new Error("fork unavailable (test)");
+	});
 	try {
-		const { prepareLaunch, defaultSpawnPi } = await import(
-			"../src/core/launcher.ts"
-		);
 		const root = fakeRepo(area, "spawner", "git");
 		const plan = await prepareLaunch({
 			cwd: root,
@@ -261,12 +261,9 @@ test("launcher: spawn error propagates (bundle missing)", async () => {
 			persist: false,
 			gitRemoteReader: () => null,
 		});
-		// missing module ≠ spawn error: the runtime starts and exits nonzero
-		const code = await defaultSpawnPi(plan);
-		assert.notEqual(code, 0, "nonzero exit when bundle is missing");
+		await assert.rejects(() => defaultRunPi(plan), /fork unavailable/);
 	} finally {
-		if (oldBundle === undefined) delete process.env["BLUEBERRY_PI_BUNDLE"];
-		else process.env["BLUEBERRY_PI_BUNDLE"] = oldBundle;
+		setPiMainLoader(null);
 	}
 });
 
