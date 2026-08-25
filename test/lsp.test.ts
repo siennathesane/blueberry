@@ -814,7 +814,7 @@ test("manager: getDiagnostics filtered by uri", async () => {
 // --- mock-heavy branch closure: error paths, resolver fixtures, lifecycle edges -------
 
 import { mkdirSync as mk, chmodSync as ch, rmSync as rmf } from "node:fs";
-import platform from "node:os";
+import { platform } from "node:os";
 
 test("onExit: in-memory client resolves 0 (no process)", async () => {
 	const { reader, writer } = makePipe();
@@ -1182,7 +1182,7 @@ test("resolveRustAnalyzer: unreadable shim falls through to toolchains", () => {
 	});
 	const shim = join(home, ".cargo", "bin", "rust-analyzer");
 	writeFileSync(shim, "#!/bin/sh\nrustup stuff");
-	if (platform !== "win32") {
+	if (platform() !== "win32") {
 		// #32: chmod semantics differ on Windows; unix-only behavior tested
 		ch(shim, 0o000); // unreadable → readFileSync throws → catch
 		writeFileSync(

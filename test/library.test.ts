@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import platform from "node:os";
+import { platform } from "node:os";
 import {
 	mkdirSync,
 	readdirSync,
@@ -697,7 +697,7 @@ test("renderSummary: bare session shows fallback labels", () => {
 test("parseSessionFile: unreadable body returns null", () => {
 	const store = getCentralStoreDir(agentDir, "unreadable");
 	const file = fakeSession(store, { cwd: "/x" });
-	if (platform !== "win32") {
+	if (platform() !== "win32") {
 		// #32: chmod semantics differ on Windows; unix-only behavior tested
 		chmodSync(file, 0o000);
 		assert.equal(parseSessionFile(file), null);

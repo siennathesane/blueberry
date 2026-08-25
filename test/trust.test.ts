@@ -2,6 +2,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readTrust, writeTrustEntries, trustPaths } from "../src/core/trust.ts";
 import { tmpAgentDir, cleanup, tmpDir } from "./helpers.ts";
+import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { readJsonIfExists } from "../src/core/util.ts";
 

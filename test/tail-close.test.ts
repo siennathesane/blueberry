@@ -7,7 +7,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
-import platform from "node:os";
+import { platform } from "node:os";
 import { join } from "node:path";
 import {
 	openDb,
@@ -429,7 +429,7 @@ test("doc-index: unreadable file lands in errors, others proceed", () => {
 		join(dir, "locked.md"),
 		`---\nid: lk8888\n---\n\n## Goal\n\nLocked.`,
 	);
-	if (platform !== "win32") {
+	if (platform() !== "win32") {
 		// #32: chmod semantics differ on Windows; unix-only behavior tested
 		chmodSync(join(dir, "locked.md"), 0o000);
 		const db = openDb(agentDir);
