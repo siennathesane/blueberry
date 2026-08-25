@@ -38,9 +38,12 @@ import {
 } from "../../src/core/plan-store.ts";
 import { ingestDesignDocs } from "../../src/core/doc-index.ts";
 
-type Mode = "normal" | "design" | "plan";
-
-const MODE_KEY = "mode";
+import {
+	readMode,
+	writeMode,
+	planGateDecision,
+	type Mode,
+} from "../../src/core/plan-gate.ts";
 
 function agentDir(): string {
 	return process.env["PI_CODING_AGENT_DIR"] ?? "";
@@ -65,28 +68,7 @@ function projectFor(
 	}
 }
 
-function readMode(db: ReturnType<typeof openDb>): Mode {
-	const row = db
-		.prepare("SELECT json FROM config WHERE key = ?")
-		.get(MODE_KEY) as { json: string } | undefined;
-	if (!row) return "normal";
-	try {
-		const parsed = JSON.parse(row.json) as { mode?: string };
-		return parsed.mode === "design" || parsed.mode === "plan"
-			? parsed.mode
-			: "normal";
-	} catch {
-		return "normal";
-	}
-}
 
-function writeMode(db: ReturnType<typeof openDb>, mode: Mode): void {
-	db
-		.prepare(
-			"INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json",
-		)
-		.run(MODE_KEY, JSON.stringify({ mode }));
-}
 
 export default function (pi: ExtensionAPI) {
 	// --- strip widget ----------------------------------------------------------------
@@ -126,6 +108,26 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// --- plan-mode USE gate (§Design lifecycle, user spec 2025-08-25) -----
+	// Plan mode is expensive (reviews, iterations, consistency passes) and
+	// must never be usable without a relevant design — you must design
+	// something first; otherwise it's just little tasks. Entering/swapping
+	// is free; the FIRST MESSAGE pays the toll. Any open design (any status)
+	// unlocks planning against it; decided stays enforced at bb_plan approve.
+	pi.on("before_agent_start", (_event, ctx) => {
+		const dir = agentDir();
+		if (dir === "") return undefined;
+		const proj = projectFor(ctx.cwd);
+		if (!proj) return undefined;
+		const decision = planGateDecision(proj.id, dir);
+		if (decision && ctx.hasUI) {
+			ctx.ui.notify(
+				"⏸ plan mode blocked: no pending design — design first (/design or bb_design draft), or shift+tab out",
+				"warning",
+			);
+		}
+		return decision;
+	});
 	pi.on("session_start", (_e, ctx) => {
 		if (ctx.hasUI) refreshStrip(ctx);
 	});
@@ -160,24 +162,18 @@ export default function (pi: ExtensionAPI) {
 						break;
 					}
 					case "design": {
-						// design → plan requires decided
-						const open = findOpenDesign(db, proj.id);
-						if (!open) {
-							ctx.ui.notify(
-								"design mode but no open design — scaffold first (/design)",
-								"warning",
-							);
-							return;
-						}
-						if (open.status !== "decided") {
-							ctx.ui.notify(
-								"approve the design first — /design then y (all required sections)",
-								"warning",
-							);
-							return;
-						}
+						// design → plan: entry is FREE (user spec 2025-08-25: swap
+						// freely; the USE gate lives at message time — see the
+						// before_agent_start handler below). Decided-status stays
+						// enforced where it matters: bb_plan approve/seed.
 						next = "plan";
-						ctx.ui.notify("⬡ plan mode — decompose with bb_plan", "info");
+						const open = findOpenDesign(db, proj.id);
+						ctx.ui.notify(
+							open
+								? `⬡ plan mode — planning against "${open.title}"`
+								: "⬡ plan mode — no pending design: messages will be blocked until one exists (/design)",
+							open ? "info" : "warning",
+						);
 						break;
 					}
 					case "plan": {

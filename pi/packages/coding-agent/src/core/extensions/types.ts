@@ -1137,6 +1137,14 @@ export interface BeforeAgentStartEventResult {
 	message?: Pick<CustomMessage, "customType" | "content" | "display" | "details">;
 	/** Replace the system prompt for this turn. If multiple extensions return this, they are chained. */
 	systemPrompt?: string;
+	/**
+	 * FORK(blueberry): cancel the turn before it starts. The reason is logged
+	 * as a system entry and surfaced to the UI — the user's message is NOT
+	 * consumed (it stays in the editor for TUI; discarded in print mode with a
+	 * stderr note). Used by lifecycle gates (plan mode requires a pending
+	 * design) so expensive modes can't be used unguarded, in any front-end.
+	 */
+	cancel?: { reason: string };
 }
 
 export interface SessionBeforeSwitchResult {

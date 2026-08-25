@@ -116,6 +116,8 @@ const buildBuiltinKeybindings = (resolvedKeybindings: KeybindingsConfig): BuiltI
 interface BeforeAgentStartCombinedResult {
 	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
 	systemPrompt?: string;
+	/** FORK(blueberry): first handler to cancel wins; the turn is dropped */
+	cancel?: { reason: string };
 }
 
 /**
@@ -1119,6 +1121,11 @@ export class ExtensionRunner {
 						if (result.systemPrompt !== undefined) {
 							currentSystemPrompt = result.systemPrompt;
 							systemPromptModified = true;
+						}
+						// FORK(blueberry): first cancel wins — no further handlers run,
+						// the turn is dropped by agent-session before any model call
+						if (result.cancel !== undefined) {
+							return { cancel: result.cancel };
 						}
 					}
 				} catch (err) {

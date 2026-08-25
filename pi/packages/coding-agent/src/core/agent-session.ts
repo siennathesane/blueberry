@@ -727,6 +727,8 @@ export class AgentSession {
 			return;
 		}
 
+		// SAFETY: in-place replacement pattern — `target` is a plain object
+		// record from session state; key-wise delete reassigns its shape only.
 		const targetRecord = target as unknown as Record<string, unknown>;
 		for (const key of Object.keys(targetRecord)) {
 			delete targetRecord[key];
@@ -1260,6 +1262,14 @@ export class AgentSession {
 						timestamp: Date.now(),
 					});
 				}
+			}
+			// FORK(blueberry): a cancelled turn never reaches the model.
+			// Cancel consumes nothing: no user message is appended, no agent
+			// loop starts, no session entry is written. The extension that
+			// cancelled owns the user-facing explanation (it has ctx.ui).
+			if (result?.cancel !== undefined) {
+				preflightResult?.(false);
+				return;
 			}
 			// Apply extension-modified system prompt, or reset to base
 			if (result?.systemPrompt !== undefined) {
