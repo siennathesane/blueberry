@@ -20,7 +20,15 @@ import { findProjectBoundary } from "../../src/core/markers.ts";
 import { getVersion } from "../../src/core/version.ts";
 import { projectNameFor, terminalTitle } from "../../src/core/identity.ts";
 import { installInterceptor } from "../../src/core/title-guard.ts";
+import {
+	composeDatetimeLine,
+	composeIdentity,
+	composeStateBlock,
+	type IdentityProbe,
+	type LiveState,
+} from "../../src/core/context-composer.ts";
 import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /** Current branch name from .git/HEAD; null when not a git repo / unreadable. */
@@ -41,6 +49,143 @@ function lastSegment(path: string): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	// ── §Context: the two rails ─────────────────────────────────
+	// Rail 1 (system prompt): identity, FROZEN at first use — the prompt is
+	// the cache-prefix root; our bytes never change mid-session (zero-
+	// eviction). Rail 2 (context event): state + datetime, rebuilt fresh per
+	// turn at the tail — never persisted, never cache-hostile.
+	let frozenIdentity: string | null = null;
+
+	const probeIdentity = async (cwd: string): Promise<IdentityProbe> => {
+		const boundary = findProjectBoundary(resolve(cwd));
+		const root = boundary ? boundary.root : resolve(cwd);
+		const probe: IdentityProbe = {
+			cwd,
+			lspLanguages: [],
+			hasDesignLifecycle: existsSync(join(root, "docs", "design")),
+			hasTodos: false,
+		};
+		try {
+			const { defaultServers } = await import("../../src/core/lsp-manager.ts");
+			probe.lspLanguages = defaultServers().flatMap((s) => s.languageIds);
+		} catch {
+			// no servers installed = no bb_lsp surface in identity
+		}
+		const agentDir = process.env["PI_CODING_AGENT_DIR"];
+		if (agentDir) {
+			try {
+				const { openDb } = await import("../../src/core/db.ts");
+				const db = openDb(agentDir);
+				try {
+					probe.hasTodos =
+						(db
+							.prepare("SELECT COUNT(*) AS n FROM todos")
+							.get() as { n: number }).n > 0;
+				} finally {
+						db.close();
+				}
+			} catch {
+				// probe failure = minimal identity, never a broken session
+			}
+		}
+		return probe;
+	};
+
+	const ensureIdentity = async (cwd: string): Promise<string> => {
+		if (frozenIdentity === null) {
+			frozenIdentity = composeIdentity(await probeIdentity(cwd));
+		}
+		return frozenIdentity;
+	};
+
+	pi.on("before_agent_start", async (event, ctx) => {
+		// Rail 1 — frozen identity, byte-identical every turn (zero-eviction)
+		const identity = await ensureIdentity(ctx.cwd);
+		event.systemPrompt = `${event.systemPrompt}\n\n${identity}`;
+	});
+
+	// Derive the live state snapshot from the DB (never stale, never cached).
+	const readLiveState = async (cwd: string): Promise<LiveState> => {
+		const state: LiveState = { mode: "normal" };
+		const agentDir = process.env["PI_CODING_AGENT_DIR"];
+		if (!agentDir) return state;
+		const boundary = findProjectBoundary(resolve(cwd));
+		const root = boundary ? boundary.root : resolve(cwd);
+		try {
+			const { openDb, loadRegistryDb } = await import("../../src/core/db.ts");
+			const { normalizePathForCompare } = await import(
+				"../../src/core/util.ts",
+			);
+			const db = openDb(agentDir);
+			try {
+				const modeRow = db
+					.prepare("SELECT json FROM config WHERE key = 'mode'")
+					.get() as { json: string } | undefined;
+				if (modeRow) {
+					const mode = (JSON.parse(modeRow.json) as { mode?: string }).mode;
+					if (mode === "design" || mode === "plan") state.mode = mode;
+				}
+				const registry = loadRegistryDb(db);
+				const project = registry.projects.find(
+					(p) =>
+						normalizePathForCompare(p.canonicalPath) ===
+						normalizePathForCompare(root),
+				);
+				if (project) {
+					if (state.mode === "design") {
+						const { findOpenDesign, checkCompleteness } = await import(
+							"../../src/core/design-store.ts",
+						);
+						const open = findOpenDesign(db, project.id);
+						if (open) {
+							state.designTitle = open.title;
+							state.missingSections = checkCompleteness(open.body).unanswered;
+						}
+					} else if (state.mode === "plan") {
+						const row = db
+							.prepare(
+								"SELECT rev, status FROM plans WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1",
+							)
+							.get(project.id) as { rev: number; status: string } | undefined;
+						if (row) state.planRev = row.rev;
+					} else {
+						// building: DAG progress (NOW/NEXT from ready todos)
+						const { listTodos } = await import("../../src/core/todo-store.ts");
+						const todos = listTodos(db, project.id);
+						const done = todos.filter((t) => t.stage === "done");
+						const ready = todos.filter(
+							(t) => t.stage !== "done" && t.blockedBy.length === 0,
+						);
+						if (todos.length > 0 && done.length < todos.length) {
+							state.buildingTitle = "current work";
+							state.doneCount = done.length;
+							state.totalCount = todos.length;
+							state.nowTask = ready[0]?.title ?? undefined;
+							state.nextTask = ready[1]?.title ?? undefined;
+						}
+					}
+				}
+			} finally {
+				db.close();
+			}
+		} catch {
+			// state derivation is best-effort; broken DB read degrades to normal
+		}
+		return state;
+	};
+
+	pi.on("context", async (event, ctx) => {
+		// Rail 2 — ephemeral tail: state (DB-derived) + datetime (fresh clock)
+		const lines: string[] = [];
+		const block = composeStateBlock(await readLiveState(ctx.cwd));
+		if (block !== "") lines.push(block);
+		lines.push(composeDatetimeLine(new Date()));
+		event.messages = [
+			...event.messages,
+			{ role: "user", content: lines.join("\n"), timestamp: Date.now() },
+		];
+	});
+
 	// /exit — the muscle-memory command pi never shipped. Graceful: defers
 	// until the agent is idle (queued messages drain first) and emits
 	// session_shutdown, so every cleanup hook runs.
@@ -95,6 +240,8 @@ export default function (pi: ExtensionAPI) {
 		// events. Also rewrites pi's exit resume hint to the bb surface.
 		if (ctx.mode === "tui") {
 			const boundary0 = findProjectBoundary(resolve(ctx.cwd));
+			// SAFETY: process.stdout satisfies the structural write(...args)
+			// surface; the cast bridges Node's overloaded stream typing only.
 			installInterceptor(
 				process.stdout as unknown as { write(...args: unknown[]): boolean } & object,
 				terminalTitle(projectNameFor(boundary0 ? boundary0.root : ctx.cwd)),

@@ -7,7 +7,7 @@
  * row comes from doc-index ingest — this module writes files + events.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { hex6Of } from "./todo-store.ts";
@@ -88,6 +88,29 @@ date: {{DATE}}
 `;
 
 /** Scaffold a new design doc; returns the file path. */
+/**
+ * Next zero-padded sequence number for docs/design/*.md (001, 002, ...).
+ * Files are ordered by number, never by date in the filename (user call:
+ * dates in names churn; numbers keep directory listing in creation order).
+ * Sequence files are exactly-3-digit-prefixed (\d{3}-) — legacy date-named
+ * files (2026-08-25-...) do NOT match the shape and stay out of the sequence.
+ * (Past 999 designs the pad widens to 4 digits and those files no longer
+ * match the 3-digit probe — acceptable boundary, documented here.)
+ */
+function nextDesignNumber(dir: string): number {
+	let max = 0;
+	try {
+		for (const f of readdirSync(dir)) {
+			if (!f.endsWith(".md")) continue;
+			const m = /^(\d{3})-/.exec(f);
+			if (m) max = Math.max(max, Number(m[1]));
+		}
+	} catch {
+		// no dir yet → 001
+	}
+	return max + 1;
+}
+
 export function scaffoldDesign(
 	projectRoot: string,
 	title: string,
@@ -103,7 +126,8 @@ export function scaffoldDesign(
 			.slice(0, 48) || "design";
 	const dir = join(projectRoot, "docs", "design");
 	mkdirSync(dir, { recursive: true });
-	const path = join(dir, `${date}-${slugBase}.md`);
+	const num = String(nextDesignNumber(dir)).padStart(3, "0");
+	const path = join(dir, `${num}-${slugBase}.md`);
 	const body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", hex6)
 		.replaceAll("{{TITLE}}", title)
 		.replaceAll("{{DATE}}", date);

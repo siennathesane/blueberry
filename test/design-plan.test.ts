@@ -4,8 +4,8 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { basename, join } from "node:path";
 import { openDb } from "../src/core/db.ts";
 import {
 	DESIGN_SCAFFOLD,
@@ -70,7 +70,25 @@ test("scaffold: file created with frontmatter id, title, date; questions embedde
 	assert.ok(raw.includes("## Audience"));
 	assert.ok(raw.includes("## Requirements"));
 	assert.ok(raw.includes("<!--")); // questions present
-	assert.ok(path.includes("test-design-alpha.md"));
+	assert.ok(path.endsWith("test-design-alpha.md"));
+	// NO date in the filename (user call: numbers order, dates churn)
+	assert.ok(!/\d{4}-\d{2}-\d{2}/.test(basename(path)), "no date-encoded filename");
+});
+
+test("scaffold: zero-padded numeric sequence — 001, 002, ...; legacy files untouched", () => {
+	// legacy date-named file pre-exists: left alone, doesn't join the sequence
+	const dir = join(area, "docs", "design");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "2026-01-01-legacy-design.md"), "---\nstatus: done\n---\n## Problem\nx\n");
+
+	const first = scaffoldDesign(area, "First Numbered");
+	assert.ok(basename(first.path).startsWith("001-"), "first numbered is 001");
+
+	const second = scaffoldDesign(area, "Second Numbered");
+	assert.ok(basename(second.path).startsWith("002-"), "second is 002");
+
+	// three digits holds past 999 handled by padStart growth (1000 → "1000")
+	assert.ok(existsSync(join(dir, "2026-01-01-legacy-design.md")), "legacy untouched");
 });
 
 // --- completeness ---------------------------------------------------------------------
