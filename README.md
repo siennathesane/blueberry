@@ -18,6 +18,11 @@ Install the latest release (macOS arm64/x86_64, Linux x86_64, Windows x86_64):
 curl -fsSL https://raw.githubusercontent.com/siennathesane/blueberry/mainline/bin/install.sh | sh
 ```
 
+Windows: release assets are pending — the suite carries unix assumptions
+(93 failures on windows runners); darwin (arm64 + x86_64) and linux (x86_64)
+publish normally, and the windows matrix job stays visible-but-failing until
+that debt is paid.
+
 Installs a checksum-verified binary to `~/.blueberry/bin` (override with
 `BB_INSTALL_DIR`; `bb update` self-updates from then on). From a checkout
 instead:

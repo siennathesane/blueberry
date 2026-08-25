@@ -32,7 +32,7 @@ jobs:
           - runner: macos-latest
             os: darwin
             arch: aarch64
-          - runner: macos-15-intel   # last Intel macOS runner label
+          - runner: macos-15-intel # last Intel macOS runner label
             os: darwin
             arch: x86_64
           - runner: ubuntu-latest

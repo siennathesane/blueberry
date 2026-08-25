@@ -100,24 +100,33 @@ ok "built [$BUILD_MODE] → $BIN"
 # there but passes plain, rebuild plain — never ship an unproven artifact.
 smoke() {
   local bin="$1"
-  [ -x "$bin" ] || return 1
-  "$bin" --version >/dev/null 2>&1 || return 1
+  [ -x "$bin" ] || { echo "smoke diag: binary not executable" >&2; return 1; }
+  "$bin" --version >/dev/null 2>&1 || { echo "smoke diag: --version failed" >&2; return 1; }
 
   # DB-only persistence proof: full session through the compiled fork.
-  local W
+  # A stub api key makes the model call get ATTEMPTED and fail — persistence
+  # surviving a failed model call IS the property under test. Without the stub
+  # (CI has no ambient provider keys) pi exits before writing anything.
+  local W rc jsonl rows
   W="$(mktemp -d "${TMPDIR:-/tmp}/bb-compile-smoke.XXXXXX")"
   mkdir -p "$W/agent"
-  if ! PI_OFFLINE=1 PI_CODING_AGENT_DIR="$W/agent" BLUEBERRY_DB="$W/agent/blueberry.db" \
-    run_to 90 "$bin" -p "reply: compile-smoke-ok" >/dev/null 2>&1; then
-    # the model call may legitimately fail (no sandbox auth); persistence
-    # surviving that IS the property under test — verify rows below either way
-    true
-  fi
-  local jsonl rows
+  printf '{"zai":{"type":"api_key","key":"bb-smoke-stub"}}' >"$W/agent/auth.json"
+  rc=0
+  PI_OFFLINE=1 PI_CODING_AGENT_DIR="$W/agent" BLUEBERRY_DB="$W/agent/blueberry.db" \
+    run_to 90 "$bin" -p "reply: compile-smoke-ok" >"$W/out.log" 2>"$W/err.log" || rc=$?
   jsonl="$(find "$W/agent" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')"
   rows="$(deno eval "import{DatabaseSync}from'node:sqlite';const db=new DatabaseSync('$W/agent/blueberry.db',{readOnly:true});console.log(db.prepare('SELECT COUNT(*) n FROM sessions').get().n)" 2>/dev/null || echo 0)"
+  if [ "$jsonl" != "0" ] || [ "$rows" -lt 1 ]; then
+    echo "smoke diag: rc=$rc jsonl=$jsonl rows=$rows" >&2
+    echo "smoke diag: stderr tail:" >&2
+    tail -5 "$W/err.log" >&2 2>/dev/null || true
+    echo "smoke diag: agent dir:" >&2
+    ls -la "$W/agent" >&2 2>/dev/null || true
+    rm -rf "$W"
+    return 1
+  fi
   rm -rf "$W"
-  [ "$jsonl" = "0" ] && [ "$rows" -ge 1 ]
+  return 0
 }
 
 say "smoke: boot + DB-only persistence (the single-binary proof)"

@@ -19,27 +19,31 @@ VERSION="${VERSION:-latest}"
 INSTALL_DIR="${BB_INSTALL_DIR:-$HOME/.blueberry/bin}"
 TOKEN="${GITHUB_TOKEN:-}"
 
-say()  { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
-ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
-die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+say() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
+ok() { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
+die() {
+  printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2
+  exit 1
+}
 
 # ── platform detect (must match compile.sh's <os>-<arch> tags) ───────────────
 os() {
   case "$(uname -s)" in
-    Darwin)    echo "darwin" ;;
-    Linux)     echo "linux" ;;
-    MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
-    *) die "unsupported OS: $(uname -s)" ;;
+  Darwin) echo "darwin" ;;
+  Linux) echo "linux" ;;
+  MINGW* | MSYS* | CYGWIN*) echo "windows" ;;
+  *) die "unsupported OS: $(uname -s)" ;;
   esac
 }
 arch() {
   case "$(uname -m)" in
-    arm64|aarch64)  echo "aarch64" ;;
-    x86_64|amd64)   echo "x86_64" ;;
-    *) die "unsupported arch: $(uname -m)" ;;
+  arm64 | aarch64) echo "aarch64" ;;
+  x86_64 | amd64) echo "x86_64" ;;
+  *) die "unsupported arch: $(uname -m)" ;;
   esac
 }
-OS="$(os)"; ARCH="$(arch)"
+OS="$(os)"
+ARCH="$(arch)"
 PLATFORM="$OS-$ARCH"
 EXT=""
 [ "$OS" = "windows" ] && EXT=".exe"
@@ -68,12 +72,12 @@ TAG="$(printf '%s' "$RELEASE_JSON" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p
 [ -n "$TAG" ] || die "could not parse tag_name from release payload"
 
 # find the browser_download_url for our asset (first match wins)
-URL="$(printf '%s' "$RELEASE_JSON" \
-  | tr ',' '\n' \
-  | grep -B0 "browser_download_url" \
-  | sed -n "s/.*browser_download_url\": *\"\\([^\"]*\\)\".*/\\1/p" \
-  | grep "/$ASSET\$" \
-  | head -1)"
+URL="$(printf '%s' "$RELEASE_JSON" |
+  tr ',' '\n' |
+  grep -B0 "browser_download_url" |
+  sed -n "s/.*browser_download_url\": *\"\\([^\"]*\\)\".*/\\1/p" |
+  grep "/$ASSET\$" |
+  head -1)"
 [ -n "$URL" ] || die "release $TAG has no asset named $ASSET"
 ok "release $TAG · $ASSET"
 
@@ -82,12 +86,14 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/bb-install.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 say "downloading"
-fetch "$URL" > "$TMP/$ASSET" || die "download failed"
-fetch "$URL.sha256" > "$TMP/$ASSET.sha256" 2>/dev/null || die "no .sha256 sidecar on the release — refusing to install unverified"
+fetch "$URL" >"$TMP/$ASSET" || die "download failed"
+fetch "$URL.sha256" >"$TMP/$ASSET.sha256" 2>/dev/null || die "no .sha256 sidecar on the release — refusing to install unverified"
 
 say "verifying sha256"
-if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"
-elif command -v shasum >/dev/null 2>&1; then SHA="shasum -a 256"
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  SHA="shasum -a 256"
 else die "no sha256 tool found (need sha256sum or shasum)"; fi
 (cd "$TMP" && $SHA -c "$ASSET.sha256" >/dev/null 2>&1) || die "checksum mismatch — download corrupted or tampered; refusing to install"
 ok "checksum verified"
@@ -105,14 +111,15 @@ ok "installed $BIN"
 
 # ── PATH advice ──────────────────────────────────────────────────────────────
 case ":$PATH:" in
-  *":$INSTALL_DIR:"*)
-    ok "on PATH already — run: blueberry" ;;
-  *)
-    printf '\n'
-    printf '\033[1;33madd to PATH (in your shell rc):\033[0m\n'
-    printf '  export PATH="%s:$PATH"\n' "$INSTALL_DIR"
-    printf 'then run: blueberry\n'
-    ;;
+*":$INSTALL_DIR:"*)
+  ok "on PATH already — run: blueberry"
+  ;;
+*)
+  printf '\n'
+  printf '\033[1;33madd to PATH (in your shell rc):\033[0m\n'
+  printf '  export PATH="%s:$PATH"\n' "$INSTALL_DIR"
+  printf 'then run: blueberry\n'
+  ;;
 esac
 printf '\n'
 ok "done — first run will create ~/.blueberry (run /login once if auth.json wasn't carried over)"
