@@ -33,7 +33,10 @@ afterEach(() => {
 test("ux cli: --version through the real binary", async () => {
 	const r = await runCli(["--version"], world);
 	assert.equal(r.code, 0);
-	assert.equal(r.stdout.trim(), `blueberry ${getVersion()}`);
+	// first line is the version; license pointer line follows by design
+	const [first] = r.stdout.trim().split("\n");
+	assert.equal(first, `blueberry ${getVersion()}`);
+	assert.ok(r.stdout.includes("--license"), "license pointer present");
 });
 
 test("ux cli: empty-state commands are clean, not crashes", async () => {
