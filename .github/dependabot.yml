@@ -1,0 +1,18 @@
+# Dependabot config — blueberry
+#
+# The fork (pi/) is vendored-for-modification source we compile ourselves;
+# upstream's dependabot was opening alerts/PRs against its EXAMPLE extensions
+# and transitive deps we never execute. We track fork updates via FORK.md
+# resync policy instead. Everything outside pi/ is ours: root-level deps only.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-name: "typescript-language-server"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

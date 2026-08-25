@@ -134,6 +134,20 @@ smoke "$BIN" || die "binary failed smoke (boot or DB-only persistence)"
 ok "smoke passed"
 
 # ── 4. release artifact ─────────────────────────────────────────────────────
+# ── version guard ────────────────────────────────────────────────────────────
+# The binary's --version MUST match package.json (the updater compares them;
+# a stale stamp loops updates forever). CI additionally passes
+# EXPECT_VERSION=<tag> so tag↔stamp drift fails the release, not the user.
+STAMPED="$("$OUT_DIR/blueberry$EXT" --version 2>/dev/null | awk '{print $2}')"
+PKG="$(python3 -c "import json;print(json.load(open('package.json'))['version'])")"
+if [ "$STAMPED" != "$PKG" ]; then
+  die "version stamp mismatch: binary reports '$STAMPED', package.json says '$PKG'"
+fi
+if [ -n "${EXPECT_VERSION:-}" ] && [ "${EXPECT_VERSION#v}" != "$PKG" ]; then
+  die "tag/version drift: tag ${EXPECT_VERSION} vs package.json $PKG (fix-forward: bump package.json)"
+fi
+ok "version: $STAMPED"
+
 say "release: tag + checksum"
 cp "$BIN" "$ARTIFACT"
 (cd "$OUT_DIR" && $SHA_TOOL "blueberry-$PLATFORM$EXT" >"blueberry-$PLATFORM$EXT.sha256")

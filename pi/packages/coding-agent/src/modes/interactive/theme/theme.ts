@@ -857,6 +857,8 @@ export const theme: Theme = new Proxy({} as Theme, {
 	get(_target, prop) {
 		const t = (globalThis as Record<symbol, Theme>)[THEME_KEY];
 		if (!t) throw new Error("Theme not initialized. Call initTheme() first.");
+		// SAFETY: `t` is a Theme object; indexing by arbitrary prop through an
+		// unknown-valued record is exactly what a Proxy get-trap must do.
 		return (t as unknown as Record<string | symbol, unknown>)[prop];
 	},
 });

@@ -51,6 +51,8 @@ jobs:
 
       - name: Build (gates + compile + smoke + checksum)
         shell: bash
+        env:
+          EXPECT_VERSION: ${{ github.ref_name }}
         run: bash bin/compile.sh
 
       - name: Upload artifacts to the release
