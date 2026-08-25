@@ -172,23 +172,13 @@ export function resolveAddress(
 	const trimmed = selector.trim();
 	if (trimmed === "") throw new Error("empty selector");
 
-	if (/^\d+$/.test(trimmed)) {
-		const idx = Number(trimmed) - 1;
-		const session = sessions[idx];
+	// Digits usually mean an index — but session ids are hex, so a uuid
+	// prefix can also be purely numeric ("26525721"). Resolve as an index
+	// when in range; otherwise the selector is just a string like any other.
+	const numeric = /^\d+$/.test(trimmed);
+	if (numeric) {
+		const session = sessions[Number(trimmed) - 1];
 		if (session) return { project: target, session };
-		// Session ids are hex, so a uuid prefix can be purely numeric
-		// (~2% of 8-char prefixes are all digits). An out-of-range index is
-		// never what the user meant — fall through to prefix matching
-		// before rejecting.
-		if (trimmed.length >= 4) {
-			const byPrefix =
-			sessions.find((s) => s.id === trimmed) ??
-			sessions.find((s) => s.id.startsWith(trimmed));
-			if (byPrefix) return { project: target, session: byPrefix };
-		}
-		throw new Error(
-			`index ${trimmed} out of range (project '${target.slug}' has ${sessions.length})`,
-		);
 	}
 
 	if (trimmed.length >= 4) {
@@ -213,7 +203,11 @@ export function resolveAddress(
 		);
 	}
 
-	throw new Error(`no session matching '${trimmed}' in '${target.slug}'`);
+	throw new Error(
+		numeric
+			? `index ${trimmed} out of range (project '${target.slug}' has ${sessions.length})`
+			: `no session matching '${trimmed}' in '${target.slug}'`,
+	);
 }
 
 // --- views ------------------------------------------------------------------------

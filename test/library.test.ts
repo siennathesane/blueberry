@@ -47,7 +47,7 @@ afterEach(() => {
 /** Register a project with a session and return {root, store, file}. */
 function setupProject(
 	name: string,
-	opts?: { sessionName?: string; firstText?: string; id?: string },
+	opts?: { sessionName?: string; firstText?: string },
 ) {
 	const root = fakeRepo(area, name, "git");
 	const registry = loadRegistry(agentDir);
@@ -59,7 +59,6 @@ function setupProject(
 		entries: 2,
 	};
 	if (opts?.sessionName !== undefined) spec.name = opts.sessionName;
-	if (opts?.id !== undefined) spec.id = opts.id;
 	const file = fakeSession(store, spec);
 	return { root, store, file, registry };
 }
@@ -81,17 +80,12 @@ test("parseAddress: bare, project-scoped, multi-slash selector", () => {
 });
 
 test("resolveAddress: index, name, uuid prefix, bare=current, errors", () => {
-	// ids forced non-numeric so uuid-prefix resolution never collides with
-	// the numeric-index interpretation (the 2% flake that killed the
-	// v0.3.1 darwin-aarch64 CI job)
-	const { root, registry } = setupProject("alpha", {
-		sessionName: "the-one",
-		id: "aaaaaaaa-0000-4000-8000-000000000001",
-	});
+	// ids stay random/realistic: the selector ladder resolves numeric
+	// prefixes via the string path, so digit-led ids must resolve too
+	const { root, registry } = setupProject("alpha", { sessionName: "the-one" });
 	const file2 = fakeSession(getCentralStoreDir(agentDir, "alpha"), {
 		cwd: root,
 		firstUserText: "second",
-		id: "bbbbbbbb-0000-4000-8000-000000000002",
 	});
 	const id2 = readSessionHeader(file2)!.id;
 
@@ -129,17 +123,16 @@ test("resolveAddress: index, name, uuid prefix, bare=current, errors", () => {
 });
 
 test("resolveAddress: purely numeric uuid prefix falls through index miss", () => {
-	// ids are hex; ~2% of 8-char prefixes are all digits. The index arm
-	// must fall through to prefix matching on an out-of-range miss.
-	const { registry } = setupProject("numeric", {
+	// ids are hex; ~2% of 8-char prefixes are all digits. The index fast
+	// path must miss and the string path resolve the prefix.
+	const root = fakeRepo(area, "numeric", "git");
+	const registry = loadRegistry(agentDir);
+	mutations.register(registry, { root });
+	fakeSession(getCentralStoreDir(agentDir, "numeric"), {
+		cwd: root,
 		id: "12345678-0000-4000-8000-000000000003",
 	});
-	const hit = resolveAddress(
-		registry,
-		agentDir,
-		"numeric",
-		"numeric/12345678",
-	);
+	const hit = resolveAddress(registry, agentDir, "numeric", "numeric/12345678");
 	assert.equal(hit.session.id.slice(0, 8), "12345678");
 	// and a numeric miss with no prefix match still throws out-of-range
 	assert.throws(
