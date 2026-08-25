@@ -68,11 +68,15 @@ function seedProject(name: string): { root: string; id: string } {
 
 // --- sync.ts: orphan mapping, fts quoting, multi-store -------------------------------
 
+// Platform-conditional fake cwd paths for Windows compatibility (#32)
+const ORPHAN_CWD = platform() === "win32" ? "C:\\definitely\\not\\a\\project" : "ORPHAN_CWD";
+
+
 test("sync: orphan detail carries cwd text; errors carry detail", () => {
 	seedProject("orphdet");
 	const store = getCentralStoreDir(agentDir, "orphdet");
 	fakeSession(store, {
-		cwd: "/definitely/not/a/project",
+		cwd: "ORPHAN_CWD",
 		firstUserText: "orphan body",
 	});
 	const db = openDb(agentDir);

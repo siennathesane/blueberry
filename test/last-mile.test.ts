@@ -62,7 +62,7 @@ test("fix: orphan store with mixed cwds — majority wins via comparator", () =>
 	const orphan = join(agentDir, "sessions", "mixedbag");
 	fakeSession(orphan, { cwd: rootA, firstUserText: "one" });
 	fakeSession(orphan, { cwd: rootA, firstUserText: "two" });
-	fakeSession(orphan, { cwd: "/no/such/dir", firstUserText: "stray" });
+	fakeSession(orphan, { cwd: "NO_SUCH_DIR", firstUserText: "stray" });
 
 	const registry = loadRegistrySync(agentDir);
 	const report = runFix(registry, agentDir, { dryRun: false });
@@ -206,7 +206,7 @@ test("sessions: numeric message content yields null firstUserText without crashi
 				version: 3,
 				id: "num-id-0000001",
 				timestamp: ts,
-				cwd: "/x",
+				cwd: "FAKE_X",
 			}),
 			JSON.stringify({
 				type: "message",

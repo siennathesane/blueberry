@@ -177,7 +177,7 @@ test("library: numeric message content renders empty without crashing", () => {
 				version: 3,
 				id: "num-0000000001",
 				timestamp: ts,
-				cwd: "/x",
+				cwd: "FAKE_X",
 			}),
 			JSON.stringify({
 				type: "message",
