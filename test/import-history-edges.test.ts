@@ -34,29 +34,83 @@ test("normalizeContent: null/non-object blocks skipped; empty array; undefined",
 
 test("claude: isMeta, noise types, bad roles, and empty content all skipped", () => {
 	const lines = [
-		JSON.stringify({ type: "user", uuid: "m1", parentUuid: null, sessionId: "s", timestamp: "2026-01-01T00:00:00Z", isMeta: true, message: { role: "user", content: "meta-hidden" } }),
-		JSON.stringify({ type: "system", uuid: "n1", parentUuid: null, sessionId: "s", subtype: "x", message: { role: "system", content: "sys" } }),
-		JSON.stringify({ type: "user", uuid: "b1", parentUuid: null, sessionId: "s", timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: "" } }),
-		JSON.stringify({ type: "user", uuid: "b2", parentUuid: null, sessionId: "s", timestamp: "2026-01-01T00:00:00Z", message: { role: "tool", content: "tool-role" } }),
-		JSON.stringify({ type: "user", uuid: "k1", parentUuid: null, sessionId: "s", timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: "kept" } }),
-	];
-	const { entries } = convertClaudeSession(lines, "s");
-	assert.equal(entries.length, 1);
-	assert.equal((entries[0] as { message: { content: unknown } }).message.content, "kept");
-});
-
-test("claude: message-less and assistant-with-content[] records", () => {
-	const lines = [
-		JSON.stringify({ type: "user", uuid: "x1", sessionId: "s", timestamp: "2026-01-01T00:00:00Z" }),
 		JSON.stringify({
-			type: "assistant", uuid: "x2", parentUuid: "x1", sessionId: "s",
-			timestamp: "2026-01-01T00:00:01Z",
-			message: { role: "assistant", content: [{ type: "text", text: "arr" }, { type: "image", data: "d" }] },
+			type: "user",
+			uuid: "m1",
+			parentUuid: null,
+			sessionId: "s",
+			timestamp: "2026-01-01T00:00:00Z",
+			isMeta: true,
+			message: { role: "user", content: "meta-hidden" },
+		}),
+		JSON.stringify({
+			type: "system",
+			uuid: "n1",
+			parentUuid: null,
+			sessionId: "s",
+			subtype: "x",
+			message: { role: "system", content: "sys" },
+		}),
+		JSON.stringify({
+			type: "user",
+			uuid: "b1",
+			parentUuid: null,
+			sessionId: "s",
+			timestamp: "2026-01-01T00:00:00Z",
+			message: { role: "user", content: "" },
+		}),
+		JSON.stringify({
+			type: "user",
+			uuid: "b2",
+			parentUuid: null,
+			sessionId: "s",
+			timestamp: "2026-01-01T00:00:00Z",
+			message: { role: "tool", content: "tool-role" },
+		}),
+		JSON.stringify({
+			type: "user",
+			uuid: "k1",
+			parentUuid: null,
+			sessionId: "s",
+			timestamp: "2026-01-01T00:00:00Z",
+			message: { role: "user", content: "kept" },
 		}),
 	];
 	const { entries } = convertClaudeSession(lines, "s");
 	assert.equal(entries.length, 1);
-	const c = (entries[0] as { message: { content: unknown } }).message.content as Array<Record<string, unknown>>;
+	assert.equal(
+		(entries[0] as { message: { content: unknown } }).message.content,
+		"kept",
+	);
+});
+
+test("claude: message-less and assistant-with-content[] records", () => {
+	const lines = [
+		JSON.stringify({
+			type: "user",
+			uuid: "x1",
+			sessionId: "s",
+			timestamp: "2026-01-01T00:00:00Z",
+		}),
+		JSON.stringify({
+			type: "assistant",
+			uuid: "x2",
+			parentUuid: "x1",
+			sessionId: "s",
+			timestamp: "2026-01-01T00:00:01Z",
+			message: {
+				role: "assistant",
+				content: [
+					{ type: "text", text: "arr" },
+					{ type: "image", data: "d" },
+				],
+			},
+		}),
+	];
+	const { entries } = convertClaudeSession(lines, "s");
+	assert.equal(entries.length, 1);
+	const c = (entries[0] as { message: { content: unknown } }).message
+		.content as Array<Record<string, unknown>>;
 	assert.equal(c.length, 2);
 	assert.ok(String(c[1]!.text).includes("[image"));
 });
@@ -65,10 +119,22 @@ test("claude: message-less and assistant-with-content[] records", () => {
 
 test("kimi: session without index entry gets null cwd; empty content skipped", () => {
 	const lines = [
-		JSON.stringify({ type: "context.append_message", message: { role: "user", content: [] }, time: 1 }),
-		JSON.stringify({ type: "context.append_message", message: { role: "assistant", content: "plain-str" }, time: 2 }),
+		JSON.stringify({
+			type: "context.append_message",
+			message: { role: "user", content: [] },
+			time: 1,
+		}),
+		JSON.stringify({
+			type: "context.append_message",
+			message: { role: "assistant", content: "plain-str" },
+			time: 2,
+		}),
 		JSON.stringify({ type: "context.append_message", time: 3 }),
-		JSON.stringify({ type: "context.append_message", message: { role: "user", content: [{ type: "text", text: "" }] }, time: 4 }),
+		JSON.stringify({
+			type: "context.append_message",
+			message: { role: "user", content: [{ type: "text", text: "" }] },
+			time: 4,
+		}),
 	];
 	const { header, entries, cwd } = convertKimiSession(lines, "zz", null);
 	assert.equal(cwd, null);
@@ -107,7 +173,16 @@ test("driver: ingest failure surfaces in report.errors", () => {
 	// is a genuinely broken file: write one whose header line is invalid.
 	writeFileSync(
 		join(projDir, "edge1.jsonl"),
-		"not json at all\n" + JSON.stringify({ type: "user", uuid: "u", parentUuid: null, sessionId: "edge1", timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: "x" } }) + "\n",
+		"not json at all\n" +
+			JSON.stringify({
+				type: "user",
+				uuid: "u",
+				parentUuid: null,
+				sessionId: "edge1",
+				timestamp: "2026-01-01T00:00:00Z",
+				message: { role: "user", content: "x" },
+			}) +
+			"\n",
 	);
 	const report = importHistory(
 		db,

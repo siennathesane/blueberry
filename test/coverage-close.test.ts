@@ -10,9 +10,24 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "../src/core/db.ts";
-import { readMode, writeMode, planGateDecision } from "../src/core/plan-gate.ts";
-import { saveTemplate, getTemplate, createGraph, graphNodes, appendOutput, nodeOutput } from "../src/core/cmd-graph.ts";
-import { checkCompleteness, readDesignDoc, scaffoldDesign } from "../src/core/design-store.ts";
+import {
+	readMode,
+	writeMode,
+	planGateDecision,
+} from "../src/core/plan-gate.ts";
+import {
+	saveTemplate,
+	getTemplate,
+	createGraph,
+	graphNodes,
+	appendOutput,
+	nodeOutput,
+} from "../src/core/cmd-graph.ts";
+import {
+	checkCompleteness,
+	readDesignDoc,
+	scaffoldDesign,
+} from "../src/core/design-store.ts";
 import { tmpAgentDir, tmpDir, fakeRepo, cleanup } from "./helpers.ts";
 
 let agentDir: string;
@@ -33,9 +48,9 @@ afterEach(() => {
 // --- plan-gate ------------------------------------------------------------------------
 
 test("plan-gate: corrupt mode JSON degrades to normal (never throws)", () => {
-	db.prepare(
-		"INSERT INTO config (key, json) VALUES ('mode', ?)",
-	).run("{not json");
+	db
+		.prepare("INSERT INTO config (key, json) VALUES ('mode', ?)")
+		.run("{not json");
 	assert.equal(readMode(db), "normal");
 	// gate in this state: normal → no cancel even without designs
 	assert.equal(planGateDecision("p1", agentDir), undefined);
@@ -43,17 +58,26 @@ test("plan-gate: corrupt mode JSON degrades to normal (never throws)", () => {
 
 test("plan-gate: plan mode + open design passes; blocked arm covered elsewhere", async () => {
 	const root = fakeRepo(area, "pg", "git");
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p2', 'pg2', ?, ?, ?)",
-	).run(root, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p2', 'pg2', ?, ?, ?)",
+		)
+		.run(root, new Date().toISOString(), new Date().toISOString());
 	const dir = join(root, "docs", "design");
 	mkdirSync(dir, { recursive: true });
-	writeFileSync(join(dir, "001-d.md"), "---\nid: aa1111\nstatus: open\ntitle: D\n---\n## Problem\nx\n");
+	writeFileSync(
+		join(dir, "001-d.md"),
+		"---\nid: aa1111\nstatus: open\ntitle: D\n---\n## Problem\nx\n",
+	);
 	// production flow: the extension handler syncs file state before deciding
 	const { ingestDesignDocs } = await import("../src/core/doc-index.ts");
 	ingestDesignDocs(db, root, "p2");
 	writeMode(db, "plan");
-	assert.equal(planGateDecision("p2", agentDir), undefined, "design present → pass");
+	assert.equal(
+		planGateDecision("p2", agentDir),
+		undefined,
+		"design present → pass",
+	);
 	// and the blocked arm still fires when no design exists
 	writeMode(db, "plan");
 	const blocked = planGateDecision("p-nope", agentDir);
@@ -63,9 +87,11 @@ test("plan-gate: plan mode + open design passes; blocked arm covered elsewhere",
 // --- cmd-graph ------------------------------------------------------------------------
 
 test("cmd-graph: corrupt template JSON degrades to empty, not a crash", () => {
-	db.prepare(
-		"INSERT INTO cmd_templates (name, params, nodes, edges, created_at, updated_at) VALUES ('bad', '{nope', '{nope', '{nope', ?, ?)",
-	).run(new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO cmd_templates (name, params, nodes, edges, created_at, updated_at) VALUES ('bad', '{nope', '{nope', '{nope', ?, ?)",
+		)
+		.run(new Date().toISOString(), new Date().toISOString());
 	const tpl = getTemplate(db, "bad");
 	assert.ok(tpl);
 	assert.deepEqual(tpl!.params, []);
@@ -86,7 +112,12 @@ test("cmd-graph: saveTemplate + getTemplate round-trip preserves shape", () => {
 
 test("cmd-graph: appendOutput respects the byte cap", async () => {
 	// run a node that floods stdout; assert the cap marker lands and rows stop
-	const id = createGraph(db, null, [{ name: "flood", command: "yes | head -c 700000" }], []);
+	const id = createGraph(
+		db,
+		null,
+		[{ name: "flood", command: "yes | head -c 700000" }],
+		[],
+	);
 	await (async () => {
 		const { runGraph } = await import("../src/core/cmd-graph.ts");
 		await runGraph(db, id);
@@ -118,21 +149,34 @@ test("nextDesignNumber: non-md files skipped; next after 001 is 002 (via scaffol
 
 test("checkCompleteness: MUST without verification lands in uncoveredMusts", () => {
 	const body = [
-		"## Audience", "x",
-		"## Problem", "x",
-		"## Goal", "x",
-		"## Non-goals", "x",
-		"## Approaches considered", "x",
-		"## Decision", "x",
-		"## Risks & open questions", "x",
-		"## Requirements", "R1. The system MUST do the thing.",
-		"## Verification", "",
+		"## Audience",
+		"x",
+		"## Problem",
+		"x",
+		"## Goal",
+		"x",
+		"## Non-goals",
+		"x",
+		"## Approaches considered",
+		"x",
+		"## Decision",
+		"x",
+		"## Risks & open questions",
+		"x",
+		"## Requirements",
+		"R1. The system MUST do the thing.",
+		"## Verification",
+		"",
 	].join("\n");
 	const r = checkCompleteness(body);
 	// empty Verification: the section is unanswered AND its MUST is uncovered
 	assert.ok(r.unanswered.includes("Verification"));
 	assert.equal(r.requirements.musts.length, 1);
-	assert.equal(r.requirements.uncoveredMusts.length, 1, "R1 with empty verification → uncovered");
+	assert.equal(
+		r.requirements.uncoveredMusts.length,
+		1,
+		"R1 with empty verification → uncovered",
+	);
 });
 
 test("readDesignDoc: missing file → null; unparseable frontmatter → null", () => {
