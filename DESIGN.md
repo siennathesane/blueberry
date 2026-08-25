@@ -311,38 +311,130 @@ portable, so it belongs to the machine, not the agent).
 
 ---
 
-## §Plan — plan mode, rewritten
+## §Design — design → plan → implement (round 2, 2025-08-25; supersedes §Plan)
 
-Upstream reference: `vendored/pi-plan-mode/` (@narumitw/pi-plan-mode v0.52.0)
+Upstream reference: `vendored/pi-plan-mode/` — superseded by this design.
+Prior art mined: `~/Development/sunbeam/sunbeam-memory` (fused search, provenance
+URNs, tracked-files indexing).
 
-### What's wrong with the stock one (hypotheses — confirm with user)
+### The three-stage lifecycle
 
-- Plan state is ephemeral extension state, not a durable artifact you can
-  diff, keep, or reuse across sessions.
-- The read-only restriction is blunt (kills the tools you'd want for
-  *investigation*, like running tests or grepping history).
-- No explicit approval moment — transitions feel mushy.
+Design answers "what are we building and for whom"; planning answers "how do
+we build it"; the DAG executes. Two gates, two artifacts:
 
-### Proposed shape
+```
+design mode ──(approve)──▶ plan mode ──(approve)──▶ implement
+ what/why/scope             how/steps/deps            DAG executes
+     └── design doc (docs/) ─┘└── plan (blueberry.db) ┘
+         forever: consumer-facing        runtime: consumed into DAG
+```
 
-1. **Plan is a file.** `PLAN.md` in the repo (or session-scoped under the
-   agent dir for throwaway work — TBD). Versioned by git like everything else.
-2. **Planning phase = restricted tools, not zero tools.** Allow read/grep/
-   find/bash; block edit/write. Enforced via `tool_call` gate.
-3. **Approval gate.** Leaving planning requires explicit user confirmation
-   (`ctx.ui.confirm` or a custom component). The plan is presented as a
-   checklist that becomes the seed of the todo list.
-4. **Execution tracking.** Plan steps flow into blueberry-todo (see §Todo);
-   plan file gets progress annotations so `PLAN.md` stays truthful.
-5. **Entry points:** `/plan` command, `--plan` flag, and a shortcut.
-   Widget shows current mode (like the vendored one's status line, but ours).
+Three entry weights: direct (bb_todo, zero ceremony) → plan-only (/plan, no
+design needed for "fix the typo") → design→plan (feature work).
+
+### Two artifacts, two homes (DECIDED 2025-08-25)
+
+**Design doc = a FILE in the repo.** `docs/design/<yyyy-mm-dd>-<slug>-<hex6>.md`.
+Git-versioned, human/consumer-facing, reviewable in PRs, readable without
+blueberry. Frontmatter carries machine state:
+
+```yaml
+---
+id: <hex6>            # uuid-6, house style; needle design:<slug>/<hex6>
+title: <title>
+status: open|decided|superseded|abandoned
+date: <yyyy-mm-dd>
+supersedes: <hex6>?   # genealogy
+superseded-by: <hex6>?
+---
+```
+
+Body: Context / Goal / Non-goals / **Approaches Considered (with rejection
+reasons — the gold)** / Decision / Verification. No decomposition here — that
+belongs to the plan.
+
+**Plan = a ROW in blueberry.db.** `plans` table: id (uuid-6), design_id (FK
+nullable — plan-only work), project_id, status draft|approved|building|done|
+abandoned, rev counter, body (markdown: Steps with authored deps via `⟵`,
+Verification), seeded_at, seeded_count. Working state, not consumer-facing.
+At approval, Steps parse → DAG creates with `design:<slug>/<hex6>` backlinks;
+lineage runs doc → tasks → sessions forever.
+
+**Why the split:** design docs are for *readers* — they belong where readers
+are (the repo, the review, the docs site). Plans are for *execution* — they
+belong where the runtime is (the DB, beside the DAG they seed). Files-for-
+consumers + DB-for-runtime mirrors §Data's materialization philosophy.
+
+### Modes
+
+Project-wide DB state (not session state): any bb session sees the same mode.
+- **design mode**: investigation tools fully available (read, bash, bb_search,
+  bb_lsp, bb_library); doc drafted via bb_design actions. Strip: `◈ designing <title>`.
+- **plan mode**: entered on design approval (or /plan directly); decompose
+  into steps+deps via bb_plan actions. Strip: `⬡ planning <title>`.
+- **implement**: full tools; strip: `⬡ building <title> 3/7` with drift
+  detection (seeded vs actual DAG) at checkpoints.
+
+Gates: rendered-doc keys (y approve / e revise / esc keep drafting) at both
+transitions. Approval seeds atomically.
+
+Amendments: decomposition amends bump rev (recorded, no re-lock); scope
+changes require supersede (new doc, genealogy link, old unfinished tasks
+dropped-with-events). Scope is the contract; decomposition is the schedule.
+
+### Indexing (the sunbeam-memory pull)
+
+Design docs and plans are first-class searchable citizens beside code and
+sessions — one unified index per project with a source discriminator:
+
+```sql
+CREATE TABLE designs (           -- metadata + pointer; file is content truth
+  id TEXT PRIMARY KEY, project_id TEXT, slug TEXT, path TEXT NOT NULL,
+  title TEXT, status TEXT, supersedes TEXT, superseded_by TEXT,
+  file_mtime_ms INTEGER, ingested_at TEXT);
+CREATE TABLE plans (
+  id TEXT PRIMARY KEY, design_id TEXT, project_id TEXT,
+  status TEXT, rev INTEGER DEFAULT 1, body TEXT,
+  created_at TEXT, updated_at TEXT, seeded_at TEXT, seeded_count INTEGER);
+CREATE VIRTUAL TABLE doc_fts USING fts5(   -- unified: docs + plans
+  text, source UNINDEXED, uri UNINDEXED);  -- source: design|plan
+```
+
+Pulled from sunbeam-memory (attributed):
+- **Fused search via RRF (k=60)** — `fusedSearch()`: BM25 (doc_fts) + vector
+  similarity combined by reciprocal rank fusion, sunbeam's default path.
+  Schema reserves an `embedding BLOB` on designs/plans now; embeddings land
+  v1.x (model choice: fastembed-js ONNX local vs API — open question) and
+  fusion activates with them. Pure-BM25 until then.
+- **Provenance URNs** — sunbeam's `source` URN pattern formalized as
+  `blueberry://design/<slug>/<hex6>` / `blueberry://plan/<slug>/<hex6>` in
+  the uri column; future memory facts point back through these.
+- **Tracked files** — the mtime-indexing walk (§Search) already covers .md;
+  the design-doc ingest is the same pattern scoped to docs/design/, plus a
+  designs metadata row with genealogy.
+- **Namespaces** — the `source` discriminator (design|plan|code|session)
+  over one index gives sunbeam's namespace filtering per source type.
+
+Drift + retro: checkpoint compares plan steps vs linked DAG tasks (N/M done,
+unplanned count); completion logs a `bb-design` breadcrumb digest (planned vs
+actual: added, dropped, reordered) — dreaming substrate.
+
+### Surfaces
+
+- bb_design tool: draft/revise/status/abandon/supersede
+- bb_plan tool: draft/revise/status/approve/abandon (decomposition actions)
+- /design + /plan commands: rendered doc view, gate keys, history subcommand
+- strip segments per mode; design:/plan: needles in §Library search
 
 ### Open questions
 
-- [ ] What specifically burned you on the current plan-mode? (workflow, UX, model behavior?)
-- [ ] Where do plans live — repo `PLAN.md`, `.blueberry/plans/`, or session storage?
-- [ ] Should steering mid-execution be allowed to amend the plan without leaving execute mode?
-- [ ] Do we want a plan *history* (previous plans per project)?
+- [ ] Embedding source for fused search v1.x: fastembed-js (local ONNX,
+      bge-small ~30MB) vs API embedding vs defer until dreaming needs it.
+- [ ] Should plan-only work (no design doc) also get a docs/ stub for
+      discoverability, or stay DB-invisible by design?
+- [ ] Supersede auto-drops old unfinished tasks (lean: yes, with events) —
+      confirm.
+- [ ] /design history render: full life view (rounds, decisions, drift, retro)?
 
 ---
 
