@@ -406,11 +406,12 @@ CREATE VIRTUAL TABLE doc_fts USING fts5(   -- unified: docs + plans
 
 Pulled from sunbeam-memory (attributed):
 
-- **Fused search via RRF (k=60)** — `fusedSearch()`: BM25 (doc_fts) + vector
-  similarity combined by reciprocal rank fusion, sunbeam's default path.
-  Schema reserves an `embedding BLOB` on designs/plans now; embeddings land
-  v1.x (model choice: fastembed-js ONNX local vs API — open question) and
-  fusion activates with them. Pure-BM25 until then.
+- **Fused search via RRF (k=60)** — adopted as prior art reference only.
+  DECIDED (2025-08-25): **BM25 alone** — no embedding columns, no vector
+  index, no model dependency. Design docs and plans are keyword-rich prose;
+  BM25 over doc_fts is the whole search story. If dreaming later wants
+  semantic recall, the RRF recipe is documented in sunbeam-memory and can be
+  added then — without schema reservations.
 - **Provenance URNs** — sunbeam's `source` URN pattern formalized as
   `blueberry://design/<slug>/<hex6>` / `blueberry://plan/<slug>/<hex6>` in
   the uri column; future memory facts point back through these.
@@ -433,8 +434,7 @@ actual: added, dropped, reordered) — dreaming substrate.
 
 ### Open questions
 
-- [ ] Embedding source for fused search v1.x: fastembed-js (local ONNX,
-      bge-small ~30MB) vs API embedding vs defer until dreaming needs it.
+- [x] Embedding source — DECIDED: none. BM25 only, no schema reservations.
 - [ ] Should plan-only work (no design doc) also get a docs/ stub for
       discoverability, or stay DB-invisible by design?
 - [ ] Supersede auto-drops old unfinished tasks (lean: yes, with events) —
