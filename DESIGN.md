@@ -334,9 +334,12 @@ design needed for "fix the typo") → design→plan (feature work).
 
 ### Two artifacts, two homes (DECIDED 2025-08-25)
 
-**Design doc = a FILE in the repo.** `docs/design/<yyyy-mm-dd>-<slug>-<hex6>.md`.
+**Design doc = a FILE in the repo.** `docs/design/<yyyy-mm-dd>-<slug>.md`.
 Git-versioned, human/consumer-facing, reviewable in PRs, readable without
-blueberry. Frontmatter carries machine state:
+blueberry. **The filename is for humans; frontmatter is the machine truth** —
+id lives in frontmatter only, never in the filename. A rename never orphans
+the needle: the next ingest re-links `designs.path` by frontmatter id.
+Frontmatter carries machine state:
 
 ```yaml
 ---
@@ -368,6 +371,7 @@ consumers + DB-for-runtime mirrors §Data's materialization philosophy.
 ### Modes
 
 Project-wide DB state (not session state): any bb session sees the same mode.
+
 - **design mode**: investigation tools fully available (read, bash, bb_search,
   bb_lsp, bb_library); doc drafted via bb_design actions. Strip: `◈ designing <title>`.
 - **plan mode**: entered on design approval (or /plan directly); decompose
@@ -401,6 +405,7 @@ CREATE VIRTUAL TABLE doc_fts USING fts5(   -- unified: docs + plans
 ```
 
 Pulled from sunbeam-memory (attributed):
+
 - **Fused search via RRF (k=60)** — `fusedSearch()`: BM25 (doc_fts) + vector
   similarity combined by reciprocal rank fusion, sunbeam's default path.
   Schema reserves an `embedding BLOB` on designs/plans now; embeddings land
