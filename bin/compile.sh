@@ -58,6 +58,20 @@ die() {
 
 # ── 1. gates ────────────────────────────────────────────────────────────────
 if [ "${SKIP_GATES:-0}" != "1" ]; then
+  # A stale dist binary from a previous release makes the --version e2e
+  # fail on version drift (the suite tests the OLD binary against the NEW
+  # package.json). CI never sees this (fresh checkout, no dist/). Drop the
+  # stale artifact so the shim falls back to source — same semantics as CI —
+  # until the fresh binary is compiled below.
+  if [ -x dist/blueberry ]; then
+    PKG=$(python3 -c "import json;print(json.load(open('package.json'))['version'])")
+    BIN=$(dist/blueberry --version | head -1 | awk '{print $2}')
+    if [ "$BIN" != "$PKG" ]; then
+      say "gate: dropping stale dist binary ($BIN != package.json $PKG)"
+      rm -f dist/blueberry
+    fi
+  fi
+
   say "gate: typecheck (src + test + extensions + fork graph)"
   deno check src/ test/ extensions/ smoke/ >/tmp/bb-check.log 2>&1 || {
     tail -20 /tmp/bb-check.log
@@ -138,7 +152,8 @@ ok "smoke passed"
 # The binary's --version MUST match package.json (the updater compares them;
 # a stale stamp loops updates forever). CI additionally passes
 # EXPECT_VERSION=<tag> so tag↔stamp drift fails the release, not the user.
-STAMPED="$("$OUT_DIR/blueberry$EXT" --version 2>/dev/null | awk '{print $2}')"
+# --version prints version + license pointer line; stamp = first line, second token
+STAMPED="$("$OUT_DIR/blueberry$EXT" --version 2>/dev/null | head -1 | awk '{print $2}')"
 PKG="$(python3 -c "import json;print(json.load(open('package.json'))['version'])")"
 if [ "$STAMPED" != "$PKG" ]; then
   die "version stamp mismatch: binary reports '$STAMPED', package.json says '$PKG'"
