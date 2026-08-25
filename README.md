@@ -2,7 +2,7 @@
 
 This is my harness. There are many like it, but this one is mine.
 
-A personal agentic coding harness. One binary, one state file, zero ceremony.
+A personal agentic coding harness.
 
 Pull requests are not accepted, and issues are not welcome. If you have a feature request, you can send me an email about it, but I will report your email as spam if I suspect it's written by AI.
 
