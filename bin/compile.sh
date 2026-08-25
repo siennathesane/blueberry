@@ -45,7 +45,9 @@ TIMEOUT_BIN=""
 command -v timeout >/dev/null 2>&1 && TIMEOUT_BIN=timeout
 [ -z "$TIMEOUT_BIN" ] && command -v gtimeout >/dev/null 2>&1 && TIMEOUT_BIN=gtimeout
 run_to() {
-  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$@"; else "$@"; fi
+  # $1 is always the seconds budget; without a timeout binary we drop it
+  # (running bare beats not running — the smoke is fast either way)
+  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$@"; else shift; "$@"; fi
 }
 
 say() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
@@ -58,7 +60,7 @@ die() {
 # ── 1. gates ────────────────────────────────────────────────────────────────
 if [ "${SKIP_GATES:-0}" != "1" ]; then
   say "gate: typecheck (src + test + extensions + fork graph)"
-  deno check src/ test/ extensions/ >/tmp/bb-check.log 2>&1 || {
+  deno check src/ test/ extensions/ smoke/ >/tmp/bb-check.log 2>&1 || {
     tail -20 /tmp/bb-check.log
     die "typecheck failed"
   }
@@ -103,17 +105,16 @@ smoke() {
   [ -x "$bin" ] || { echo "smoke diag: binary not executable" >&2; return 1; }
   "$bin" --version >/dev/null 2>&1 || { echo "smoke diag: --version failed" >&2; return 1; }
 
-  # DB-only persistence proof: full session through the compiled fork.
-  # A stub api key makes the model call get ATTEMPTED and fail — persistence
-  # surviving a failed model call IS the property under test. Without the stub
-  # (CI has no ambient provider keys) pi exits before writing anything.
+  # DB-only persistence proof: a full session through the compiled fork using
+  # the deterministic faux provider (scripted reply, no network, no auth) —
+  # hermetic on CI. Loading the extension via --extension also proves jiti
+  # extension loading works inside deno-compile binaries.
   local W rc jsonl rows
   W="$(mktemp -d "${TMPDIR:-/tmp}/bb-compile-smoke.XXXXXX")"
   mkdir -p "$W/agent"
-  printf '{"zai":{"type":"api_key","key":"bb-smoke-stub"}}' >"$W/agent/auth.json"
   rc=0
   PI_OFFLINE=1 PI_CODING_AGENT_DIR="$W/agent" BLUEBERRY_DB="$W/agent/blueberry.db" \
-    run_to 90 "$bin" -p "reply: compile-smoke-ok" >"$W/out.log" 2>"$W/err.log" || rc=$?
+    run_to 90 "$bin" --extension "$REPO_ROOT/smoke/faux-provider.ts" --model faux/faux-1 -p "reply: compile-smoke-ok" >"$W/out.log" 2>"$W/err.log" || rc=$?
   jsonl="$(find "$W/agent" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')"
   rows="$(deno eval "import{DatabaseSync}from'node:sqlite';const db=new DatabaseSync('$W/agent/blueberry.db',{readOnly:true});console.log(db.prepare('SELECT COUNT(*) n FROM sessions').get().n)" 2>/dev/null || echo 0)"
   if [ "$jsonl" != "0" ] || [ "$rows" -lt 1 ]; then
