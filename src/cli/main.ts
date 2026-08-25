@@ -117,7 +117,7 @@ usage:
   blueberry update [--check]        self-update from GitHub releases
   blueberry --license               licensing summary (PolyForm Strict + MIT notice)
   blueberry cmd new 'n=cmd'... [--dep n:d]...  define a command graph
-  blueberry cmd run <id|template> [--arg k=v]  execute (waits)
+  blueberry cmd run <id|template> [--arg k=v] [--bg]  execute (waits; --bg detaches)
   blueberry cmd ls | ps | logs <id> [node]     inspect
   blueberry cmd template save <name> <p1,p2> 'n=cmd'...  store a template
 
@@ -131,6 +131,34 @@ export async function main(
 	argv: readonly string[],
 	deps: CliDeps,
 ): Promise<number> {
+	// internal: detached executor — spawned by `cmd run --bg`; runs one
+	// graph to completion, writing state to blueberry.db as it goes
+	if (argv[0] === "cmd-executor") {
+		let graphId = argv[1];
+		if (!graphId) {
+			deps.err("blueberry: cmd-executor needs a graph id");
+			return 1;
+		}
+		// graph ids may arrive as display prefixes — resolve to full uuid
+		const full = resolveGraph(openDb(deps.agentDir), graphId);
+		if (!full) {
+			deps.err(`blueberry: no graph '${graphId}'`);
+			return 1;
+		}
+		graphId = full;
+		const { runGraph } = await import("../core/cmd-graph.ts");
+		const db = openDb(deps.agentDir);
+		try {
+			await runGraph(db, graphId);
+			const g = db.prepare("SELECT status FROM cmd_graphs WHERE id = ?").get(graphId) as
+				| { status: string }
+				| undefined;
+			return g?.status === "failed" ? 1 : 0;
+		} finally {
+			db.close();
+		}
+	}
+
 	if (argv.includes("--help") || argv.includes("-h")) {
 		deps.out(USAGE);
 		return 0;
@@ -233,6 +261,38 @@ export async function main(
 						return 1;
 					}
 					id = resolved;
+					if (args.includes("--bg")) {
+						// detached executor: the graph outlives this invocation.
+						// dev mode: deno run entry.ts; compiled: re-exec self
+						// (the binary IS the entry — argv[0] is blueberry itself)
+						const { spawn } = await import("node:child_process");
+						db.prepare(
+							"UPDATE cmd_graphs SET status = 'queued', updated_at = ? WHERE id = ?",
+						).run(new Date().toISOString(), id);
+						const execPath = Deno.execPath();
+						const isCompiled = !/deno(\.exe)?$/.test(execPath.slice(execPath.lastIndexOf("/") + 1));
+						const child = isCompiled
+							? spawn(execPath, ["cmd-executor", id], {
+									detached: true,
+									stdio: "ignore",
+									env: { ...process.env },
+								})
+							: spawn(
+									execPath,
+									[
+										"run",
+										"-A",
+										"--no-check",
+										new URL("./entry.ts", import.meta.url).pathname,
+										"cmd-executor",
+										id,
+									],
+									{ detached: true, stdio: "ignore", env: { ...process.env } },
+								);
+						child.unref();
+						deps.out(`bg ${id.slice(0, 8)} (bb cmd ps / logs)`);
+						return 0;
+					}
 					await runGraph(db, id);
 					const g = getGraph(db, id)!;
 					deps.out(`graph ${id.slice(0, 8)} ${g.status}`);

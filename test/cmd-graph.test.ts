@@ -268,3 +268,33 @@ test("R4: a fresh DB handle sees running-graph state mid-flight", async () => {
 	await run;
 	assert.equal(getGraph(db, id)!.status, "done");
 });
+
+// --- R4: detach (bg executor) ------------------------------------------------------
+
+test("R4: --bg detaches — graph completes after the defining process exits", async () => {
+	const { createGraph } = await import("../src/core/cmd-graph.ts");
+	const id = createGraph(
+		db,
+		null,
+		[
+			{ name: "slow", command: "echo bg; sleep 1; echo done" },
+			{ name: "after", command: "echo after" },
+		],
+		[{ node: "after", dep: "slow" }],
+	);
+	// simulate the executor: a separate connection runs it while ours is open
+	const db2 = openDb(agentDir);
+	const run = (async () => {
+		const { runGraph } = await import("../src/core/cmd-graph.ts");
+		await runGraph(db2, id);
+	})();
+	// our handle sees it running (mid-flight), then complete
+	await new Promise((r) => setTimeout(r, 100));
+	assert.ok(["running"].includes(getGraph(db, id)!.status));
+	await run;
+	db2.close();
+	const nodes = Object.fromEntries(graphNodes(db, id).map((n) => [n.name, n]));
+	assert.equal(nodes["slow"].status, "ok");
+	assert.equal(nodes["after"].status, "ok");
+	assert.equal(getGraph(db, id)!.status, "done");
+});
