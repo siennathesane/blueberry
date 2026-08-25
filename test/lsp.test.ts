@@ -868,7 +868,10 @@ test("whichBin: nonexistent binary returns null", () => {
 test("resolveTsServer: local node_modules wins; absent falls back to PATH; empty cwd returns PATH/null", () => {
 	// local: this repo HAS the bundled server
 	const local = resolveTsServer(process.cwd());
-	assert.ok(local !== null && local.includes("node_modules"), `bundled: ${local}`);
+	assert.ok(
+		local !== null && local.includes("node_modules"),
+		`bundled: ${local}`,
+	);
 
 	// absent: a cwd without node_modules falls back to PATH lookup (or null if not on PATH)
 	const absent = resolveTsServer("/tmp");
@@ -884,15 +887,29 @@ test("resolveRustAnalyzer: fake home fixtures — shim, real binary, toolchain, 
 
 	// 2) real binary (not a shell script) → returned directly
 	mk(join(home, "b", ".cargo", "bin"), { recursive: true });
-	writeFileSync(join(home, "b", ".cargo", "bin", "rust-analyzer"), "\x7fELF binary content");
-	assert.equal(resolveRustAnalyzer(join(home, "b")), join(home, "b", ".cargo", "bin", "rust-analyzer"));
+	writeFileSync(
+		join(home, "b", ".cargo", "bin", "rust-analyzer"),
+		"\x7fELF binary content",
+	);
+	assert.equal(
+		resolveRustAnalyzer(join(home, "b")),
+		join(home, "b", ".cargo", "bin", "rust-analyzer"),
+	);
 
 	// 3) rustup shim (shell script) → toolchain resolution
 	const shimHome = join(home, "c");
 	mk(join(shimHome, ".cargo", "bin"), { recursive: true });
-	writeFileSync(join(shimHome, ".cargo", "bin", "rust-analyzer"), "#!/bin/sh\nrustup run stable rust-analyzer");
-	mk(join(shimHome, ".rustup", "toolchains", "nightly-x", "bin"), { recursive: true });
-	writeFileSync(join(shimHome, ".rustup", "toolchains", "nightly-x", "bin", "rust-analyzer"), "real binary");
+	writeFileSync(
+		join(shimHome, ".cargo", "bin", "rust-analyzer"),
+		"#!/bin/sh\nrustup run stable rust-analyzer",
+	);
+	mk(join(shimHome, ".rustup", "toolchains", "nightly-x", "bin"), {
+		recursive: true,
+	});
+	writeFileSync(
+		join(shimHome, ".rustup", "toolchains", "nightly-x", "bin", "rust-analyzer"),
+		"real binary",
+	);
 	assert.equal(
 		resolveRustAnalyzer(shimHome),
 		join(shimHome, ".rustup", "toolchains", "nightly-x", "bin", "rust-analyzer"),
@@ -902,7 +919,10 @@ test("resolveRustAnalyzer: fake home fixtures — shim, real binary, toolchain, 
 	// 4) shim with NO toolchains → PATH fallback
 	const shimOnly = join(home, "d");
 	mk(join(shimOnly, ".cargo", "bin"), { recursive: true });
-	writeFileSync(join(shimOnly, ".cargo", "bin", "rust-analyzer"), "#!/bin/sh\nexec rustup");
+	writeFileSync(
+		join(shimOnly, ".cargo", "bin", "rust-analyzer"),
+		"#!/bin/sh\nexec rustup",
+	);
 	assert.equal(resolveRustAnalyzer(shimOnly), "rust-analyzer");
 });
 
@@ -911,7 +931,13 @@ test("manager: openFile on a vanished file is a silent no-op", async () => {
 	writeFileSync(serverScript, FAKE_SERVER);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 	});
 	// spawn the server via a real file first
@@ -933,7 +959,13 @@ test("manager: spawnServer catch — server that fails initialize returns null",
 	writeFileSync(badScript, "process.stderr.write('dying'); process.exit(1);");
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "bad", command: process.execPath, args: [badScript], languageIds: ["typescript"], warmupMs: 10 },
+			{
+				name: "bad",
+				command: process.execPath,
+				args: [badScript],
+				languageIds: ["typescript"],
+				warmupMs: 10,
+			},
 		],
 	});
 	assert.equal(await manager.serverFor("typescript"), null);
@@ -946,13 +978,19 @@ test("manager: diagnostics push without severity/message maps defaults", async (
 	// fake server that pushes a bare diagnostic (no severity, no message)
 	const script = FAKE_SERVER.replace(
 		'[{ severity: 1, message: "fake diagnostic", range:',
-		'[{ range:',
+		"[{ range:",
 	);
 	const serverScript = join(area, "fake-bare.mjs");
 	writeFileSync(serverScript, script);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 	});
 	const tsFile = join(area, "bare.ts");
@@ -969,12 +1007,21 @@ test("manager: diagnostics push without severity/message maps defaults", async (
 
 test("manager: status falls back to spec name when serverInfo is absent", async () => {
 	// the FAKE_SERVER returns serverInfo { name: "fake-lsp" }; craft one without it
-	const script = FAKE_SERVER.replace('serverInfo: { name: "fake-lsp" }', "serverInfo: {}");
+	const script = FAKE_SERVER.replace(
+		'serverInfo: { name: "fake-lsp" }',
+		"serverInfo: {}",
+	);
 	const serverScript = join(area, "fake-noinfo.mjs");
 	writeFileSync(serverScript, script);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "spec-name-fallback", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "spec-name-fallback",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 	});
 	const tsFile = join(area, "info.ts");
@@ -989,7 +1036,13 @@ test("manager: status falls back to spec name when serverInfo is absent", async 
 test("manager: request against a configured-but-unspawnable server throws friendly", async () => {
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "broken", command: "/nonexistent/server", args: [], languageIds: ["typescript"], warmupMs: 5 },
+			{
+				name: "broken",
+				command: "/nonexistent/server",
+				args: [],
+				languageIds: ["typescript"],
+				warmupMs: 5,
+			},
 		],
 	});
 	const tsFile = join(area, "broken.ts");
@@ -1002,7 +1055,10 @@ test("manager: request against a configured-but-unspawnable server throws friend
 });
 
 test("manager: friendlyError catch-all branch", () => {
-	const msg = LspManager.friendlyError("hover", new Error("something totally novel"));
+	const msg = LspManager.friendlyError(
+		"hover",
+		new Error("something totally novel"),
+	);
 	assert.ok(msg.startsWith("lsp hover failed:"), `catch-all: ${msg}`);
 });
 
@@ -1013,7 +1069,13 @@ test("manager: idle reaper evicts after idleMs (configurable reap interval)", as
 	writeFileSync(serverScript, FAKE_SERVER);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 		idleMs: 150,
 		reapIntervalMs: 100,
@@ -1035,7 +1097,13 @@ test("manager: request resets lastActivity (defers reaping)", async () => {
 	writeFileSync(serverScript, FAKE_SERVER);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 		idleMs: 300,
 		reapIntervalMs: 100,
@@ -1048,9 +1116,20 @@ test("manager: request resets lastActivity (defers reaping)", async () => {
 	// keep requesting within idleMs windows → never reaped
 	for (let i = 0; i < 4; i++) {
 		await new Promise((r) => setTimeout(r, 150));
-		await manager.request("textDocument/hover", { textDocument: { uri: `file://${tsFile}` }, position: { line: 0, character: 0 } }, tsFile);
+		await manager.request(
+			"textDocument/hover",
+			{
+				textDocument: { uri: `file://${tsFile}` },
+				position: { line: 0, character: 0 },
+			},
+			tsFile,
+		);
 	}
-	assert.equal(manager.status()[0]!.running, true, "still alive — activity resets idle");
+	assert.equal(
+		manager.status()[0]!.running,
+		true,
+		"still alive — activity resets idle",
+	);
 	manager.dispose();
 });
 
@@ -1061,12 +1140,20 @@ import { Writable } from "node:stream";
 test("dispose: writer whose end() throws is caught", async () => {
 	const reader = new PassThrough();
 	const hostile = new Writable({
-		write(_c, _e, cb) { cb(); },
-		final(cb) { cb(new Error("refuses to end")); },
+		write(_c, _e, cb) {
+			cb();
+		},
+		final(cb) {
+			cb(new Error("refuses to end"));
+		},
 	});
 	// capture the async error emission so it never becomes an uncaughtException
 	hostile.on("error", () => {});
-	const client = new LspClient({ reader, writer: hostile, requestTimeoutMs: 100 });
+	const client = new LspClient({
+		reader,
+		writer: hostile,
+		requestTimeoutMs: 100,
+	});
 	client.dispose(); // must not throw despite end() rejecting
 	client.dispose(); // and the already-disposed early return
 	await new Promise((r) => setTimeout(r, 20)); // let the error event settle
@@ -1086,45 +1173,67 @@ test("onExit: two concurrent registrations both resolve; handler cleared", async
 });
 
 test("resolveRustAnalyzer: unreadable shim falls through to toolchains", () => {
-	
 	const home = join(area, "unreadable");
 	mk(join(home, ".cargo", "bin"), { recursive: true });
-	mk(join(home, ".rustup", "toolchains", "stable-t", "bin"), { recursive: true });
+	mk(join(home, ".rustup", "toolchains", "stable-t", "bin"), {
+		recursive: true,
+	});
 	const shim = join(home, ".cargo", "bin", "rust-analyzer");
 	writeFileSync(shim, "#!/bin/sh\nrustup stuff");
 	ch(shim, 0o000); // unreadable → readFileSync throws → catch
-	writeFileSync(join(home, ".rustup", "toolchains", "stable-t", "bin", "rust-analyzer"), "toolchain bin");
+	writeFileSync(
+		join(home, ".rustup", "toolchains", "stable-t", "bin", "rust-analyzer"),
+		"toolchain bin",
+	);
 	try {
 		const resolved = resolveRustAnalyzer(home);
-		assert.ok(resolved.includes("stable-t"), `fell through to toolchain: ${resolved}`);
+		assert.ok(
+			resolved.includes("stable-t"),
+			`fell through to toolchain: ${resolved}`,
+		);
 	} finally {
 		ch(shim, 0o644); // restore so cleanup works
 	}
 });
 
 test("resolveRustAnalyzer: toolchain dir without binary is skipped", () => {
-	
 	const home = join(area, "skipdir");
 	mk(join(home, ".cargo", "bin"), { recursive: true });
 	writeFileSync(join(home, ".cargo", "bin", "rust-analyzer"), "#!/bin/sh\nshim");
-	mk(join(home, ".rustup", "toolchains", "empty-toolchain"), { recursive: true }); // no bin
-	mk(join(home, ".rustup", "toolchains", "good-toolchain", "bin"), { recursive: true });
-	writeFileSync(join(home, ".rustup", "toolchains", "good-toolchain", "bin", "rust-analyzer"), "good");
+	mk(join(home, ".rustup", "toolchains", "empty-toolchain"), {
+		recursive: true,
+	}); // no bin
+	mk(join(home, ".rustup", "toolchains", "good-toolchain", "bin"), {
+		recursive: true,
+	});
+	writeFileSync(
+		join(home, ".rustup", "toolchains", "good-toolchain", "bin", "rust-analyzer"),
+		"good",
+	);
 	const resolved = resolveRustAnalyzer(home);
-	assert.ok(resolved.includes("good-toolchain"), `skipped empty, found good: ${resolved}`);
+	assert.ok(
+		resolved.includes("good-toolchain"),
+		`skipped empty, found good: ${resolved}`,
+	);
 });
 
 test("manager: diagnostics push without uri stores under empty string", async () => {
 	// variant that pushes diagnostics with NO uri field
 	const script = FAKE_SERVER.replace(
 		'params: { uri: "file:///test.ts", diagnostics:',
-		'params: { diagnostics:',
+		"params: { diagnostics:",
 	);
 	const serverScript = join(area, "fake-nouri.mjs");
 	writeFileSync(serverScript, script);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 	});
 	const tsFile = join(area, "nouri.ts");
@@ -1151,24 +1260,39 @@ test("manager: applyEdit server request gets applied:false response", async () =
 	writeFileSync(serverScript, script3);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 100 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 100,
+			},
 		],
 	});
 	const tsFile = join(area, "applyedit.ts");
 	writeFileSync(tsFile, "const ae = 1;\n");
 	await manager.openFile(tsFile);
 	await new Promise((r) => setTimeout(r, 300));
-	assert.equal(manager.status()[0]!.running, true, "server healthy after applyEdit exchange");
+	assert.equal(
+		manager.status()[0]!.running,
+		true,
+		"server healthy after applyEdit exchange",
+	);
 	manager.dispose();
 });
 
 test("manager: changeFile on an open file that was deleted is a no-op", async () => {
-	
 	const serverScript = join(area, "fake-delchange.mjs");
 	writeFileSync(serverScript, FAKE_SERVER);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "fake", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
+			{
+				name: "fake",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
 		],
 	});
 	const tsFile = join(area, "delchange.ts");
@@ -1184,11 +1308,19 @@ test("manager: changeFile on an open file that was deleted is a no-op", async ()
 
 test("dispose: writer whose end() throws SYNCHRONOUSLY hits the catch", () => {
 	const reader = new PassThrough();
-	const hostile = new Writable({ write(_c, _e, cb) { cb(); } });
+	const hostile = new Writable({
+		write(_c, _e, cb) {
+			cb();
+		},
+	});
 	hostile.end = () => {
 		throw new Error("end refuses synchronously");
 	};
-	const client = new LspClient({ reader, writer: hostile, requestTimeoutMs: 100 });
+	const client = new LspClient({
+		reader,
+		writer: hostile,
+		requestTimeoutMs: 100,
+	});
 	client.dispose(); // sync throw → internal catch
 });
 
@@ -1205,7 +1337,9 @@ test("client: frame with valid header but malformed JSON body is skipped", async
 	const garbage = "{not valid json at all";
 	const badFrame = `Content-Length: ${Buffer.byteLength(garbage, "utf8")}\r\n\r\n${garbage}`;
 	// then a GOOD frame after it — the parser must keep scanning past the garbage
-	const good = encodeFrame(JSON.stringify({ jsonrpc: "2.0", method: "test/after-garbage", params: {} }));
+	const good = encodeFrame(
+		JSON.stringify({ jsonrpc: "2.0", method: "test/after-garbage", params: {} }),
+	);
 	serverWriter.write(badFrame + good);
 
 	await new Promise((r) => setTimeout(r, 50));
@@ -1223,8 +1357,20 @@ test("manager: eviction of a dead server exercises stopServer's shutdown catch",
 	writeFileSync(serverScript, script);
 	const manager = new LspManager(area, {
 		specs: [
-			{ name: "mortal", command: process.execPath, args: [serverScript], languageIds: ["typescript"], warmupMs: 50 },
-			{ name: "next", command: process.execPath, args: [join(area, "fake-suicide.mjs")], languageIds: ["go"], warmupMs: 50 },
+			{
+				name: "mortal",
+				command: process.execPath,
+				args: [serverScript],
+				languageIds: ["typescript"],
+				warmupMs: 50,
+			},
+			{
+				name: "next",
+				command: process.execPath,
+				args: [join(area, "fake-suicide.mjs")],
+				languageIds: ["go"],
+				warmupMs: 50,
+			},
 		],
 		maxServers: 1,
 	});

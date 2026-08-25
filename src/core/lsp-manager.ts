@@ -104,12 +104,7 @@ export function whichBin(name: string): string | null {
 
 /** Resolve bundled typescript-language-server from node_modules. */
 export function resolveTsServer(cwd: string = process.cwd()): string | null {
-	const local = join(
-		cwd,
-		"node_modules",
-		".bin",
-		"typescript-language-server",
-	);
+	const local = join(cwd, "node_modules", ".bin", "typescript-language-server");
 	if (existsSync(local)) return local;
 	return whichBin("typescript-language-server");
 }
@@ -216,7 +211,12 @@ export class LspManager {
 
 	constructor(
 		root: string,
-		opts: { specs?: ServerSpec[]; maxServers?: number; idleMs?: number; reapIntervalMs?: number } = {},
+		opts: {
+			specs?: ServerSpec[];
+			maxServers?: number;
+			idleMs?: number;
+			reapIntervalMs?: number;
+		} = {},
 	) {
 		this.root = root;
 		this.specs = opts.specs ?? defaultServers();
