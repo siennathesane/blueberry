@@ -352,9 +352,70 @@ superseded-by: <hex6>?
 ---
 ```
 
-Body: Context / Goal / Non-goals / **Approaches Considered (with rejection
-reasons — the gold)** / Decision / Verification. No decomposition here — that
-belongs to the plan.
+Body = the REQUIRED-SECTIONS TEMPLATE (researched 2025-08-25 from Amazon
+PRFAQ, Google Gerrit design-doc, TensorFlow/HashiCorp RFCs, product-brief
+patterns). Entering design mode scaffolds the file with the template; each
+section embeds its questions; **the approval gate refuses until every
+required section contains non-scaffold content** (TensorFlow rule: skipping
+requires justification — "not applicable because…" counts as an answer).
+
+### The design-doc template
+
+```markdown
+---
+id: <hex6>
+title: <title>
+status: open
+date: <yyyy-mm-dd>
+---
+
+# <title>
+
+## Summary
+<!-- 3-5 sentences, the commit message for this design: what, for whom,
+     why now. A reader decides whether to keep reading here. -->
+
+## Audience            <!-- REQUIRED (PRFAQ) -->
+<!-- Precisely who this is for — "if it's for everyone, it's for no one."
+     What do they have today? What will they get? Write from their side. -->
+
+## Problem             <!-- REQUIRED (Gerrit) -->
+<!-- What's broken or missing, and why does it matter NOW? Write for a
+     reader who has never thought about this problem. Context only —
+     this is NOT where the design goes. -->
+
+## Goal                <!-- REQUIRED -->
+<!-- What will be true when this ships? One paragraph, testable. -->
+
+## Non-goals           <!-- REQUIRED (Gerrit) -->
+<!-- What we are explicitly NOT doing. Scope fences; leaving this blank
+     is how scope creep wins. -->
+
+## Approaches considered   <!-- REQUIRED (TensorFlow): ≥2, each with a verdict.
+                              Rejected ones KEEP their rejection reasons —
+                              this is the gold in six months. -->
+### Approach A: <name>
+- Pros: ...
+- Cons: ...
+- Verdict: chosen | rejected — because ...
+
+## Decision            <!-- REQUIRED -->
+<!-- Which approach won and why. Reference the verdicts above. -->
+
+## Risks & open questions   <!-- REQUIRED (Atlassian); "none identified"
+                               is a valid answer — but say it explicitly -->
+
+## Verification        <!-- REQUIRED (PRFAQ: written from the future)
+<!-- "When this ships, ..." — commands, tests, bb_lsp diagnostics,
+     user-visible signals. The plan's steps must satisfy this section. -->
+```
+
+**Completeness mechanics:** the scaffold ships with the question comments in
+place; the parser strips comments and checks each REQUIRED section for ≥1
+line of real content. `bb_design status` reports un-answered sections by
+name; the y-gate refuses with the list until all pass. (Summary is the only
+non-required section.) Source discipline: questions stay as comments in the
+final doc — future readers see what the section was asking for.
 
 **Plan = a ROW in blueberry.db.** `plans` table: id (uuid-6), design_id (FK
 nullable — plan-only work), project_id, status draft|approved|building|done|
@@ -434,11 +495,11 @@ actual: added, dropped, reordered) — dreaming substrate.
 
 ### Open questions
 
-- [x] Embedding source — DECIDED: none. BM25 only, no schema reservations.
-- [ ] Should plan-only work (no design doc) also get a docs/ stub for
-      discoverability, or stay DB-invisible by design?
-- [ ] Supersede auto-drops old unfinished tasks (lean: yes, with events) —
-      confirm.
+- [x] Plan-only work: **DB-invisible** — no docs/ stub; the ingest stays
+      scoped to docs/design/ and plan-only rows simply have design_id NULL.
+- [x] Supersede: auto-drops old unfinished tasks (with events) **plus a
+      supersede checkpoint digest** — a logged bb-design breadcrumb recording
+      what was dropped and why, searchable forever. Drops are never silent.
 - [ ] /design history render: full life view (rounds, decisions, drift, retro)?
 
 ---
