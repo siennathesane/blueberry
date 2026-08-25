@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import platform from "node:os";
 import {
 	ulid,
 	slugify,
@@ -40,10 +41,21 @@ test("slugify: max 48 chars", () => {
 
 test("expandTilde: ~ and ~/ prefixes, otherwise untouched", () => {
 	const home = "/home/tester";
-	assert.equal(expandTilde("~", home), "/home/tester");
-	assert.equal(expandTilde("~/dev", home), "/home/tester/dev");
-	assert.equal(expandTilde("/abs/path", home), "/abs/path");
-	assert.equal(expandTilde("~other/x", home), "~other/x");
+	if (platform !== "win32") {
+		// #32: expandTilde uses unix-style paths; Windows uses drive letters
+		assert.equal(expandTilde("~", home), "/home/tester");
+		assert.equal(expandTilde("~/dev", home), "/home/tester/dev");
+		assert.equal(expandTilde("/abs/path", home), "/abs/path");
+		assert.equal(expandTilde("~other/x", home), "~other/x");
+	} else {
+		// On Windows, test with a Windows-style home path
+		const winHome = "C:\\Users\\test";
+		assert.equal(expandTilde("~", winHome), "C:\\Users\\test");
+		assert.equal(expandTilde("~/dev", winHome), "C:\\Users\\test\\dev");
+		assert.equal(expandTilde("C:\\abs\\path", winHome), "C:\\abs\\path");
+		assert.equal(expandTilde("~other/x", winHome), "~other/x");
+	}
+});
 });
 
 test("encodeCwdToDirName: matches pi's mangling", () => {
