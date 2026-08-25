@@ -9,7 +9,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { realpathSync, readFileSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import platform from "node:os";
+import * as os from "node:os";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -115,7 +115,7 @@ export function decodeDirNameToPathCandidates(
 		const candidate = "/" + parts.join("/");
 		// #32: on Windows, normalize the candidate to a valid path before checking existence
 		const normalized =
-			platform === "win32"
+			os.platform() === "win32"
 				? resolve(segments[0]!, ...parts.slice(1))
 				: candidate;
 		if (exists(normalized) && !results.includes(candidate))
