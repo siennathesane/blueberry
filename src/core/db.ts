@@ -126,6 +126,50 @@ CREATE TABLE IF NOT EXISTS plans (
   seeded_at TEXT,
   seeded_count INTEGER
 );
+CREATE TABLE IF NOT EXISTS cmd_graphs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT,
+  name TEXT,
+  origin TEXT NOT NULL DEFAULT 'adhoc',
+  status TEXT NOT NULL DEFAULT 'defined',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cmd_nodes (
+  id TEXT PRIMARY KEY,
+  graph_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  command TEXT NOT NULL,
+  cwd TEXT,
+  env TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  pid INTEGER,
+  started_at TEXT,
+  ended_at TEXT,
+  exit_code INTEGER
+);
+CREATE TABLE IF NOT EXISTS cmd_edges (
+  node_id TEXT NOT NULL,
+  dep_id TEXT NOT NULL,
+  PRIMARY KEY (node_id, dep_id)
+);
+CREATE TABLE IF NOT EXISTS cmd_output (
+  node_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  stream TEXT NOT NULL,
+  text TEXT NOT NULL,
+  ts TEXT NOT NULL,
+  generation INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (node_id, seq)
+);
+CREATE TABLE IF NOT EXISTS cmd_templates (
+  name TEXT PRIMARY KEY,
+  params TEXT NOT NULL DEFAULT '[]',
+  nodes TEXT NOT NULL,
+  edges TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(
   text, source UNINDEXED, uri UNINDEXED
 );
