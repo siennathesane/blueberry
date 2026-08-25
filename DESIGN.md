@@ -1069,6 +1069,85 @@ edge color: the juice stays in the pairing. All hues are `vars` for live
 tweaking. Known judgment call: sage strings sit near diff-green by design
 (desaturated to coexist); swap candidate if it reads wrong: dusty rose.
 
+## §Context — system prompt & session hints (decided 2025-08-25)
+
+The model must hold context the way a principal engineer does: always oriented
+(what mode, what's next), always ambiently aware (time, state), never
+blind-sided by invisible UI. Three layers, two rails.
+
+### The two rails (volatility split)
+
+- **System-prompt rail** (`before_agent_start` systemPrompt append): the
+  provider's cache PREFIX — content must be delta-stable. State goes here;
+  the injection re-appends every turn but byte-compares against last turn's
+  text, so cache busts only on real state change (mode hop, task completion,
+  doc revise). Target: ~5 invalidations per 100-turn session.
+- **Message rail** (`context` event, ephemeral, non-persisted): fresh each
+  turn, appended AFTER the cached prefix — never cache-hostile. Ambient
+  context goes here: **datetime + timezone** ("2025-08-25T14:32 PDT") every
+  turn, always accurate, zero accumulation (rebuilt from scratch each call —
+  the session file never stores it).
+
+### Layer 1 — identity (core extension, project-aware) — DECIDED: injected,
+NOT APPEND_SYSTEM.md
+
+The core extension composes the identity block at session_start (semi-static
+for the session) and appends it via before_agent_start, chained before Layer 2:
+
+- house identity (blueberry; the lifecycle exists; needles are search keys)
+- **cross-tool orchestration** — what tool-scoped guidelines cannot say:
+  unfamiliar code → bb_lsp first; past decisions → bb_search (context
+  neighborhoods); other projects → bb_library; work tracking → bb_todo;
+  before claiming done → bb_lsp diagnostics
+- needle conventions (todo:/design:/plan: formats — the model writes these too)
+
+**Project-awareness** (the reason for extension injection over a file): probe
+capabilities at session_start and tailor — mention bb_lsp only when servers
+are installed (list the languages), drop the design lifecycle lines when the
+project has no docs/design and no mode state, keep DAG lines only when todos
+exist. Never mention tools whose surface isn't actually present. Identity
+bragging rights: this functionally replaces pi's APPEND_SYSTEM.md slot —
+blueberry owns its model-facing text.
+
+### Layer 2 — live state (system-prompt rail, delta-compared)
+
+Derived from DB each turn, one compact block:
+
+```text
+[state] mode: design (open: "session management") · missing sections:
+Requirements, Verification, Decision
+[state] mode: normal · building "doc search" 3/7 · NOW fts5 schema · NEXT bb_search tool
+```
+
+- design mode: title + **missing section NAMES** (user decision: steering,
+  not status — directs the next action; changes only when the doc changes,
+  which is legitimate cache-busting)
+- plan mode: plan rev + pass state (clean/dirty counts)
+- building: title + done/total + NOW/NEXT task titles
+- normal, no active work: block collapses to nothing (no noise)
+
+### Layer 3 — evented hints (message rail, mostly built)
+
+- breadcrumbs at transitions (todo:/design:/plan: needles) — **forever**;
+  they're the searchable history
+- diagnostics nudges after edit/write (display:false) — **supersede, don't
+  accumulate**: the context event keeps only the LATEST nudge per file,
+  dropping older ones for the same path (stale diagnostics are lies)
+- checkpoints at session end — logged, immutable
+
+Layer 2 vs Layer 3 jobs: L2 is always-current truth re-derived from the DB
+(never stale); L3 is what-happened-when (never rewritten — except the
+supersede rule for nudges, which are the one hint type whose age makes them
+wrong rather than historical).
+
+### Explicitly out
+
+- per-turn injection of churning data (diagnostic counts, file lists) —
+  that's what tools are for; the model fetches on demand
+- anything human-facing — the user has the strip and /commands
+
+---
+
 ## §Distribution — what "blueberry" installs (updated 2025-08-25)
 
 Session/project management is in-repo (`extensions/core`-adjacent CLI code, see §Sessions),
