@@ -21,7 +21,6 @@ import {
 	graphNodes,
 	listGraphs,
 	nodeOutput,
-	purgeOutput,
 	readySet,
 	runGraph,
 	runTemplate,

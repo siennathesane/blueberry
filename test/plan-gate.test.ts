@@ -11,7 +11,7 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "../src/core/db.ts";
 import { writeMode, readMode } from "../src/core/plan-gate.ts";

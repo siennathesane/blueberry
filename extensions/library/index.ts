@@ -86,6 +86,7 @@ export default function (pi: ExtensionAPI) {
 				Type.String({ description: "search action: text to find" }),
 			),
 		}),
+		// deno-lint-ignore require-await
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const agentDir = libraryAgentDir();
 			const registry = loadRegistry(agentDir);

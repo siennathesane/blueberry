@@ -365,6 +365,7 @@ export class LspManager {
 	}
 
 	/** Sync a file change (didChange, full-text). */
+	// deno-lint-ignore require-await
 	async changeFile(path: string): Promise<void> {
 		const languageId = languageIdForFile(path);
 		if (!languageId) return;

@@ -5,6 +5,7 @@
  * count them, which misaligns any colored column layout. Everything that
  * renders colored columns goes through these.
  */
+// deno-lint-ignore no-control-regex
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 
 /** Visible width of a string (escape sequences count as zero). */
@@ -36,6 +37,7 @@ export function truncateVisible(
 ): string {
 	const plain = stripAnsi(s);
 	if (plain.length <= maxWidth) return s;
+	// deno-lint-ignore no-control-regex
 	const lead = /^\x1b\[[0-9;]*[A-Za-z]/.exec(s);
 	const keep = Math.max(0, maxWidth - ellipsis.length);
 	const body = plain.slice(0, keep) + ellipsis;

@@ -30,6 +30,7 @@ export function rewriteTitles(chunk: string, ours: string): string {
 	if (!chunk.includes("\x1b]")) return chunk;
 	const osc = titleSequence(ours);
 	// OSC 0;...BEL and OSC 2;...BEL forms
+	// deno-lint-ignore no-control-regex
 	return chunk.replace(/\x1b\][02];[^\x07]*\x07/g, (match) => {
 		return match === osc ? match : osc;
 	});

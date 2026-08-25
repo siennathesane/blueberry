@@ -234,6 +234,7 @@ test("cli: search --docs runs ingest and prints formatted hits", async () => {
 	const deps: CliDeps = {
 		cwd: root,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: (l) => out.push(l),
 		err: (l) => err.push(l),
@@ -263,6 +264,7 @@ test("cli: search --docs with bad frontmatter warns and still searches", async (
 	const deps: CliDeps = {
 		cwd: root,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: (l) => out.push(l),
 		err: () => {},

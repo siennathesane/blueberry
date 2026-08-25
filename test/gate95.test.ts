@@ -43,6 +43,7 @@ function deps(cwd: string): CliDeps {
 	return {
 		cwd,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: (l) => outLines.push(l),
 		err: (l) => errLines.push(l),
@@ -248,6 +249,7 @@ test("launcher: fork main load failure propagates", async () => {
 	const { prepareLaunch, defaultRunPi, setPiMainLoader } = await import(
 		"../src/core/launcher.ts"
 	);
+	// deno-lint-ignore require-await
 	setPiMainLoader(async () => {
 		throw new Error("fork unavailable (test)");
 	});

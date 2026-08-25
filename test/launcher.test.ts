@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import {
 	prepareLaunch,
 	rewriteArgsForCwd,
@@ -228,6 +228,7 @@ test("defaultRunPi: calls the fork main in-process with plan cwd/env, propagates
 	const seen: { cwd?: string; argv?: string[]; db?: string; agentDir?: string } = {};
 	const root = fakeRepo(area, "runpi", "git");
 	const prevCwd = Deno.cwd();
+	// deno-lint-ignore require-await
 	setPiMainLoader(async () => async (argv: string[]) => {
 		seen.cwd = Deno.cwd();
 		seen.argv = argv;

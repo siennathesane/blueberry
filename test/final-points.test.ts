@@ -33,6 +33,7 @@ function deps(cwd: string): CliDeps {
 	return {
 		cwd,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: (l) => out.push(l),
 		err: () => {},

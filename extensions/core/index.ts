@@ -188,6 +188,7 @@ export default function (pi: ExtensionAPI) {
 	// session_shutdown, so every cleanup hook runs.
 	pi.registerCommand("exit", {
 		description: "Quit blueberry",
+		// deno-lint-ignore require-await
 		handler: async (_args, ctx) => {
 			ctx.shutdown();
 		},

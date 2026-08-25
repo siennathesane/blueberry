@@ -132,9 +132,11 @@ function fakeIo(opts: {
 	return {
 		wrote,
 		renames,
+		// deno-lint-ignore require-await
 		async fetchJson() {
 			return opts.release;
 		},
+		// deno-lint-ignore require-await
 		async fetchBytes(url: string) {
 			if (url.endsWith(".sha256")) return new TextEncoder().encode(opts.shaText);
 			return opts.assetBytes;
@@ -142,10 +144,12 @@ function fakeIo(opts: {
 		execPath() {
 			return opts.execPath;
 		},
+		// deno-lint-ignore require-await
 		async writeFile(path, bytes, mode) {
 			wrote.push({ path, mode });
 			assert.ok(bytes.length > 0, "empty write");
 		},
+		// deno-lint-ignore require-await
 		async rename(from, to) {
 			renames.push([from, to]);
 		},
@@ -281,6 +285,7 @@ test("windows: asset names carry .exe; performUpdate handles backslash paths + l
 	const wrote: Array<{ path: string; mode?: number }> = [];
 	const renames: Array<[string, string]> = [];
 	const io: UpdaterIO = {
+		// deno-lint-ignore require-await
 		async fetchJson() {
 			return {
 				tag_name: "v0.3.0",
@@ -292,15 +297,18 @@ test("windows: asset names carry .exe; performUpdate handles backslash paths + l
 				],
 			};
 		},
+		// deno-lint-ignore require-await
 		async fetchBytes(url: string) {
 			return url.endsWith(".sha256")
 				? new TextEncoder().encode(shaText)
 				: assetBytes;
 		},
 		execPath: () => "C:\\Users\\x\\bin\\blueberry.exe",
+		// deno-lint-ignore require-await
 		async writeFile(path, _bytes, mode) {
 			wrote.push({ path, mode });
 		},
+		// deno-lint-ignore require-await
 		async rename(from, to) {
 			// first rename over the target FAILS (running exe is locked)
 			if (to.endsWith("blueberry.exe") && renames.length === 0) {

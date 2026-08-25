@@ -110,6 +110,7 @@ export default function (pi: ExtensionAPI) {
 	// in-memory; supersedeNudges keeps only the freshest snapshot per path).
 	const touchedFiles = new Map<string, number>(); // path -> last touch seq
 
+	// deno-lint-ignore require-await
 	pi.on("tool_result", async (event, ctx) => {
 		if (event.toolName !== "edit" && event.toolName !== "write") return;
 		if (!manager) return; // not started yet — no servers, no nudges
@@ -147,6 +148,7 @@ export default function (pi: ExtensionAPI) {
 	// --- /lsp command (human status) ------------------------------------------------
 	pi.registerCommand("lsp", {
 		description: "LSP server status",
+		// deno-lint-ignore require-await
 		handler: async (_args, ctx) => {
 			if (!manager) {
 				ctx.ui.notify(

@@ -377,6 +377,7 @@ test("cli: sync/restore/search catch a broken agent dir cleanly", async () => {
 	const deps: CliDeps = {
 		cwd: area,
 		agentDir: broken, // openDb will throw (path is a file)
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: () => {},
 		err: () => {},
@@ -391,6 +392,7 @@ test("cli: sessions show message/messages views succeed via dispatch", async () 
 	await main([], {
 		cwd: root,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: (l) => out_log(l),
 		err: () => {},
@@ -405,6 +407,7 @@ test("cli: sessions show message/messages views succeed via dispatch", async () 
 	const deps2: CliDeps = {
 		cwd: root,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: (l) => out.push(l),
 		err: () => {},

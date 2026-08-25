@@ -196,7 +196,6 @@ async function importCmd(rest: string[], deps: CliDeps): Promise<number> {
 			byPath.set(p.canonicalPath, p.id);
 			for (const a of p.aliases) byPath.set(a, p.id);
 		}
-		const { normalizePathForCompare } = await import("../core/util.ts");
 		const home = (await import("node:os")).homedir();
 		const { join } = await import("node:path");
 		const { tmpdir } = await import("node:os");
@@ -618,7 +617,7 @@ async function launchMode(
 
 // --- current project helper ---------------------------------------------------
 
-async function currentProject(deps: CliDeps, slugOverride?: string) {
+function currentProject(deps: CliDeps, slugOverride?: string) {
 	const registry = loadRegistrySync(deps.agentDir);
 	if (slugOverride) {
 		const p = findBySlug(registry, slugOverride);
@@ -635,7 +634,7 @@ async function currentProject(deps: CliDeps, slugOverride?: string) {
 
 // --- projects ------------------------------------------------------------------
 
-async function projectsCmd(rest: string[], deps: CliDeps): Promise<number> {
+function projectsCmd(rest: string[], deps: CliDeps): number {
 	const [sub, ...args] = rest;
 	try {
 		switch (sub) {
@@ -781,7 +780,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 					else lines.forEach((l) => deps.out(String(l)));
 					return 0;
 				}
-				const { project } = await currentProject(deps, projectFlag);
+				const { project } = currentProject(deps, projectFlag);
 				const sessions = listSessions(storeDirFor(deps.agentDir, project));
 				if (json) {
 					deps.out(JSON.stringify(sessions, null, 2));
@@ -798,7 +797,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const [sel, ...nameParts] = args;
 				const name = nameParts.join(" ");
 				if (!sel || !name) return usageErr(deps, "sessions rename <sel> <name>");
-				const { project } = await currentProject(deps, projectFlag);
+				const { project } = currentProject(deps, projectFlag);
 				const session = selectSession(storeDirFor(deps.agentDir, project), sel);
 				if (!session) return deps.err(`no session matching '${sel}'`), 1;
 				renameSession(session.file, name);
@@ -810,7 +809,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				if (!sel || !targetSlug)
 					return usageErr(deps, "sessions move <sel> <project-slug>");
 				const registry = loadRegistrySync(deps.agentDir);
-				const { project } = await currentProject(deps, projectFlag);
+				const { project } = currentProject(deps, projectFlag);
 				const target = findBySlug(registry, targetSlug);
 				if (!target) return deps.err(`no project '${targetSlug}'`), 1;
 				const session = selectSession(storeDirFor(deps.agentDir, project), sel);
@@ -826,7 +825,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			case "open": {
 				const sel = args[0];
 				if (!sel) return usageErr(deps, "sessions open <sel>");
-				const { project } = await currentProject(deps, projectFlag);
+				const { project } = currentProject(deps, projectFlag);
 				const session = selectSession(storeDirFor(deps.agentDir, project), sel);
 				if (!session) return deps.err(`no session matching '${sel}'`), 1;
 				const plan = await prepareLaunch({
@@ -841,7 +840,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 			case "trash": {
 				const sel = args[0];
 				if (!sel) return usageErr(deps, "sessions trash <sel>");
-				const { project } = await currentProject(deps, projectFlag);
+				const { project } = currentProject(deps, projectFlag);
 				const session = selectSession(storeDirFor(deps.agentDir, project), sel);
 				if (!session) return deps.err(`no session matching '${sel}'`), 1;
 				const trashed = trashSession(session.file, getTrashDir(deps.agentDir));
@@ -857,7 +856,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 					);
 				const view = (extractValue(rest, "--view") ?? "summary") as ViewKind;
 				const registry = loadRegistrySync(deps.agentDir);
-				const { project: current } = await currentProject(deps, projectFlag);
+				const { project: current } = currentProject(deps, projectFlag);
 				const resolved = resolveAddress(
 					registry,
 					deps.agentDir,
@@ -898,7 +897,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const text = positionals(rest, "search").join(" ");
 				if (!text) return usageErr(deps, "sessions search <text> [--all]");
 				const registry = loadRegistrySync(deps.agentDir);
-				const { project: current } = await currentProject(deps, projectFlag);
+				const { project: current } = currentProject(deps, projectFlag);
 				const hits = searchSessions(registry, deps.agentDir, text, {
 					all: rest.includes("--all"),
 					currentSlug: current.slug,
@@ -910,7 +909,7 @@ async function sessionsCmd(rest: string[], deps: CliDeps): Promise<number> {
 				const addr = positionals(rest, "fork")[0];
 				if (!addr) return usageErr(deps, "sessions fork <project/selector>");
 				const registry = loadRegistrySync(deps.agentDir);
-				const { project: current } = await currentProject(deps, projectFlag);
+				const { project: current } = currentProject(deps, projectFlag);
 				const resolved = resolveAddress(
 					registry,
 					deps.agentDir,
@@ -954,7 +953,7 @@ function fmtSession(
 
 // --- adopt / fix ----------------------------------------------------------------
 
-async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
+function adoptCmd(rest: string[], deps: CliDeps): number {
 	try {
 		const sourceDir =
 			rest.find((a) => !a.startsWith("--") && !a.includes("=")) ??
@@ -1009,7 +1008,7 @@ async function adoptCmd(rest: string[], deps: CliDeps): Promise<number> {
 
 // --- sync / restore --------------------------------------------------------------
 
-async function syncCmd(deps: CliDeps): Promise<number> {
+function syncCmd(deps: CliDeps): number {
 	try {
 		const db = openDb(deps.agentDir);
 		try {
@@ -1061,7 +1060,7 @@ async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 			}
 			if (rest.includes("--docs")) {
 				// refresh design docs from disk, then search the unified index
-				const { project: current } = await currentProject(deps);
+				const { project: current } = currentProject(deps);
 				const { ingestDesignDocs } = await import("../core/doc-index.ts");
 				const report = ingestDesignDocs(db, current.canonicalPath, current.id);
 				if (report.errors.length > 0) {
@@ -1089,7 +1088,7 @@ async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 	}
 }
 
-async function restoreCmd(deps: CliDeps): Promise<number> {
+function restoreCmd(deps: CliDeps): number {
 	try {
 		const db = openDb(deps.agentDir);
 		try {
@@ -1107,11 +1106,11 @@ async function restoreCmd(deps: CliDeps): Promise<number> {
 	}
 }
 
-async function fixCmd(
+function fixCmd(
 	rest: string[],
 	dryRun: boolean,
 	deps: CliDeps,
-): Promise<number> {
+): number {
 	try {
 		const registry = loadRegistrySync(deps.agentDir);
 		const report =

@@ -86,6 +86,7 @@ test("cli: search --context 2 applies a tight window", async () => {
 	const deps: CliDeps = {
 		cwd: root,
 		agentDir,
+		// deno-lint-ignore require-await
 		runPi: async () => 0,
 		out: () => {},
 		err: () => {},

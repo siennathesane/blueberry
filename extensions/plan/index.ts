@@ -119,6 +119,16 @@ export default function (pi: ExtensionAPI) {
 		if (dir === "") return undefined;
 		const proj = projectFor(ctx.cwd);
 		if (!proj) return undefined;
+		// sync designs table from disk BEFORE deciding: a hand-written
+		// docs/design/ doc is a real pending design even before any
+		// bb_design action has ingested it (the tool actions sync too —
+		// the gate must not be blind to what's on disk)
+		const syncDb = openDb(dir);
+		try {
+			ingestDesignDocs(syncDb, proj.root, proj.id);
+		} finally {
+			syncDb.close();
+		}
 		const decision = planGateDecision(proj.id, dir);
 		if (decision && ctx.hasUI) {
 			ctx.ui.notify(
@@ -138,6 +148,7 @@ export default function (pi: ExtensionAPI) {
 	// --- shift+tab mode ring ------------------------------------------------------------
 	pi.registerShortcut("shift+tab", {
 		description: "Cycle lifecycle mode: normal → design → plan → normal",
+		// deno-lint-ignore require-await
 		handler: async (ctx) => {
 			const dir = agentDir();
 			const proj = projectFor(ctx.cwd);
@@ -423,6 +434,7 @@ export default function (pi: ExtensionAPI) {
 				}),
 			),
 		}),
+		// deno-lint-ignore require-await
 		async execute(_id, params, _s, _u, ctx) {
 			const dir = agentDir();
 			if (dir === "")
@@ -576,6 +588,7 @@ export default function (pi: ExtensionAPI) {
 	// --- /design and /plan commands ------------------------------------------------------
 	pi.registerCommand("design", {
 		description: "Open design doc view / status",
+		// deno-lint-ignore require-await
 		handler: async (_args, ctx) => {
 			const dir = agentDir();
 			const proj = projectFor(ctx.cwd);
@@ -605,6 +618,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("plan", {
 		description: "Plan status / passes",
+		// deno-lint-ignore require-await
 		handler: async (_args, ctx) => {
 			const dir = agentDir();
 			const proj = projectFor(ctx.cwd);

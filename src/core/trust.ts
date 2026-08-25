@@ -38,6 +38,7 @@ export async function writeTrustEntries(
 }
 
 /** Mark a set of paths trusted (the common case). */
+// deno-lint-ignore require-await
 export async function trustPaths(
 	agentDir: string,
 	paths: string[],

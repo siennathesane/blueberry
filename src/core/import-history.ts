@@ -12,7 +12,7 @@
  *   Noise (attachments, snapshots, queue-ops, permissions, system, isMeta)
  *   is skipped. ~1,571 sessions.
  *
- * Kimi-code (~/.kimi-code/sessions/wd_<x>/ses_<x>/agents/main/wire.jsonl):
+ * Kimi-code (~/.kimi-code/sessions/wd_…/ses_…/agents/main/wire.jsonl):
  *   context.append_message records carry {role, content[]} (near-pi shape),
  *   epoch-ms time; session_index.jsonl maps sessionId → workDir for cwd.
  *   Noise (config.update with full system prompts, llm.request, usage,
@@ -22,8 +22,14 @@
  * Dry-run by default — pass apply to write.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, basename } from "node:path";
+import {
+	readFileSync,
+	readdirSync,
+	existsSync,
+	writeFileSync,
+	mkdirSync,
+} from "node:fs";
+import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { ingestSessionFile } from "./sync.ts";
 
@@ -58,7 +64,9 @@ function isoToIso(s: string | undefined): string | null {
 }
 
 /** content blocks kept as-is (text); images dropped to a placeholder. */
-export function normalizeContent(content: unknown): string | Array<Record<string, unknown>> {
+export function normalizeContent(
+	content: unknown,
+): string | Array<Record<string, unknown>> {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
 		const out: Array<Record<string, unknown>> = [];
@@ -104,7 +112,12 @@ const CLAUDE_NOISE = new Set([
 export function convertClaudeSession(
 	lines: string[],
 	sessionId: string,
-): { header: Record<string, unknown>; entries: Array<Record<string, unknown>>; cwd: string | null; title: string | null } {
+): {
+	header: Record<string, unknown>;
+	entries: Array<Record<string, unknown>>;
+	cwd: string | null;
+	title: string | null;
+} {
 	let cwd: string | null = null;
 	let title: string | null = null;
 	let startedAt: string | null = null;
@@ -144,11 +157,17 @@ export function convertClaudeSession(
 		// claude-parent (which may be in another branch we flattened)
 		const newId = randomUUID();
 		uuidMap.set(r.uuid ?? newId, newId);
-		const parentId = r.isSidechain ? null : r.parentUuid ? (uuidMap.get(r.parentUuid) ?? parent) : parent;
+		const parentId = r.isSidechain
+			? null
+			: r.parentUuid
+				? (uuidMap.get(r.parentUuid) ?? parent)
+				: parent;
 		entries.push({
 			type: "message",
 			id: newId,
-			parentId: r.isSidechain ? (entries[entries.length - 1]?.id ?? null) : parentId,
+			parentId: r.isSidechain
+				? (entries[entries.length - 1]?.id ?? null)
+				: parentId,
 			timestamp: isoToIso(r.timestamp) ?? nowIso(),
 			message: { role: msg.role, content },
 		});
@@ -176,7 +195,12 @@ export function convertKimiSession(
 	lines: string[],
 	sessionId: string,
 	workDir: string | null,
-): { header: Record<string, unknown>; entries: Array<Record<string, unknown>>; cwd: string | null; title: null } {
+): {
+	header: Record<string, unknown>;
+	entries: Array<Record<string, unknown>>;
+	cwd: string | null;
+	title: null;
+} {
 	const entries: Array<Record<string, unknown>> = [];
 	let startedAt: string | null = null;
 	let parent: string | null = null;
@@ -246,9 +270,16 @@ export function importHistory(
 	opts: ImportOptions,
 	tmpDir: string,
 ): ImportReport {
-	const report: ImportReport = { scanned: 0, imported: [], skipped: 0, errors: [] };
+	const report: ImportReport = {
+		scanned: 0,
+		imported: [],
+		skipped: 0,
+		errors: [],
+	};
 	const present = new Set(
-		(db.prepare("SELECT id FROM sessions").all() as Array<{ id: string }>).map((r) => r.id),
+		(db.prepare("SELECT id FROM sessions").all() as Array<{ id: string }>).map(
+			(r) => r.id,
+		),
 	);
 	mkdirSync(tmpDir, { recursive: true });
 
@@ -283,12 +314,17 @@ export function importHistory(
 		// materialize pi-format JSONL and ride the standard ingest path —
 		// FTS, project attribution, search all come free
 		const path = join(tmpDir, `${sessionId}.jsonl`);
-		const body = [JSON.stringify(header), ...entries.map((e) => JSON.stringify(e))].join("\n") + "\n";
+		const body =
+			[JSON.stringify(header), ...entries.map((e) => JSON.stringify(e))].join(
+				"\n",
+			) + "\n";
 		writeFileSync(path, body);
 		const res = ingestSessionFile(db, path, projectsByCwd, { allowOrphan: true });
 		if (res.status === "ingested") {
 			if (title !== null) {
-				db.prepare("UPDATE sessions SET name = ? WHERE id = ?").run(title, sessionId);
+				db
+					.prepare("UPDATE sessions SET name = ? WHERE id = ?")
+					.run(title, sessionId);
 			}
 			report.imported.push({
 				source,
@@ -315,7 +351,10 @@ export function importHistory(
 					if (opts.limit !== undefined && report.scanned >= opts.limit) break;
 					const sessionId = file.replace(".jsonl", "");
 					const lines = readFileSync(join(pdir, file), "utf8").split("\n");
-					const { header, entries, cwd, title } = convertClaudeSession(lines, sessionId);
+					const { header, entries, cwd, title } = convertClaudeSession(
+						lines,
+						sessionId,
+					);
 					doImport(sessionId, cwd, title, header, entries, "claude");
 				}
 			}

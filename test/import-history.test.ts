@@ -6,7 +6,7 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "../src/core/db.ts";
 import {
@@ -46,7 +46,11 @@ function claudeLine(r: Record<string, unknown>): string {
 test("claude: user/assistant entries, parentId chain, noise skipped, cwd/title", () => {
 	const lines = [
 		claudeLine({ type: "last-prompt", leafUuid: "x", sessionId: "s1" }),
-		claudeLine({ type: "permission-mode", permissionMode: "default", sessionId: "s1" }),
+		claudeLine({
+			type: "permission-mode",
+			permissionMode: "default",
+			sessionId: "s1",
+		}),
 		claudeLine({
 			type: "user",
 			uuid: "u1",
@@ -84,14 +88,39 @@ test("claude: user/assistant entries, parentId chain, noise skipped, cwd/title",
 	assert.equal(entries.length, 2, "noise skipped");
 	assert.equal(entries[0]!["parentId"], null);
 	assert.equal(entries[1]!["parentId"], entries[0]!["id"], "chain");
-	assert.equal((entries[1] as { message: { role: string } }).message.role, "assistant");
+	assert.equal(
+		(entries[1] as { message: { role: string } }).message.role,
+		"assistant",
+	);
 });
 
 test("claude: sidechain branches attach to last mainline entry", () => {
 	const lines = [
-		claudeLine({ type: "user", uuid: "u1", parentUuid: null, sessionId: "s1", timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: "main" } }),
-		claudeLine({ type: "user", uuid: "u2", parentUuid: null, sessionId: "s1", timestamp: "2026-01-01T00:00:01Z", message: { role: "user", content: "more main" } }),
-		claudeLine({ type: "assistant", uuid: "sc1", parentUuid: "u1", isSidechain: true, sessionId: "s1", timestamp: "2026-01-01T00:00:02Z", message: { role: "assistant", content: "side" } }),
+		claudeLine({
+			type: "user",
+			uuid: "u1",
+			parentUuid: null,
+			sessionId: "s1",
+			timestamp: "2026-01-01T00:00:00Z",
+			message: { role: "user", content: "main" },
+		}),
+		claudeLine({
+			type: "user",
+			uuid: "u2",
+			parentUuid: null,
+			sessionId: "s1",
+			timestamp: "2026-01-01T00:00:01Z",
+			message: { role: "user", content: "more main" },
+		}),
+		claudeLine({
+			type: "assistant",
+			uuid: "sc1",
+			parentUuid: "u1",
+			isSidechain: true,
+			sessionId: "s1",
+			timestamp: "2026-01-01T00:00:02Z",
+			message: { role: "assistant", content: "side" },
+		}),
 	];
 	const { entries } = convertClaudeSession(lines, "s1");
 	assert.equal(entries.length, 3);
@@ -113,8 +142,16 @@ test("claude: torn tail lines skipped without throwing", () => {
 
 test("kimi: append_message → entries, epoch-ms → ISO, index maps cwd", () => {
 	const lines = [
-		JSON.stringify({ type: "metadata", protocol_version: "1.4", created_at: 1783687612110 }),
-		JSON.stringify({ type: "config.update", profileName: "agent", systemPrompt: "You are..." }),
+		JSON.stringify({
+			type: "metadata",
+			protocol_version: "1.4",
+			created_at: 1783687612110,
+		}),
+		JSON.stringify({
+			type: "config.update",
+			profileName: "agent",
+			systemPrompt: "You are...",
+		}),
 		JSON.stringify({
 			type: "context.append_message",
 			message: { role: "user", content: [{ type: "text", text: "fix the bug" }] },
@@ -127,7 +164,11 @@ test("kimi: append_message → entries, epoch-ms → ISO, index maps cwd", () =>
 			time: 1783687640000,
 		}),
 	];
-	const { header, entries, cwd } = convertKimiSession(lines, "abc123", "/dev/proj");
+	const { header, entries, cwd } = convertKimiSession(
+		lines,
+		"abc123",
+		"/dev/proj",
+	);
 	assert.equal(header["id"], "abc123");
 	assert.equal(cwd, "/dev/proj");
 	assert.equal(header["timestamp"], new Date(1783687633639).toISOString());
@@ -195,7 +236,9 @@ function seedSources(): void {
 	);
 	writeFileSync(
 		join(kimiDir, "session_index.jsonl"),
-		'{"sessionId":"ses_k1","sessionDir":"' + join(wd, "ses_k1") + '","workDir":"/work/proj"}\n',
+		'{"sessionId":"ses_k1","sessionDir":"' +
+			join(wd, "ses_k1") +
+			'","workDir":"/work/proj"}\n',
 	);
 }
 
@@ -213,7 +256,9 @@ test("driver: dry-run reports without writing; apply writes and is idempotent", 
 	);
 	assert.equal(dry.imported.length, 2, "dry-run: 2 would import");
 	assert.equal(dry.skipped, 0);
-	const rows = db.prepare("SELECT COUNT(*) n FROM sessions").get() as { n: number };
+	const rows = db.prepare("SELECT COUNT(*) n FROM sessions").get() as {
+		n: number;
+	};
 	assert.equal(rows.n, 0, "dry-run wrote nothing");
 
 	const applied = importHistory(
@@ -224,9 +269,13 @@ test("driver: dry-run reports without writing; apply writes and is idempotent", 
 		tmp,
 	);
 	assert.equal(applied.imported.length, 2, "apply: 2 imported");
-	const rows2 = db.prepare("SELECT COUNT(*) n FROM sessions").get() as { n: number };
+	const rows2 = db.prepare("SELECT COUNT(*) n FROM sessions").get() as {
+		n: number;
+	};
 	assert.equal(rows2.n, 2, "sessions landed");
-	const entries = db.prepare("SELECT COUNT(*) n FROM session_entries").get() as { n: number };
+	const entries = db.prepare("SELECT COUNT(*) n FROM session_entries").get() as {
+		n: number;
+	};
 	assert.equal(entries.n, 3, "2 claude + 1 kimi entries");
 	const fts = db
 		.prepare("SELECT COUNT(*) n FROM session_fts WHERE text LIKE '%kimi hello%'")
@@ -242,6 +291,8 @@ test("driver: dry-run reports without writing; apply writes and is idempotent", 
 	);
 	assert.equal(rerun.imported.length, 0, "re-run: nothing new");
 	assert.equal(rerun.skipped, 2, "re-run: both skipped");
-	const rows3 = db.prepare("SELECT COUNT(*) n FROM sessions").get() as { n: number };
+	const rows3 = db.prepare("SELECT COUNT(*) n FROM sessions").get() as {
+		n: number;
+	};
 	assert.equal(rows3.n, 2, "no duplicates");
 });

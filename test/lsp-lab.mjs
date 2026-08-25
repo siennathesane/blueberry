@@ -152,6 +152,7 @@ async function probeServer(spec) {
 
 		// wait for diagnostics to arrive
 		await sleep(spec.warmupMs);
+			// deno-lint-ignore require-await
 		await step("diagnostics", async () => {
 			const d = diagnostics.find((x) => x.uri === uri);
 			return (d?.diagnostics ?? []).map(

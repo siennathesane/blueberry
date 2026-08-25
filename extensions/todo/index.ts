@@ -237,6 +237,7 @@ export default function (pi: ExtensionAPI) {
 				Type.Boolean({ description: "dep: remove instead of add" }),
 			),
 		}),
+		// deno-lint-ignore require-await
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const dir = agentDir();
 			if (dir === "")

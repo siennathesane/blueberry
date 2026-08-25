@@ -852,6 +852,7 @@ test("shutdown: catch path when server is gone mid-request", async () => {
 	client.dispose();
 });
 
+// deno-lint-ignore require-await
 test("dispose: writer.end on already-ended stream is caught", async () => {
 	const { reader, writer } = makePipe();
 	const client = new LspClient({ reader, writer, requestTimeoutMs: 500 });

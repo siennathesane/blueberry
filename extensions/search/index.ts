@@ -143,6 +143,7 @@ export default function (pi: ExtensionAPI) {
 			),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 		}),
+		// deno-lint-ignore require-await
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const dir = agentDir();
 			if (dir === "")
