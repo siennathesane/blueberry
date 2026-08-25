@@ -66,7 +66,8 @@ export function isNewer(current: string, latest: string): boolean {
 
 /** Extract the release fields we need from the GitHub API payload. */
 export function parseRelease(json: unknown): ReleaseInfo {
-	if (typeof json !== "object" || json === null) throw new Error("release payload is not an object");
+	if (typeof json !== "object" || json === null)
+		throw new Error("release payload is not an object");
 	const j = json as Record<string, unknown>;
 	const tag = typeof j["tag_name"] === "string" ? j["tag_name"] : "";
 	if (tag === "") throw new Error("release payload missing tag_name");
@@ -82,13 +83,17 @@ export function parseRelease(json: unknown): ReleaseInfo {
 	return { tag, assets };
 }
 
-/** The asset name this platform's update wants. */
+/** The asset name this platform's update wants (windows assets carry .exe —
+ * deno compile appends it and the release contract matches). */
 export function assetNameFor(platform: string): string {
-	return `blueberry-${platform}`;
+	return `blueberry-${platform}${platform.startsWith("windows") ? ".exe" : ""}`;
 }
 
 /** Pick this platform's asset URL from a release; null when absent. */
-export function pickAsset(release: ReleaseInfo, platform: string): string | null {
+export function pickAsset(
+	release: ReleaseInfo,
+	platform: string,
+): string | null {
 	return release.assets[assetNameFor(platform)] ?? null;
 }
 
@@ -97,7 +102,11 @@ export function sha256Hex(bytes: Uint8Array): string {
 }
 
 /** Verify downloaded bytes against the sidecar checksum content. */
-export function verifyChecksum(bytes: Uint8Array, shaFileText: string, asset: string): boolean {
+export function verifyChecksum(
+	bytes: Uint8Array,
+	shaFileText: string,
+	asset: string,
+): boolean {
 	// sidecar line: "<hex>  blueberry-<os>-<arch>" (shasum format)
 	const line = shaFileText
 		.split("\n")
@@ -124,7 +133,10 @@ export async function checkForUpdate(
 	token?: string,
 ): Promise<CheckResult> {
 	const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-	const json = await io.fetchJson(`https://api.github.com/repos/${repo}/releases/latest`, headers);
+	const json = await io.fetchJson(
+		`https://api.github.com/repos/${repo}/releases/latest`,
+		headers,
+	);
 	const release = parseRelease(json);
 	const assetUrl = pickAsset(release, platform);
 	return {
@@ -137,8 +149,17 @@ export async function checkForUpdate(
 
 /** Dev-mode guard: the swap target must be a compiled binary, not `deno`. */
 export function isCompiledBinary(execPath: string): boolean {
-	const base = execPath.slice(execPath.lastIndexOf("/") + 1);
+	// both separators: windows paths arrive with backslashes
+	const base = execPath.slice(
+		Math.max(execPath.lastIndexOf("/"), execPath.lastIndexOf("\\")) + 1,
+	);
 	return !/^(deno|deno\.exe|node|node\.exe)$/.test(base);
+}
+
+/** Portable dirname: accepts "/" and "\\" separators. */
+export function dirOf(p: string): string {
+	const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+	return i === -1 ? "." : p.slice(0, i);
 }
 
 export interface UpdateResult {
@@ -157,7 +178,9 @@ export async function performUpdate(
 ): Promise<UpdateResult> {
 	const check = await checkForUpdate(currentVersion, platform, io, repo, token);
 	if (!check.updateAvailable || check.assetUrl === null) {
-		throw new Error(`no update available (current ${currentVersion}, latest ${check.latestTag})`);
+		throw new Error(
+			`no update available (current ${currentVersion}, latest ${check.latestTag})`,
+		);
 	}
 
 	const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
@@ -174,12 +197,24 @@ export async function performUpdate(
 
 	const target = io.execPath();
 	if (!isCompiledBinary(target)) {
-		throw new Error("self-update requires a compiled binary (bash bin/compile.sh)");
+		throw new Error(
+			"self-update requires a compiled binary (bash bin/compile.sh)",
+		);
 	}
-	const dir = target.slice(0, target.lastIndexOf("/"));
-	const tmp = `${dir}/.blueberry-update-${Date.now()}`;
+	const lastSep = Math.max(target.lastIndexOf("/"), target.lastIndexOf("\\"));
+	// tmp joins with the target's OWN separator style (no mixed /\ paths)
+	const tmpBase = lastSep === -1 ? "" : target.slice(0, lastSep + 1);
+	const isWindows = platform.startsWith("windows");
+	const tmp = `${tmpBase}.blueberry-update-${Date.now()}${isWindows ? ".exe" : ""}`;
 	await io.writeFile(tmp, bytes, 0o755);
-	await io.rename(tmp, target);
+	try {
+		await io.rename(tmp, target);
+	} catch {
+		// windows: the RUNNING exe is locked — move it aside, then swap in
+		// (the stale .old is cleaned up by the next update / by hand)
+		await io.rename(target, `${target}.old`);
+		await io.rename(tmp, target);
+	}
 	return { from: currentVersion, to: check.latestTag, path: target };
 }
 

@@ -13,6 +13,7 @@ import {
 	parseRelease,
 	parseVersion,
 	performUpdate,
+	dirOf,
 	pickAsset,
 	releaseSidecarUrl,
 	sha256Hex,
@@ -44,9 +45,18 @@ test("parseRelease: tag + assets mapped; missing tag throws", () => {
 	const rel = parseRelease({
 		tag_name: "v0.2.0",
 		assets: [
-			{ name: "blueberry-darwin-aarch64", browser_download_url: "https://x/darwin-aarch64" },
-			{ name: "blueberry-darwin-aarch64.sha256", browser_download_url: "https://x/darwin-aarch64.sha256" },
-			{ name: "blueberry-linux-x86_64", browser_download_url: "https://x/linux-x86_64" },
+			{
+				name: "blueberry-darwin-aarch64",
+				browser_download_url: "https://x/darwin-aarch64",
+			},
+			{
+				name: "blueberry-darwin-aarch64.sha256",
+				browser_download_url: "https://x/darwin-aarch64.sha256",
+			},
+			{
+				name: "blueberry-linux-x86_64",
+				browser_download_url: "https://x/linux-x86_64",
+			},
 		],
 	});
 	assert.equal(rel.tag, "v0.2.0");
@@ -58,8 +68,15 @@ test("parseRelease: tag + assets mapped; missing tag throws", () => {
 
 test("assetNameFor / releaseSidecarUrl", () => {
 	assert.equal(assetNameFor("linux-x86_64"), "blueberry-linux-x86_64");
-	assert.equal(releaseSidecarUrl("https://x/blueberry-darwin-aarch64"), "https://x/blueberry-darwin-aarch64.sha256");
-	assert.equal(releaseSidecarUrl("https://x/blueberry-darwin-aarch64.sha256"), null, "already a sidecar");
+	assert.equal(
+		releaseSidecarUrl("https://x/blueberry-darwin-aarch64"),
+		"https://x/blueberry-darwin-aarch64.sha256",
+	);
+	assert.equal(
+		releaseSidecarUrl("https://x/blueberry-darwin-aarch64.sha256"),
+		null,
+		"already a sidecar",
+	);
 });
 
 // ── checksum ───────────────────────────────────────────────────────────────
@@ -69,9 +86,22 @@ test("sha256Hex + verifyChecksum: valid, wrong-hash, missing-line", () => {
 	const hex = sha256Hex(bytes);
 	const sidecar = `${hex}  blueberry-darwin-aarch64\n`;
 	assert.ok(verifyChecksum(bytes, sidecar, "blueberry-darwin-aarch64"));
-	assert.ok(!verifyChecksum(new TextEncoder().encode("tampered"), sidecar, "blueberry-darwin-aarch64"), "tampered bytes fail");
-	assert.ok(!verifyChecksum(bytes, `${hex}  other-asset\n`, "blueberry-darwin-aarch64"), "wrong asset line = missing");
-	assert.ok(!verifyChecksum(bytes, "", "blueberry-darwin-aarch64"), "empty sidecar fails");
+	assert.ok(
+		!verifyChecksum(
+			new TextEncoder().encode("tampered"),
+			sidecar,
+			"blueberry-darwin-aarch64",
+		),
+		"tampered bytes fail",
+	);
+	assert.ok(
+		!verifyChecksum(bytes, `${hex}  other-asset\n`, "blueberry-darwin-aarch64"),
+		"wrong asset line = missing",
+	);
+	assert.ok(
+		!verifyChecksum(bytes, "", "blueberry-darwin-aarch64"),
+		"empty sidecar fails",
+	);
 	// hex must be a real sha256 of the content (spot-check against node crypto)
 	assert.equal(hex, createHash("sha256").update(bytes).digest("hex"));
 });
@@ -93,7 +123,10 @@ function fakeIo(opts: {
 	shaText: string;
 	execPath: string;
 	existing?: boolean;
-}): UpdaterIO & { wrote: Array<{ path: string; mode?: number }>; renames: Array<[string, string]> } {
+}): UpdaterIO & {
+	wrote: Array<{ path: string; mode?: number }>;
+	renames: Array<[string, string]>;
+} {
 	const wrote: Array<{ path: string; mode?: number }> = [];
 	const renames: Array<[string, string]> = [];
 	return {
@@ -122,7 +155,10 @@ function fakeIo(opts: {
 
 test("checkForUpdate: newer release with asset → available", async () => {
 	const io = fakeIo({
-		release: { tag_name: "v0.3.0", assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }] },
+		release: {
+			tag_name: "v0.3.0",
+			assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }],
+		},
 		assetBytes: new Uint8Array(),
 		shaText: "",
 		execPath: "/x/blueberry",
@@ -135,20 +171,40 @@ test("checkForUpdate: newer release with asset → available", async () => {
 test("checkForUpdate: same version or missing asset → not available", async () => {
 	const mk = (tag: string, withAsset: boolean) =>
 		fakeIo({
-			release: { tag_name: tag, assets: withAsset ? [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }] : [] },
+			release: {
+				tag_name: tag,
+				assets: withAsset
+					? [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }]
+					: [],
+			},
 			assetBytes: new Uint8Array(),
 			shaText: "",
 			execPath: "/x/blueberry",
 		});
-	assert.ok(!(await checkForUpdate("0.2.0", "darwin-aarch64", mk("v0.2.0", true))).updateAvailable);
-	assert.ok(!(await checkForUpdate("0.2.0", "darwin-aarch64", mk("v9.0.0", false))).updateAvailable, "no asset → no update");
+	assert.ok(
+		!(await checkForUpdate("0.2.0", "darwin-aarch64", mk("v0.2.0", true)))
+			.updateAvailable,
+	);
+	assert.ok(
+		!(await checkForUpdate("0.2.0", "darwin-aarch64", mk("v9.0.0", false)))
+			.updateAvailable,
+		"no asset → no update",
+	);
 });
 
 test("performUpdate: download → verify → temp 755 → atomic rename to execPath", async () => {
 	const assetBytes = new TextEncoder().encode("NEW BINARY BYTES");
 	const shaText = `${sha256Hex(assetBytes)}  blueberry-darwin-aarch64\n`;
 	const io = fakeIo({
-		release: { tag_name: "v0.3.0", assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "https://x/asset" }] },
+		release: {
+			tag_name: "v0.3.0",
+			assets: [
+				{
+					name: "blueberry-darwin-aarch64",
+					browser_download_url: "https://x/asset",
+				},
+			],
+		},
 		assetBytes,
 		shaText,
 		execPath: "/users/x/bin/blueberry",
@@ -165,32 +221,113 @@ test("performUpdate: download → verify → temp 755 → atomic rename to execP
 
 test("performUpdate: checksum mismatch refuses, nothing written", async () => {
 	const io = fakeIo({
-		release: { tag_name: "v0.3.0", assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }] },
+		release: {
+			tag_name: "v0.3.0",
+			assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }],
+		},
 		assetBytes: new TextEncoder().encode("TAMPERED"),
 		shaText: `${sha256Hex(new TextEncoder().encode("EXPECTED"))}  blueberry-darwin-aarch64\n`,
 		execPath: "/users/x/bin/blueberry",
 	});
-	await assert.rejects(() => performUpdate("0.2.0", "darwin-aarch64", io), /checksum mismatch/);
+	await assert.rejects(
+		() => performUpdate("0.2.0", "darwin-aarch64", io),
+		/checksum mismatch/,
+	);
 	assert.equal(io.wrote.length, 0);
 });
 
 test("performUpdate: dev runtime (deno on PATH) refuses", async () => {
 	const assetBytes = new TextEncoder().encode("B");
 	const io = fakeIo({
-		release: { tag_name: "v0.3.0", assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }] },
+		release: {
+			tag_name: "v0.3.0",
+			assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }],
+		},
 		assetBytes,
 		shaText: `${sha256Hex(assetBytes)}  blueberry-darwin-aarch64\n`,
 		execPath: "/opt/homebrew/bin/deno",
 	});
-	await assert.rejects(() => performUpdate("0.2.0", "darwin-aarch64", io), /compiled binary/);
+	await assert.rejects(
+		() => performUpdate("0.2.0", "darwin-aarch64", io),
+		/compiled binary/,
+	);
 });
 
 test("performUpdate: no newer release refuses before any download", async () => {
 	const io = fakeIo({
-		release: { tag_name: "v0.2.0", assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }] },
+		release: {
+			tag_name: "v0.2.0",
+			assets: [{ name: "blueberry-darwin-aarch64", browser_download_url: "u" }],
+		},
 		assetBytes: new Uint8Array(),
 		shaText: "",
 		execPath: "/users/x/bin/blueberry",
 	});
-	await assert.rejects(() => performUpdate("0.2.0", "darwin-aarch64", io), /no update available/);
+	await assert.rejects(
+		() => performUpdate("0.2.0", "darwin-aarch64", io),
+		/no update available/,
+	);
+});
+
+// ── windows update path ─────────────────────────────────────────────────────
+
+test("windows: asset names carry .exe; performUpdate handles backslash paths + locked running exe", async () => {
+	assert.equal(assetNameFor("windows-x86_64"), "blueberry-windows-x86_64.exe");
+	assert.equal(assetNameFor("linux-x86_64"), "blueberry-linux-x86_64");
+
+	// backslash execPath: tmp lands beside it with .exe, aside-dance on lock
+	const assetBytes = new TextEncoder().encode("EXE BYTES");
+	const shaText = `${sha256Hex(assetBytes)}  blueberry-windows-x86_64.exe\n`;
+	const wrote: Array<{ path: string; mode?: number }> = [];
+	const renames: Array<[string, string]> = [];
+	const io: UpdaterIO = {
+		async fetchJson() {
+			return {
+				tag_name: "v0.3.0",
+				assets: [
+					{
+						name: "blueberry-windows-x86_64.exe",
+						browser_download_url: "https://x/win.exe",
+					},
+				],
+			};
+		},
+		async fetchBytes(url: string) {
+			return url.endsWith(".sha256")
+				? new TextEncoder().encode(shaText)
+				: assetBytes;
+		},
+		execPath: () => "C:\\Users\\x\\bin\\blueberry.exe",
+		async writeFile(path, _bytes, mode) {
+			wrote.push({ path, mode });
+		},
+		async rename(from, to) {
+			// first rename over the target FAILS (running exe is locked)
+			if (to.endsWith("blueberry.exe") && renames.length === 0) {
+				renames.push([from, to]);
+				throw new Error("EPERM: file in use");
+			}
+			renames.push([from, to]);
+		},
+		exists: () => true,
+	};
+	const res = await performUpdate("0.2.0", "windows-x86_64", io);
+	assert.equal(res.path, "C:\\Users\\x\\bin\\blueberry.exe");
+	assert.match(
+		wrote[0]!.path,
+		/C:\\Users\\x\\bin\\\.blueberry-update-\d+\.exe$/,
+	);
+	// aside-dance: [failed swap], target→.old, tmp→target
+	assert.equal(renames.length, 3);
+	assert.deepEqual(renames[1], [
+		"C:\\Users\\x\\bin\\blueberry.exe",
+		"C:\\Users\\x\\bin\\blueberry.exe.old",
+	]);
+	assert.equal(renames[2]![1], "C:\\Users\\x\\bin\\blueberry.exe");
+});
+
+test("dirOf: both separators, bare names", () => {
+	assert.equal(dirOf("/a/b/c"), "/a/b");
+	assert.equal(dirOf("C:\\Users\\x"), "C:\\Users");
+	assert.equal(dirOf("blueberry"), ".");
 });

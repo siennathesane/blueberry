@@ -25,20 +25,50 @@ ASSETS=(
   --include pi/packages/coding-agent/src/core/export-html
 )
 PLATFORM="$(deno eval 'console.log(`${Deno.build.os}-${Deno.build.arch}`)')"
-ARTIFACT="$OUT_DIR/blueberry-$PLATFORM"
+# Windows: deno compile appends .exe to --output; every artifact path must match
+EXT="$(deno eval 'console.log(Deno.build.os === "windows" ? ".exe" : "")')"
+ARTIFACT="$OUT_DIR/blueberry-$PLATFORM$EXT"
 
-say()  { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
-ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
-die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+# portable tooling: sha256sum (linux) / shasum (macos), timeout/gtimeout (macos
+# ships neither timeout nor System32's broken one in git-bash; git-bash HAS
+# coreutils timeout, plain cmd does not)
+SHA_TOOL=""
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  SHA_TOOL="shasum -a 256"
+else
+  echo "no sha256 tool" >&2
+  exit 1
+fi
+TIMEOUT_BIN=""
+command -v timeout >/dev/null 2>&1 && TIMEOUT_BIN=timeout
+[ -z "$TIMEOUT_BIN" ] && command -v gtimeout >/dev/null 2>&1 && TIMEOUT_BIN=gtimeout
+run_to() {
+  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$@"; else "$@"; fi
+}
+
+say() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
+ok() { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
+die() {
+  printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2
+  exit 1
+}
 
 # ── 1. gates ────────────────────────────────────────────────────────────────
 if [ "${SKIP_GATES:-0}" != "1" ]; then
   say "gate: typecheck (src + test + extensions + fork graph)"
-  deno check src/ test/ extensions/ > /tmp/bb-check.log 2>&1 || { tail -20 /tmp/bb-check.log; die "typecheck failed"; }
+  deno check src/ test/ extensions/ >/tmp/bb-check.log 2>&1 || {
+    tail -20 /tmp/bb-check.log
+    die "typecheck failed"
+  }
   ok "typecheck clean"
 
   say "gate: full test suite"
-  deno test -A test/ > /tmp/bb-test.log 2>&1 || { tail -20 /tmp/bb-test.log; die "tests failed"; }
+  deno test -A test/ >/tmp/bb-test.log 2>&1 || {
+    tail -20 /tmp/bb-test.log
+    die "tests failed"
+  }
   ok "tests: $(grep -oE '[0-9]+ passed' /tmp/bb-test.log | tail -1)"
 fi
 
@@ -49,7 +79,7 @@ BUILD_MODE=""
 try_compile() {
   local extra_flags="$1" out="$2"
   # shellcheck disable=SC2086
-  deno compile -A ${extra_flags} "${ASSETS[@]}" --output "$out" "$ENTRY" > /tmp/bb-compile.log 2>&1
+  deno compile -A ${extra_flags} "${ASSETS[@]}" --output "$out" "$ENTRY" >/tmp/bb-compile.log 2>&1
 }
 
 say "build: compile (plain)"
@@ -57,9 +87,13 @@ say "build: compile (plain)"
 # loader reads dark.json via an import.meta.url-relative path that lands in
 # esbuild's temp dist/ layout at runtime — the binary fails smoke. Plain
 # compile embeds the module graph verbatim and passes everything.
-try_compile "" "$OUT_DIR/blueberry" || { cat /tmp/bb-compile.log; die "compile failed"; }
+try_compile "" "$OUT_DIR/blueberry" || {
+  cat /tmp/bb-compile.log
+  die "compile failed"
+}
+BIN="$OUT_DIR/blueberry$EXT"
 BUILD_MODE="plain"
-ok "built [$BUILD_MODE] → $OUT_DIR/blueberry"
+ok "built [$BUILD_MODE] → $BIN"
 
 # ── 3. smoke ────────────────────────────────────────────────────────────────
 # The smoke must run against the EXPERIMENTAL binary as-built; if it fails
@@ -67,13 +101,14 @@ ok "built [$BUILD_MODE] → $OUT_DIR/blueberry"
 smoke() {
   local bin="$1"
   [ -x "$bin" ] || return 1
-  "$bin" --version > /dev/null 2>&1 || return 1
+  "$bin" --version >/dev/null 2>&1 || return 1
 
   # DB-only persistence proof: full session through the compiled fork.
-  local W; W="$(mktemp -d /tmp/bb-compile-smoke.XXXXXX)"
+  local W
+  W="$(mktemp -d "${TMPDIR:-/tmp}/bb-compile-smoke.XXXXXX")"
   mkdir -p "$W/agent"
   if ! PI_OFFLINE=1 PI_CODING_AGENT_DIR="$W/agent" BLUEBERRY_DB="$W/agent/blueberry.db" \
-      timeout 90 "$bin" -p "reply: compile-smoke-ok" > /dev/null 2>&1; then
+    run_to 90 "$bin" -p "reply: compile-smoke-ok" >/dev/null 2>&1; then
     # the model call may legitimately fail (no sandbox auth); persistence
     # surviving that IS the property under test — verify rows below either way
     true
@@ -86,15 +121,15 @@ smoke() {
 }
 
 say "smoke: boot + DB-only persistence (the single-binary proof)"
-smoke "$OUT_DIR/blueberry" || die "binary failed smoke (boot or DB-only persistence)"
+smoke "$BIN" || die "binary failed smoke (boot or DB-only persistence)"
 ok "smoke passed"
 
 # ── 4. release artifact ─────────────────────────────────────────────────────
 say "release: tag + checksum"
-cp "$OUT_DIR/blueberry" "$ARTIFACT"
-( cd "$OUT_DIR" && shasum -a 256 "blueberry-$PLATFORM" > "blueberry-$PLATFORM.sha256" )
+cp "$BIN" "$ARTIFACT"
+(cd "$OUT_DIR" && $SHA_TOOL "blueberry-$PLATFORM$EXT" >"blueberry-$PLATFORM$EXT.sha256")
 ok "artifact: $ARTIFACT"
-du -h "$OUT_DIR/blueberry" "$ARTIFACT" | awk '{printf "  %8s  %s\n", $1, $2}'
+du -h "$BIN" "$ARTIFACT" | awk '{printf "  %8s  %s\n", $1, $2}'
 cat "$OUT_DIR/blueberry-$PLATFORM.sha256"
 echo
 ok "done [$BUILD_MODE] — $(deno eval 'console.log(`${Deno.build.os}/${Deno.build.arch}`)') · $(date -u +%Y-%m-%dT%H:%MZ)"

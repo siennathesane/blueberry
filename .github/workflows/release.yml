@@ -1,0 +1,61 @@
+name: release
+
+# Release pipeline: tag push (v*) builds the single binary on all four
+# targets, runs the full gates + smoke per OS (bin/compile.sh is the
+# authoritative build — CI just runs it), then attaches the platform-tagged
+# artifacts and their sha256 sidecars to the GitHub release.
+#
+# Asset contract (consumed by `bb update` and bin/install.sh):
+#   blueberry-<os>-<arch>[.exe]  +  blueberry-<os>-<arch>[.exe].sha256
+#
+# Runners:
+#   macos-latest   → arm64 (Apple Silicon — the primary dev machine)
+#   macos-13       → x86_64 (last Intel runner)
+#   ubuntu-latest  → x86_64
+#   windows-latest → x86_64 (compile.sh runs under git-bash)
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            os: darwin
+            arch: aarch64
+          - runner: macos-15-intel   # last Intel macOS runner label
+            os: darwin
+            arch: x86_64
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86_64
+          - runner: windows-latest
+            os: windows
+            arch: x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build (gates + compile + smoke + checksum)
+        shell: bash
+        run: bash bin/compile.sh
+
+      - name: Upload artifacts to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/blueberry-${{ matrix.os }}-${{ matrix.arch }}*
+          generate_release_notes: true

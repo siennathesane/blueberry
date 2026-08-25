@@ -12,6 +12,16 @@ You are welcome to use this harness as much as you'd like, you can clone it, for
 
 ## Quick start
 
+Install the latest release (macOS arm64/x86_64, Linux x86_64, Windows x86_64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/siennathesane/blueberry/mainline/bin/install.sh | sh
+```
+
+Installs a checksum-verified binary to `~/.blueberry/bin` (override with
+`BB_INSTALL_DIR`; `bb update` self-updates from then on). From a checkout
+instead:
+
 ```bash
 ./bin/setup.sh        # one-time: create ~/.blueberry, write settings, install carried packages
 alias bb='~/Development/blueberry/bin/blueberry'
