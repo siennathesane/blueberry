@@ -9,7 +9,12 @@ import { hex6Of } from "./todo-store.ts";
 import { createTodo, addDep, listTodos } from "./todo-store.ts";
 import { indexPlanDoc, planUri } from "./doc-index.ts";
 
-export type PlanStatus = "draft" | "approved" | "building" | "done" | "abandoned";
+export type PlanStatus =
+	| "draft"
+	| "approved"
+	| "building"
+	| "done"
+	| "abandoned";
 
 export interface PlanRow {
 	id: string;
@@ -55,14 +60,23 @@ export function parseSteps(body: string): PlanStep[] {
 	const lines = section.split("\n");
 	let current: Partial<PlanStep> | null = null;
 	for (const line of lines) {
-		const headMatch = /^(\d+)\.\s+\*\*(.+?)\*\*(?:\s+`([R\d,\s]+)`)?(?:\s+⟵\s*([\d,\s]+))?\s*$/.exec(line.trim());
+		const headMatch =
+			/^(\d+)\.\s+\*\*(.+?)\*\*(?:\s+`([R\d,\s]+)`)?(?:\s+⟵\s*([\d,\s]+))?\s*$/.exec(
+				line.trim(),
+			);
 		if (headMatch) {
 			if (current && current.n !== undefined) steps.push(current as PlanStep);
 			current = {
 				n: Number(headMatch[1]),
 				title: headMatch[2]!,
-				requirements: (headMatch[3] ?? "").split(",").map((s) => s.trim()).filter((s) => s !== ""),
-				dependsOn: (headMatch[4] ?? "").split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0),
+				requirements: (headMatch[3] ?? "")
+					.split(",")
+					.map((s) => s.trim())
+					.filter((s) => s !== ""),
+				dependsOn: (headMatch[4] ?? "")
+					.split(",")
+					.map((s) => Number(s.trim()))
+					.filter((n) => Number.isInteger(n) && n > 0),
 			};
 			continue;
 		}
@@ -87,14 +101,18 @@ export function createPlan(
 ): PlanRow {
 	const id = randomUUID();
 	const now = new Date().toISOString();
-	db.prepare(
-		"INSERT INTO plans (id, design_id, project_id, status, rev, body, created_at, updated_at) VALUES (?, ?, ?, 'draft', 1, ?, ?, ?)",
-	).run(id, opts.designId ?? null, projectId, body, now, now);
+	db
+		.prepare(
+			"INSERT INTO plans (id, design_id, project_id, status, rev, body, created_at, updated_at) VALUES (?, ?, ?, 'draft', 1, ?, ?, ?)",
+		)
+		.run(id, opts.designId ?? null, projectId, body, now, now);
 	return getPlan(db, id)!;
 }
 
 export function getPlan(db: DatabaseSync, id: string): PlanRow | null {
-	const row = db.prepare("SELECT * FROM plans WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+	const row = db.prepare("SELECT * FROM plans WHERE id = ?").get(id) as
+		| Record<string, unknown>
+		| undefined;
 	if (!row) return null;
 	return {
 		id: String(row["id"]),
@@ -106,12 +124,16 @@ export function getPlan(db: DatabaseSync, id: string): PlanRow | null {
 		created_at: String(row["created_at"]),
 		updated_at: String(row["updated_at"]),
 		seeded_at: row["seeded_at"] === null ? null : String(row["seeded_at"]),
-		seeded_count: row["seeded_count"] === null ? null : Number(row["seeded_count"]),
+		seeded_count:
+			row["seeded_count"] === null ? null : Number(row["seeded_count"]),
 	};
 }
 
 /** The draft/approved/building plan for a project (latest first). */
-export function activePlan(db: DatabaseSync, projectId: string): PlanRow | null {
+export function activePlan(
+	db: DatabaseSync,
+	projectId: string,
+): PlanRow | null {
 	const row = db
 		.prepare(
 			"SELECT id FROM plans WHERE project_id = ? AND status IN ('draft','approved','building') ORDER BY updated_at DESC LIMIT 1",
@@ -120,21 +142,29 @@ export function activePlan(db: DatabaseSync, projectId: string): PlanRow | null 
 	return row ? getPlan(db, row.id) : null;
 }
 
-export function updatePlanBody(db: DatabaseSync, id: string, body: string, bumpRev = true): void {
+export function updatePlanBody(
+	db: DatabaseSync,
+	id: string,
+	body: string,
+	bumpRev = true,
+): void {
 	const plan = getPlan(db, id);
 	if (!plan) throw new Error(`no plan '${id}'`);
-	db.prepare("UPDATE plans SET body = ?, rev = ?, updated_at = ? WHERE id = ?").run(
-		body,
-		bumpRev ? plan.rev + 1 : plan.rev,
-		new Date().toISOString(),
-		id,
-	);
+	db
+		.prepare("UPDATE plans SET body = ?, rev = ?, updated_at = ? WHERE id = ?")
+		.run(body, bumpRev ? plan.rev + 1 : plan.rev, new Date().toISOString(), id);
 	// keep the FTS index fresh
 	indexPlanDoc(db, plan.project_id, hex6Of(id), body);
 }
 
-export function setPlanStatus(db: DatabaseSync, id: string, status: PlanStatus): void {
-	db.prepare("UPDATE plans SET status = ?, updated_at = ? WHERE id = ?").run(status, new Date().toISOString(), id);
+export function setPlanStatus(
+	db: DatabaseSync,
+	id: string,
+	status: PlanStatus,
+): void {
+	db
+		.prepare("UPDATE plans SET status = ?, updated_at = ? WHERE id = ?")
+		.run(status, new Date().toISOString(), id);
 }
 
 // --- seeding -------------------------------------------------------------------------
@@ -150,16 +180,27 @@ export interface SeedResult {
  * titles prefixed with the step number. Requirements tags land in the task
  * title suffix so lineage survives the board.
  */
-export function seedPlan(db: DatabaseSync, plan: PlanRow, _projectSlug: string, sessionId: string | null): SeedResult {
+export function seedPlan(
+	db: DatabaseSync,
+	plan: PlanRow,
+	_projectSlug: string,
+	sessionId: string | null,
+): SeedResult {
 	const steps = parseSteps(plan.body);
 	const result: SeedResult = { count: 0, todoIds: [], errors: [] };
 	const stepToHex = new Map<number, string>();
 
 	for (const step of steps) {
-		const reqTag = step.requirements.length > 0 ? ` [${step.requirements.join(",")}]` : "";
-		const created = createTodo(db, plan.project_id, `S${step.n}. ${step.title}${reqTag}`, {
-			sessionId,
-		});
+		const reqTag =
+			step.requirements.length > 0 ? ` [${step.requirements.join(",")}]` : "";
+		const created = createTodo(
+			db,
+			plan.project_id,
+			`S${step.n}. ${step.title}${reqTag}`,
+			{
+				sessionId,
+			},
+		);
 		if (!created.ok || !created.todo) {
 			result.errors.push(`step ${step.n}: ${created.reason}`);
 			continue;
@@ -185,17 +226,24 @@ export function seedPlan(db: DatabaseSync, plan: PlanRow, _projectSlug: string, 
 	}
 
 	const now = new Date().toISOString();
-	db.prepare("UPDATE plans SET status = 'building', seeded_at = ?, seeded_count = ? WHERE id = ?").run(
-		now,
-		result.count,
-		plan.id,
-	);
+	db
+		.prepare(
+			"UPDATE plans SET status = 'building', seeded_at = ?, seeded_count = ? WHERE id = ?",
+		)
+		.run(now, result.count, plan.id);
 	indexPlanDoc(db, plan.project_id, hex6Of(plan.id), plan.body);
 	return result;
 }
 
 /** Plan progress: linked tasks by title prefix S<n>. */
-export function planProgress(db: DatabaseSync, plan: PlanRow): { total: number; done: number; tasks: Array<{ hex6: string; title: string; stage: string }> } {
+export function planProgress(
+	db: DatabaseSync,
+	plan: PlanRow,
+): {
+	total: number;
+	done: number;
+	tasks: Array<{ hex6: string; title: string; stage: string }>;
+} {
 	const all = listTodos(db, plan.project_id);
 	const linked = all.filter((t) => /^S\d+\./.test(t.title));
 	let done = 0;
@@ -218,20 +266,35 @@ export interface PassResult {
 }
 
 /** P1: design completeness — every MUST covered by ≥1 step AND ≥1 case. */
-export function passDesignCompleteness(designBody: string, planBody: string): PassResult {
+export function passDesignCompleteness(
+	designBody: string,
+	planBody: string,
+): PassResult {
 	const findings: string[] = [];
 	const stripped = designBody.replace(/<!--[\s\S]*?-->/g, "");
 	const reqSection = /^##\s+Requirements\s*$/m.exec(stripped);
 	if (!reqSection) {
-		return { pass: "P1", clean: false, findings: ["design has no Requirements section"] };
+		return {
+			pass: "P1",
+			clean: false,
+			findings: ["design has no Requirements section"],
+		};
 	}
 	const after = stripped.slice(reqSection.index + reqSection[0].length);
-	const reqContent = (/^##\s/m.exec(after) ? after.slice(0, /^##\s/m.exec(after)!.index!) : after).trim();
+	const reqContent = (
+		/^##\s/m.exec(after) ? after.slice(0, /^##\s/m.exec(after)!.index!) : after
+	).trim();
 
-	const musts = [...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm)].map((m) => m[1]!);
-	if (musts.length === 0) findings.push("no MUST requirements found — design has no hard contract");
+	const musts = [...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm)].map(
+		(m) => m[1]!,
+	);
+	if (musts.length === 0)
+		findings.push("no MUST requirements found — design has no hard contract");
 	for (const rid of musts) {
-		if (!new RegExp(`\`${rid}(,\\d+)?\``).test(planBody) && !planBody.includes(`\`${rid}`)) {
+		if (
+			!new RegExp(`\`${rid}(,\\d+)?\``).test(planBody) &&
+			!planBody.includes(`\`${rid}`)
+		) {
 			findings.push(`${rid}: MUST with no covering step`);
 		}
 	}
@@ -244,14 +307,19 @@ export function passPlanPurity(planBody: string): PassResult {
 	const steps = parseSteps(planBody);
 	for (const s of steps) {
 		if (s.requirements.length === 0) {
-			findings.push(`step ${s.n} ("${s.title}") cites no requirement — cut, ledger, or supersede`);
+			findings.push(
+				`step ${s.n} ("${s.title}") cites no requirement — cut, ledger, or supersede`,
+			);
 		}
 	}
 	return { pass: "P2", clean: findings.length === 0, findings };
 }
 
 /** P3: test completeness — every MUST has ≥1 test case; matrix exists. */
-export function passTestCompleteness(designBody: string, planBody: string): PassResult {
+export function passTestCompleteness(
+	designBody: string,
+	planBody: string,
+): PassResult {
 	const findings: string[] = [];
 	if (!/^##\s+Test matrix\s*$/m.test(planBody)) {
 		findings.push("no Test matrix section");
@@ -260,12 +328,17 @@ export function passTestCompleteness(designBody: string, planBody: string): Pass
 	const reqSection = /^##\s+Requirements\s*$/m.exec(stripped);
 	if (reqSection) {
 		const after = stripped.slice(reqSection.index + reqSection[0].length);
-		const reqContent = (/^##\s/m.exec(after) ? after.slice(0, /^##\s/m.exec(after)!.index!) : after).trim();
-		const musts = [...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm)].map((m) => m[1]!);
+		const reqContent = (
+			/^##\s/m.exec(after) ? after.slice(0, /^##\s/m.exec(after)!.index!) : after
+		).trim();
+		const musts = [
+			...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm),
+		].map((m) => m[1]!);
 		const matrixMatch = /^##\s+Test matrix\s*$/m.exec(planBody);
 		const matrixBody = matrixMatch ? planBody.slice(matrixMatch.index) : "";
 		for (const rid of musts) {
-			if (!matrixBody.includes(rid)) findings.push(`${rid}: no test case in matrix`);
+			if (!matrixBody.includes(rid))
+				findings.push(`${rid}: no test case in matrix`);
 		}
 	}
 	return { pass: "P3", clean: findings.length === 0, findings };
@@ -301,17 +374,27 @@ export function passDependencySanity(planBody: string): PassResult {
 	return { pass: "P4", clean: findings.length === 0, findings };
 }
 
-export function runAllPasses(designBody: string | null, planBody: string): PassResult[] {
+export function runAllPasses(
+	designBody: string | null,
+	planBody: string,
+): PassResult[] {
 	const passes: PassResult[] = [];
-	if (designBody !== null) passes.push(passDesignCompleteness(designBody, planBody));
+	if (designBody !== null)
+		passes.push(passDesignCompleteness(designBody, planBody));
 	passes.push(passPlanPurity(planBody));
-	if (designBody !== null) passes.push(passTestCompleteness(designBody, planBody));
+	if (designBody !== null)
+		passes.push(passTestCompleteness(designBody, planBody));
 	passes.push(passDependencySanity(planBody));
 	return passes;
 }
 
 /** breadcrumb needle for plan transitions. */
-export function planBreadcrumb(slug: string, hex6: string, title: string, transition: string): string {
+export function planBreadcrumb(
+	slug: string,
+	hex6: string,
+	title: string,
+	transition: string,
+): string {
 	return `plan:${slug}/${hex6} · ${title} · ${transition}`;
 }
 

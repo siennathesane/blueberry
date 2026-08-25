@@ -47,12 +47,11 @@ beforeEach(() => {
 	agentDir = tmpAgentDir();
 	area = tmpDir("bb-dp-");
 	db = openDb(agentDir);
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', ?, ?, ?)").run(
-		PROJECT,
-		area,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', ?, ?, ?)",
+		)
+		.run(PROJECT, area, new Date().toISOString(), new Date().toISOString());
 });
 afterEach(() => {
 	db.close();
@@ -80,7 +79,10 @@ test("completeness: fresh scaffold is unanswered; filled doc passes", () => {
 	const { path } = scaffoldDesign(area, "Gate Test");
 	const raw = readFileSync(path, "utf8");
 	const r1 = checkCompleteness(raw);
-	assert.ok(r1.unanswered.length >= 8, `fresh scaffold mostly unanswered: ${r1.unanswered.length}`);
+	assert.ok(
+		r1.unanswered.length >= 8,
+		`fresh scaffold mostly unanswered: ${r1.unanswered.length}`,
+	);
 
 	// fill every required section with content
 	let filled = stripComments(raw);
@@ -90,17 +92,40 @@ test("completeness: fresh scaffold is unanswered; filled doc passes", () => {
 	}
 	// Approaches: the scaffold's bullets survive comments — that's fine
 	const r2 = checkCompleteness(filled);
-	assert.equal(r2.unanswered.length, 0, `all answered: ${r2.unanswered.join(", ")}`);
+	assert.equal(
+		r2.unanswered.length,
+		0,
+		`all answered: ${r2.unanswered.join(", ")}`,
+	);
 });
 
 test("completeness: MUST detection and verification cross-check", () => {
-	let body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", "aa0000").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "2026-08-25");
+	let body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", "aa0000")
+		.replaceAll("{{TITLE}}", "T")
+		.replaceAll("{{DATE}}", "2026-08-25");
 	body = stripComments(body);
 	// fill all sections; Requirements with a MUST, Verification with a matching line
-	body = body.replace("## Requirements\n", "## Requirements\n\nR1. The system MUST complete sync under 2s.\n");
-	body = body.replace("## Verification\n", "## Verification\n\nWhen this ships, R1 is proven by the sync benchmark.\n");
-	for (const section of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
-		body = body.replace(`## ${section}\n`, `## ${section}\n\ncontent ${section}.\n`);
+	body = body.replace(
+		"## Requirements\n",
+		"## Requirements\n\nR1. The system MUST complete sync under 2s.\n",
+	);
+	body = body.replace(
+		"## Verification\n",
+		"## Verification\n\nWhen this ships, R1 is proven by the sync benchmark.\n",
+	);
+	for (const section of [
+		"Audience",
+		"Problem",
+		"Goal",
+		"Non-goals",
+		"Approaches considered",
+		"Decision",
+		"Risks & open questions",
+	]) {
+		body = body.replace(
+			`## ${section}\n`,
+			`## ${section}\n\ncontent ${section}.\n`,
+		);
 	}
 	const r = checkCompleteness(body);
 	assert.equal(r.unanswered.length, 0);
@@ -183,7 +208,11 @@ test("plan: create/get/active/update rev + reindex", () => {
 	assert.equal(plan.rev, 1);
 	assert.equal(activePlan(db, PROJECT)!.id, plan.id);
 
-	updatePlanBody(db, plan.id, "## Steps\n\n1. **Step one** `R1`\n2. **Step two**");
+	updatePlanBody(
+		db,
+		plan.id,
+		"## Steps\n\n1. **Step one** `R1`\n2. **Step two**",
+	);
 	const updated = getPlan(db, plan.id);
 	assert.equal(updated!.rev, 2);
 	assert.ok(updated!.body.includes("Step two"));
@@ -243,18 +272,33 @@ test("seedPlan: dep on missing step reported, not fatal", () => {
 // --- consistency passes ----------------------------------------------------------------------
 
 function designWithRequirements(reqs: string): string {
-	let body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", "ab12cd").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d");
+	let body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", "ab12cd")
+		.replaceAll("{{TITLE}}", "T")
+		.replaceAll("{{DATE}}", "d");
 	body = stripComments(body);
 	body = body.replace("## Requirements\n", `## Requirements\n\n${reqs}\n`);
-	body = body.replace("## Verification\n", "## Verification\n\nV-R1 proven by tests.\n");
-	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
+	body = body.replace(
+		"## Verification\n",
+		"## Verification\n\nV-R1 proven by tests.\n",
+	);
+	for (const s of [
+		"Audience",
+		"Problem",
+		"Goal",
+		"Non-goals",
+		"Approaches considered",
+		"Decision",
+		"Risks & open questions",
+	]) {
 		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
 	}
 	return body;
 }
 
 test("P1: uncovered MUST flagged; covered MUST clean", () => {
-	const design = designWithRequirements("R1. The system MUST sync fast.\nR2. The system MUST be safe.");
+	const design = designWithRequirements(
+		"R1. The system MUST sync fast.\nR2. The system MUST be safe.",
+	);
 	const planNoCover = "## Steps\n\n1. **Only covers R1** `R1`";
 	const r1 = passDesignCompleteness(design, planNoCover);
 	assert.ok(!r1.clean);
@@ -316,9 +360,25 @@ test("planBreadcrumb: needle format", () => {
 // --- branch closure: design-store edges, plan-store edges ---
 
 test("completeness: untagged MUSTs are not collected (R# prefix required by contract)", () => {
-	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
-	body = body.replace("## Requirements\n", "## Requirements\n\n1. The system MUST do a thing without an R tag.\n");
-	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions", "Verification"]) {
+	let body = stripComments(
+		DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x")
+			.replaceAll("{{TITLE}}", "T")
+			.replaceAll("{{DATE}}", "d"),
+	);
+	body = body.replace(
+		"## Requirements\n",
+		"## Requirements\n\n1. The system MUST do a thing without an R tag.\n",
+	);
+	for (const s of [
+		"Audience",
+		"Problem",
+		"Goal",
+		"Non-goals",
+		"Approaches considered",
+		"Decision",
+		"Risks & open questions",
+		"Verification",
+	]) {
 		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
 	}
 	const r = checkCompleteness(body);
@@ -329,14 +389,33 @@ test("completeness: untagged MUSTs are not collected (R# prefix required by cont
 });
 
 test("completeness: rid-tagged MUST with empty verification → uncovered", () => {
-	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
-	body = body.replace("## Requirements\n", "## Requirements\n\nR7. The system MUST retry.\n");
-	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
+	let body = stripComments(
+		DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x")
+			.replaceAll("{{TITLE}}", "T")
+			.replaceAll("{{DATE}}", "d"),
+	);
+	body = body.replace(
+		"## Requirements\n",
+		"## Requirements\n\nR7. The system MUST retry.\n",
+	);
+	for (const s of [
+		"Audience",
+		"Problem",
+		"Goal",
+		"Non-goals",
+		"Approaches considered",
+		"Decision",
+		"Risks & open questions",
+	]) {
 		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
 	}
 	// Verification left EMPTY
 	const r = checkCompleteness(body);
-	assert.equal(r.requirements.uncoveredMusts.length, 1, "R7 with empty verification flagged");
+	assert.equal(
+		r.requirements.uncoveredMusts.length,
+		1,
+		"R7 with empty verification flagged",
+	);
 	assert.ok(r.requirements.uncoveredMusts[0]!.includes("R7"));
 });
 
@@ -356,7 +435,8 @@ test("writeDesignStatus: existing superseded-by line replaced, not duplicated", 
 	writeDesignStatus(path, "superseded", { supersededBy: "bb2222" });
 	const doc = readDesignDoc(path);
 	assert.equal(doc!.supersededBy, "bb2222");
-	const count = (readFileSync(path, "utf8").match(/^superseded-by:/gm) ?? []).length;
+	const count = (readFileSync(path, "utf8").match(/^superseded-by:/gm) ?? [])
+		.length;
 	assert.equal(count, 1, "no duplicate lines");
 });
 
@@ -372,7 +452,10 @@ test("seedPlan: whitespace-only step titles still seed (S<n>. prefix makes them 
 });
 
 test("P1: design with no Requirements section at all", () => {
-	const r = passDesignCompleteness("## Goal\n\nno reqs here", "## Steps\n\n1. **A**");
+	const r = passDesignCompleteness(
+		"## Goal\n\nno reqs here",
+		"## Steps\n\n1. **A**",
+	);
 	assert.ok(!r.clean);
 	assert.ok(r.findings[0]!.includes("no Requirements"));
 });
@@ -392,9 +475,24 @@ test("updatePlanBody: unknown plan throws", () => {
 
 test("completeness: covered rid-tagged MUST with empty verification → uncovered (rid branch)", () => {
 	// R7 in Verification TEXT but verification section itself empty → still uncovered
-	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
-	body = body.replace("## Requirements\n", "## Requirements\n\nR7. The system MUST retry.\n");
-	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
+	let body = stripComments(
+		DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x")
+			.replaceAll("{{TITLE}}", "T")
+			.replaceAll("{{DATE}}", "d"),
+	);
+	body = body.replace(
+		"## Requirements\n",
+		"## Requirements\n\nR7. The system MUST retry.\n",
+	);
+	for (const s of [
+		"Audience",
+		"Problem",
+		"Goal",
+		"Non-goals",
+		"Approaches considered",
+		"Decision",
+		"Risks & open questions",
+	]) {
 		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
 	}
 	const r = checkCompleteness(body);
@@ -420,7 +518,8 @@ test("plan-store: updatePlanBody unknown id throws; setPlanStatus no-op-ish on g
 });
 
 test("parseSteps: trailing detail lines without a step ignored", () => {
-	const body = "## Steps\n\n1. **A** `R1`\n   - Deliverable: x\n\nstray line not a step\n- not a step either\n";
+	const body =
+		"## Steps\n\n1. **A** `R1`\n   - Deliverable: x\n\nstray line not a step\n- not a step either\n";
 	const steps = parseSteps(body);
 	assert.equal(steps.length, 1);
 	assert.equal(steps[0]!.deliverable, "x");
@@ -429,7 +528,10 @@ test("parseSteps: trailing detail lines without a step ignored", () => {
 test("doc-index: ingest dir with CRLF frontmatter parses", () => {
 	const path = join(area, "docs", "design", "crlf.md");
 	mkdirSync(join(area, "docs", "design"), { recursive: true });
-	writeFileSync(path, `---\r\nid: crlf99\r\ntitle: CRLF\r\n---\r\n\r\n## Goal\r\n\r\nWindows authored.`);
+	writeFileSync(
+		path,
+		`---\r\nid: crlf99\r\ntitle: CRLF\r\n---\r\n\r\n## Goal\r\n\r\nWindows authored.`,
+	);
 	const r = ingestDesignDocs(db, area, PROJECT);
 	assert.equal(r.ingested, 1);
 	assert.ok(searchDocs(db, "windows authored").length >= 1);

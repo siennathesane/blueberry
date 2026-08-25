@@ -22,7 +22,9 @@ export interface DesignFrontmatter {
 }
 
 /** Parse YAML-ish frontmatter (flat key: value pairs; no nesting needed). */
-export function parseFrontmatter(raw: string): { fm: DesignFrontmatter; body: string } | null {
+export function parseFrontmatter(
+	raw: string,
+): { fm: DesignFrontmatter; body: string } | null {
 	const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
 	if (!match) return null;
 	const fm: Record<string, string> = {};
@@ -77,7 +79,10 @@ export function ingestDesignDocs(
 			const raw = readFileSync(file, "utf8");
 			const parsed = parseFrontmatter(raw);
 			if (!parsed) {
-				result.errors.push({ file, detail: "missing or invalid frontmatter (id required)" });
+				result.errors.push({
+					file,
+					detail: "missing or invalid frontmatter (id required)",
+				});
 				continue;
 			}
 			const st = statSync(file);
@@ -93,8 +98,9 @@ export function ingestDesignDocs(
 
 			const slug = f.replace(/\.md$/, "");
 			const now = new Date().toISOString();
-			db.prepare(
-				`INSERT INTO designs (id, project_id, slug, path, title, status, supersedes, superseded_by, file_mtime_ms, ingested_at)
+			db
+				.prepare(
+					`INSERT INTO designs (id, project_id, slug, path, title, status, supersedes, superseded_by, file_mtime_ms, ingested_at)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				 ON CONFLICT(id) DO UPDATE SET
 				   project_id = excluded.project_id,
@@ -106,22 +112,27 @@ export function ingestDesignDocs(
 				   superseded_by = excluded.superseded_by,
 				   file_mtime_ms = excluded.file_mtime_ms,
 				   ingested_at = excluded.ingested_at`,
-			).run(
-				parsed.fm.id,
-				projectId,
-				slug,
-				file,
-				parsed.fm.title ?? slug,
-				parsed.fm.status ?? "open",
-				parsed.fm.supersedes ?? null,
-				parsed.fm["superseded-by"] ?? null,
-				mtime,
-				now,
-			);
+				)
+				.run(
+					parsed.fm.id,
+					projectId,
+					slug,
+					file,
+					parsed.fm.title ?? slug,
+					parsed.fm.status ?? "open",
+					parsed.fm.supersedes ?? null,
+					parsed.fm["superseded-by"] ?? null,
+					mtime,
+					now,
+				);
 
 			// re-index body: wipe prior rows for this design id, then chunk sections
-			db.prepare("DELETE FROM doc_fts WHERE uri = ?").run(designUri(slug, parsed.fm.id));
-			const insert = db.prepare("INSERT INTO doc_fts (text, source, uri) VALUES (?, 'design', ?)");
+			db
+				.prepare("DELETE FROM doc_fts WHERE uri = ?")
+				.run(designUri(slug, parsed.fm.id));
+			const insert = db.prepare(
+				"INSERT INTO doc_fts (text, source, uri) VALUES (?, 'design', ?)",
+			);
 			const uri = designUri(slug, parsed.fm.id);
 			// index by section so hits carry section context
 			for (const section of splitSections(parsed.body)) {
@@ -155,10 +166,17 @@ export function splitSections(body: string): string[] {
 // --- plan indexing --------------------------------------------------------------------
 
 /** Index a plan's body into doc_fts (replaces prior rows for the plan id). */
-export function indexPlanDoc(db: DatabaseSync, slug: string, hex6: string, body: string): void {
+export function indexPlanDoc(
+	db: DatabaseSync,
+	slug: string,
+	hex6: string,
+	body: string,
+): void {
 	const uri = planUri(slug, hex6);
 	db.prepare("DELETE FROM doc_fts WHERE uri = ?").run(uri);
-	const insert = db.prepare("INSERT INTO doc_fts (text, source, uri) VALUES (?, 'plan', ?)");
+	const insert = db.prepare(
+		"INSERT INTO doc_fts (text, source, uri) VALUES (?, 'plan', ?)",
+	);
 	for (const section of splitSections(body)) {
 		if (section.trim() !== "") insert.run(section, uri);
 	}
@@ -172,21 +190,33 @@ export interface DocHit {
 	uri: string;
 }
 
-export function searchDocs(db: DatabaseSync, query: string, opts: { source?: string; limit?: number } = {}): DocHit[] {
+export function searchDocs(
+	db: DatabaseSync,
+	query: string,
+	opts: { source?: string; limit?: number } = {},
+): DocHit[] {
 	const safe = query.replace(/["'*:]/g, " ").trim();
 	if (safe === "") return [];
 	const limit = opts.limit ?? 20;
 	let rows: Array<Record<string, unknown>>;
 	if (opts.source === undefined) {
 		rows = db
-			.prepare("SELECT text, source, uri FROM doc_fts WHERE doc_fts MATCH ? ORDER BY bm25(doc_fts) LIMIT ?")
+			.prepare(
+				"SELECT text, source, uri FROM doc_fts WHERE doc_fts MATCH ? ORDER BY bm25(doc_fts) LIMIT ?",
+			)
 			.all(`"${safe}"`, limit) as Array<Record<string, unknown>>;
 	} else {
 		rows = db
-			.prepare("SELECT text, source, uri FROM doc_fts WHERE doc_fts MATCH ? AND source = ? ORDER BY bm25(doc_fts) LIMIT ?")
+			.prepare(
+				"SELECT text, source, uri FROM doc_fts WHERE doc_fts MATCH ? AND source = ? ORDER BY bm25(doc_fts) LIMIT ?",
+			)
 			.all(`"${safe}"`, opts.source, limit) as Array<Record<string, unknown>>;
 	}
-	return rows.map((r) => ({ text: String(r["text"]), source: String(r["source"]), uri: String(r["uri"]) }));
+	return rows.map((r) => ({
+		text: String(r["text"]),
+		source: String(r["source"]),
+		uri: String(r["uri"]),
+	}));
 }
 
 export function formatDocHits(hits: DocHit[]): string {
@@ -195,7 +225,9 @@ export function formatDocHits(hits: DocHit[]): string {
 	for (const h of hits) {
 		const first = h.text.split("\n").find((l) => l.trim() !== "") ?? "";
 		const kind = h.source === "design" ? "◈" : "⬡";
-		out.push(`${kind} ${h.uri.replace("blueberry://", "")} — ${first.trim().slice(0, 100)}`);
+		out.push(
+			`${kind} ${h.uri.replace("blueberry://", "")} — ${first.trim().slice(0, 100)}`,
+		);
 	}
 	return out.join("\n");
 }

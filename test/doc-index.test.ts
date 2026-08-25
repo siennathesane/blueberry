@@ -29,11 +29,11 @@ beforeEach(() => {
 	agentDir = tmpAgentDir();
 	area = tmpDir("bb-docidx-");
 	db = openDb(agentDir);
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)").run(
-		PROJECT,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)",
+		)
+		.run(PROJECT, new Date().toISOString(), new Date().toISOString());
 });
 afterEach(() => {
 	db.close();
@@ -79,7 +79,9 @@ test("ingest: creates design rows and section-chunked FTS; idempotent by mtime",
 	assert.equal(r1.ingested, 1);
 	assert.equal(r1.errors.length, 0);
 
-	const row = db.prepare("SELECT * FROM designs WHERE id = 'aa1111'").get() as Record<string, unknown>;
+	const row = db
+		.prepare("SELECT * FROM designs WHERE id = 'aa1111'")
+		.get() as Record<string, unknown>;
 	assert.equal(row["title"], "Search Docs");
 	assert.equal(row["status"], "open");
 	assert.ok(String(row["path"]).includes("2026-08-25-search-docs.md"));
@@ -99,7 +101,10 @@ test("ingest: creates design rows and section-chunked FTS; idempotent by mtime",
 test("ingest: rename re-links path by frontmatter id (never orphans)", () => {
 	const dir = designDir();
 	const file = join(dir, "2026-08-25-original-name.md");
-	writeFileSync(file, `---\nid: bb2222\ntitle: Renamed\n---\n\n## Goal\n\nSurvive renames.`);
+	writeFileSync(
+		file,
+		`---\nid: bb2222\ntitle: Renamed\n---\n\n## Goal\n\nSurvive renames.`,
+	);
 	utimesSync(file, new Date(), new Date(Math.floor(Date.now() / 1000) * 1000));
 	ingestDesignDocs(db, area, PROJECT);
 
@@ -111,21 +116,34 @@ test("ingest: rename re-links path by frontmatter id (never orphans)", () => {
 	const r = ingestDesignDocs(db, area, PROJECT);
 	assert.equal(r.ingested, 1, "re-ingested after rename");
 
-	const row = db.prepare("SELECT path, slug FROM designs WHERE id = 'bb2222'").get() as Record<string, unknown>;
+	const row = db
+		.prepare("SELECT path, slug FROM designs WHERE id = 'bb2222'")
+		.get() as Record<string, unknown>;
 	assert.equal(row["slug"], "2026-08-25-better-name", "slug re-linked");
 	assert.ok(String(row["path"]).includes("better-name"));
 
 	// old URI rows replaced — no duplicates
-	const count = (db.prepare("SELECT COUNT(*) AS n FROM doc_fts WHERE uri LIKE '%bb2222%'").get() as { n: number }).n;
+	const count = (
+		db
+			.prepare("SELECT COUNT(*) AS n FROM doc_fts WHERE uri LIKE '%bb2222%'")
+			.get() as { n: number }
+	).n;
 	assert.ok(count >= 1);
-	const oldUriCount = (db.prepare("SELECT COUNT(*) AS n FROM doc_fts WHERE uri = ?").get() as { n: number }).n;
+	const oldUriCount = (
+		db.prepare("SELECT COUNT(*) AS n FROM doc_fts WHERE uri = ?").get() as {
+			n: number;
+		}
+	).n;
 	assert.ok(oldUriCount >= 0); // old slug rows gone (different uri key)
 });
 
 test("ingest: missing frontmatter reported as error, other files proceed", () => {
 	const dir = designDir();
 	writeFileSync(join(dir, "bad-no-fm.md"), "# No frontmatter");
-	writeFileSync(join(dir, "good.md"), `---\nid: cc3333\n---\n\n## Goal\n\nValid.`);
+	writeFileSync(
+		join(dir, "good.md"),
+		`---\nid: cc3333\n---\n\n## Goal\n\nValid.`,
+	);
 
 	const r = ingestDesignDocs(db, area, PROJECT);
 	assert.equal(r.ingested, 1);
@@ -147,7 +165,9 @@ test("ingest: genealogy fields indexed (supersedes / superseded-by)", () => {
 		`---\nid: dd4444\ntitle: V2\nstatus: decided\nsupersedes: aa0000\n---\n\n## Decision\n\nWon.`,
 	);
 	ingestDesignDocs(db, area, PROJECT);
-	const row = db.prepare("SELECT supersedes FROM designs WHERE id = 'dd4444'").get() as Record<string, unknown>;
+	const row = db
+		.prepare("SELECT supersedes FROM designs WHERE id = 'dd4444'")
+		.get() as Record<string, unknown>;
 	assert.equal(row["supersedes"], "aa0000");
 });
 
@@ -165,7 +185,12 @@ test("splitSections: h2-delimited chunks, content before first h2 kept", () => {
 // --- plan indexing --------------------------------------------------------------------------
 
 test("indexPlanDoc: sections indexed under plan URI; re-index replaces", () => {
-	indexPlanDoc(db, "p", "ee5555", "## Steps\n\n1. Build it\n\n## Test matrix\n\nT1 covers R1");
+	indexPlanDoc(
+		db,
+		"p",
+		"ee5555",
+		"## Steps\n\n1. Build it\n\n## Test matrix\n\nT1 covers R1",
+	);
 	const hits = searchDocs(db, "build it");
 	assert.ok(hits[0]!.uri === planUri("p", "ee5555"));
 	assert.equal(hits[0]!.source, "plan");
@@ -181,7 +206,10 @@ test("indexPlanDoc: sections indexed under plan URI; re-index replaces", () => {
 test("searchDocs: source filter, hostile queries, empty index", () => {
 	indexPlanDoc(db, "p", "ff6666", "## Problem\n\nThe xylophone plan");
 	const dir = designDir();
-	writeFileSync(join(dir, "d.md"), `---\nid: 112233\n---\n\n## Problem\n\nThe xylophone design`);
+	writeFileSync(
+		join(dir, "d.md"),
+		`---\nid: 112233\n---\n\n## Problem\n\nThe xylophone design`,
+	);
 	ingestDesignDocs(db, area, PROJECT);
 
 	const all = searchDocs(db, "xylophone");

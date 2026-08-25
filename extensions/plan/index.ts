@@ -46,40 +46,54 @@ function agentDir(): string {
 	return process.env["PI_CODING_AGENT_DIR"] ?? "";
 }
 
-function projectFor(cwd: string): { id: string; slug: string; root: string } | null {
+function projectFor(
+	cwd: string,
+): { id: string; slug: string; root: string } | null {
 	const dir = agentDir();
 	if (dir === "") return null;
 	const db = openDb(dir);
 	try {
 		const registry = loadRegistryDb(db);
 		const res = resolveProject({ cwd, registry });
-		return { id: res.project.id, slug: res.project.slug, root: res.boundary.root };
+		return {
+			id: res.project.id,
+			slug: res.project.slug,
+			root: res.boundary.root,
+		};
 	} finally {
 		db.close();
 	}
 }
 
 function readMode(db: ReturnType<typeof openDb>): Mode {
-	const row = db.prepare("SELECT json FROM config WHERE key = ?").get(MODE_KEY) as { json: string } | undefined;
+	const row = db
+		.prepare("SELECT json FROM config WHERE key = ?")
+		.get(MODE_KEY) as { json: string } | undefined;
 	if (!row) return "normal";
 	try {
 		const parsed = JSON.parse(row.json) as { mode?: string };
-		return parsed.mode === "design" || parsed.mode === "plan" ? parsed.mode : "normal";
+		return parsed.mode === "design" || parsed.mode === "plan"
+			? parsed.mode
+			: "normal";
 	} catch {
 		return "normal";
 	}
 }
 
 function writeMode(db: ReturnType<typeof openDb>, mode: Mode): void {
-	db.prepare("INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json").run(
-		MODE_KEY,
-		JSON.stringify({ mode }),
-	);
+	db
+		.prepare(
+			"INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json",
+		)
+		.run(MODE_KEY, JSON.stringify({ mode }));
 }
 
 export default function (pi: ExtensionAPI) {
 	// --- strip widget ----------------------------------------------------------------
-	const refreshStrip = (ctx: { cwd: string; ui: { setWidget(id: string, lines: string[] | undefined): void } }) => {
+	const refreshStrip = (ctx: {
+		cwd: string;
+		ui: { setWidget(id: string, lines: string[] | undefined): void };
+	}) => {
 		const dir = agentDir();
 		if (dir === "") return;
 		const proj = projectFor(ctx.cwd);
@@ -94,7 +108,9 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (mode === "plan") {
 				const plan = activePlan(db, proj.id);
-				ctx.ui.setWidget("bb-mode", [` ⬡ planning ${plan ? `rev ${plan.rev}` : "—"}`]);
+				ctx.ui.setWidget("bb-mode", [
+					` ⬡ planning ${plan ? `rev ${plan.rev}` : "—"}`,
+				]);
 				return;
 			}
 			// normal: building?
@@ -135,18 +151,29 @@ export default function (pi: ExtensionAPI) {
 					case "normal": {
 						next = "design";
 						const open = findOpenDesign(db, proj.id);
-						ctx.ui.notify(open ? `◈ reorienting: ${open.title}` : "◈ design mode — scaffold with /design or bb_design draft", "info");
+						ctx.ui.notify(
+							open
+								? `◈ reorienting: ${open.title}`
+								: "◈ design mode — scaffold with /design or bb_design draft",
+							"info",
+						);
 						break;
 					}
 					case "design": {
 						// design → plan requires decided
 						const open = findOpenDesign(db, proj.id);
 						if (!open) {
-							ctx.ui.notify("design mode but no open design — scaffold first (/design)", "warning");
+							ctx.ui.notify(
+								"design mode but no open design — scaffold first (/design)",
+								"warning",
+							);
 							return;
 						}
 						if (open.status !== "decided") {
-							ctx.ui.notify("approve the design first — /design then y (all required sections)", "warning");
+							ctx.ui.notify(
+								"approve the design first — /design then y (all required sections)",
+								"warning",
+							);
 							return;
 						}
 						next = "plan";
@@ -157,7 +184,10 @@ export default function (pi: ExtensionAPI) {
 						// plan → normal: if building, it IS normal; if draft, confirm-lite (toast)
 						const plan = activePlan(db, proj.id);
 						if (plan && plan.status === "draft") {
-							ctx.ui.notify("draft plan kept in db — bb_plan approve to seed, or continue editing", "info");
+							ctx.ui.notify(
+								"draft plan kept in db — bb_plan approve to seed, or continue editing",
+								"info",
+							);
 						}
 						next = "normal";
 						break;
@@ -186,18 +216,33 @@ export default function (pi: ExtensionAPI) {
 			"status (completeness report: unanswered sections, MUST coverage), decide (mark decided — requires " +
 			"all required sections answered), abandon, supersede (mark superseded + note successor). " +
 			"The design doc is a file in docs/design/ — the file is truth.",
-		promptSnippet: "Design lifecycle: scaffold, fill, completeness-check, and decide design docs",
+		promptSnippet:
+			"Design lifecycle: scaffold, fill, completeness-check, and decide design docs",
 		promptGuidelines: [
 			"Use bb_design when entering design mode or working on a design doc; check status before decide — the gate refuses unanswered sections.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["draft", "revise", "status", "decide", "abandon", "supersede"] as const),
-			title: Type.Optional(Type.String({ description: "draft: new design title" })),
-			body: Type.Optional(Type.String({ description: "revise: full updated markdown body (without frontmatter)" })),
+			action: StringEnum([
+				"draft",
+				"revise",
+				"status",
+				"decide",
+				"abandon",
+				"supersede",
+			] as const),
+			title: Type.Optional(
+				Type.String({ description: "draft: new design title" }),
+			),
+			body: Type.Optional(
+				Type.String({
+					description: "revise: full updated markdown body (without frontmatter)",
+				}),
+			),
 		}),
 		async execute(_id, params, _s, _u, ctx) {
 			const dir = agentDir();
-			if (dir === "") throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
+			if (dir === "")
+				throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
 			const proj = projectFor(ctx.cwd);
 			if (!proj) throw new Error("no project registered for this cwd");
 			const db = openDb(dir);
@@ -208,16 +253,31 @@ export default function (pi: ExtensionAPI) {
 						const existing = findOpenDesign(db, proj.id);
 						if (existing) {
 							return {
-								content: [{ type: "text", text: `open design exists: ${existing.title} (${existing.id})\npath: ${existing.path}\n\nUse revise to edit; status to check completeness.` }],
+								content: [
+									{
+										type: "text",
+										text: `open design exists: ${existing.title} (${existing.id})\npath: ${existing.path}\n\nUse revise to edit; status to check completeness.`,
+									},
+								],
 								details: { path: existing.path, id: existing.id },
 							};
 						}
-						if (!params.title) throw new Error("draft requires title for a new design");
+						if (!params.title)
+							throw new Error("draft requires title for a new design");
 						const { path, id } = scaffoldDesign(proj.root, params.title);
 						ingestDesignDocs(db, proj.root, proj.id);
-						needle("bb-design", designBreadcrumb(proj.slug, id, params.title, "drafted"), true);
+						needle(
+							"bb-design",
+							designBreadcrumb(proj.slug, id, params.title, "drafted"),
+							true,
+						);
 						return {
-							content: [{ type: "text", text: `scaffolded ${path}\nid: ${id}\n\nSections to answer: ${REQUIRED_SECTIONS.join(", ")}` }],
+							content: [
+								{
+									type: "text",
+									text: `scaffolded ${path}\nid: ${id}\n\nSections to answer: ${REQUIRED_SECTIONS.join(", ")}`,
+								},
+							],
 							details: { path, id },
 						};
 					}
@@ -231,12 +291,25 @@ export default function (pi: ExtensionAPI) {
 						const newRaw = `${fmBlock ? fmBlock[0] : "---\n---\n\n"}${params.body}`;
 						writeFileSync(open.path, newRaw);
 						ingestDesignDocs(db, proj.root, proj.id);
-						needle("bb-design", designBreadcrumb(proj.slug, open.id, open.title, "revised"), false);
-						return { content: [{ type: "text", text: "revised. run status to check completeness." }], details: {} };
+						needle(
+							"bb-design",
+							designBreadcrumb(proj.slug, open.id, open.title, "revised"),
+							false,
+						);
+						return {
+							content: [
+								{ type: "text", text: "revised. run status to check completeness." },
+							],
+							details: {},
+						};
 					}
 					case "status": {
 						const open = findOpenDesign(db, proj.id);
-						if (!open) return { content: [{ type: "text", text: "no open design" }], details: {} };
+						if (!open)
+							return {
+								content: [{ type: "text", text: "no open design" }],
+								details: {},
+							};
 						const report = checkCompleteness(open.body);
 						const lines = [
 							`design: ${open.title} (${open.id}) — ${open.status}`,
@@ -245,35 +318,72 @@ export default function (pi: ExtensionAPI) {
 								: `unanswered: ${report.unanswered.join(", ")}`,
 							`MUSTs: ${report.requirements.musts.length}, uncovered: ${report.requirements.uncoveredMusts.length}`,
 						];
-						return { content: [{ type: "text", text: lines.join("\n") }], details: { ...report } };
+						return {
+							content: [{ type: "text", text: lines.join("\n") }],
+							details: { ...report },
+						};
 					}
 					case "decide": {
 						const open = findOpenDesign(db, proj.id);
 						if (!open) throw new Error("no open design");
 						const report = checkCompleteness(open.body);
 						if (report.unanswered.length > 0) {
-							throw new Error(`gate refused — unanswered sections: ${report.unanswered.join(", ")}`);
+							throw new Error(
+								`gate refused — unanswered sections: ${report.unanswered.join(", ")}`,
+							);
 						}
 						writeDesignStatus(open.path, "decided");
 						ingestDesignDocs(db, proj.root, proj.id);
-						needle("bb-design", designBreadcrumb(proj.slug, open.id, open.title, "decided"), true);
-						return { content: [{ type: "text", text: `decided ✓ — shift+tab or /plan to decompose` }], details: {} };
+						needle(
+							"bb-design",
+							designBreadcrumb(proj.slug, open.id, open.title, "decided"),
+							true,
+						);
+						return {
+							content: [
+								{ type: "text", text: `decided ✓ — shift+tab or /plan to decompose` },
+							],
+							details: {},
+						};
 					}
 					case "abandon": {
 						const open = findOpenDesign(db, proj.id);
 						if (!open) throw new Error("no open design");
 						writeDesignStatus(open.path, "abandoned");
 						ingestDesignDocs(db, proj.root, proj.id);
-						needle("bb-design", designBreadcrumb(proj.slug, open.id, open.title, "abandoned"), false);
-						return { content: [{ type: "text", text: "abandoned (doc kept for archaeology)" }], details: {} };
+						needle(
+							"bb-design",
+							designBreadcrumb(proj.slug, open.id, open.title, "abandoned"),
+							false,
+						);
+						return {
+							content: [
+								{ type: "text", text: "abandoned (doc kept for archaeology)" },
+							],
+							details: {},
+						};
 					}
 					case "supersede": {
 						const open = findOpenDesign(db, proj.id);
 						if (!open) throw new Error("no open design");
-						writeDesignStatus(open.path, "superseded", { supersededBy: "pending-next" });
+						writeDesignStatus(open.path, "superseded", {
+							supersededBy: "pending-next",
+						});
 						ingestDesignDocs(db, proj.root, proj.id);
-						needle("bb-design", designBreadcrumb(proj.slug, open.id, open.title, "superseded"), false);
-						return { content: [{ type: "text", text: "superseded — draft the successor; its doc will link back" }], details: {} };
+						needle(
+							"bb-design",
+							designBreadcrumb(proj.slug, open.id, open.title, "superseded"),
+							false,
+						);
+						return {
+							content: [
+								{
+									type: "text",
+									text: "superseded — draft the successor; its doc will link back",
+								},
+							],
+							details: {},
+						};
 					}
 				}
 			} finally {
@@ -292,18 +402,35 @@ export default function (pi: ExtensionAPI) {
 			"`R#` tags and ⟵ deps, Deliverable/Acceptance per step, Test matrix, Coverage matrix, Not-enumerated " +
 			"ledger), status (current plan + passes report), passes (run the four consistency checks), approve " +
 			"(seed the DAG — requires clean-or-acknowledged passes), abandon. The y-gate equivalent is approve.",
-		promptSnippet: "Plan lifecycle: decompose designs into steps+deps, verify consistency, seed the todo DAG",
+		promptSnippet:
+			"Plan lifecycle: decompose designs into steps+deps, verify consistency, seed the todo DAG",
 		promptGuidelines: [
 			"Use bb_plan in plan mode: draft the full decomposition (steps with requirement tags and deps, test matrix, coverage matrix, omission ledger), run passes, then approve to seed.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["draft", "status", "passes", "approve", "abandon"] as const),
-			body: Type.Optional(Type.String({ description: "draft: full plan markdown (Steps, Test matrix, Coverage matrix, Not enumerated)" })),
-			force: Type.Optional(Type.Boolean({ description: "approve: seed despite pass findings (acknowledged risk)" })),
+			action: StringEnum([
+				"draft",
+				"status",
+				"passes",
+				"approve",
+				"abandon",
+			] as const),
+			body: Type.Optional(
+				Type.String({
+					description:
+						"draft: full plan markdown (Steps, Test matrix, Coverage matrix, Not enumerated)",
+				}),
+			),
+			force: Type.Optional(
+				Type.Boolean({
+					description: "approve: seed despite pass findings (acknowledged risk)",
+				}),
+			),
 		}),
 		async execute(_id, params, _s, _u, ctx) {
 			const dir = agentDir();
-			if (dir === "") throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
+			if (dir === "")
+				throw new Error("PI_CODING_AGENT_DIR not set — launch via bb");
 			const proj = projectFor(ctx.cwd);
 			if (!proj) throw new Error("no project registered for this cwd");
 			const db = openDb(dir);
@@ -317,31 +444,74 @@ export default function (pi: ExtensionAPI) {
 						if (existing && existing.status === "draft") {
 							updatePlanBody(db, existing.id, params.body);
 							const plan = getPlan(db, existing.id)!;
-							needle("bb-plan", planBreadcrumb(proj.slug, hex6Of(plan.id), "plan", `revise rev ${plan.rev}`), false);
-							return { content: [{ type: "text", text: `updated draft (rev ${plan.rev})` }], details: { id: plan.id } };
+							needle(
+								"bb-plan",
+								planBreadcrumb(
+									proj.slug,
+									hex6Of(plan.id),
+									"plan",
+									`revise rev ${plan.rev}`,
+								),
+								false,
+							);
+							return {
+								content: [{ type: "text", text: `updated draft (rev ${plan.rev})` }],
+								details: { id: plan.id },
+							};
 						}
-						const plan = createPlan(db, proj.id, params.body, { designId: design?.id ?? null });
-						needle("bb-plan", planBreadcrumb(proj.slug, hex6Of(plan.id), "plan", "drafted"), true);
-						return { content: [{ type: "text", text: `plan drafted (${plan.id.slice(0, 6)}…) — run passes, then approve to seed` }], details: { id: plan.id } };
+						const plan = createPlan(db, proj.id, params.body, {
+							designId: design?.id ?? null,
+						});
+						needle(
+							"bb-plan",
+							planBreadcrumb(proj.slug, hex6Of(plan.id), "plan", "drafted"),
+							true,
+						);
+						return {
+							content: [
+								{
+									type: "text",
+									text: `plan drafted (${plan.id.slice(0, 6)}…) — run passes, then approve to seed`,
+								},
+							],
+							details: { id: plan.id },
+						};
 					}
 					case "status": {
 						const plan = activePlan(db, proj.id);
-						if (!plan) return { content: [{ type: "text", text: "no active plan — bb_plan draft" }], details: {} };
+						if (!plan)
+							return {
+								content: [{ type: "text", text: "no active plan — bb_plan draft" }],
+								details: {},
+							};
 						const passes = runAllPasses(design ? design.body : null, plan.body);
 						const prog = planProgress(db, plan);
 						const lines = [
 							`plan ${hex6Of(plan.id)} — ${plan.status} (rev ${plan.rev})`,
 							`progress: ${prog.done}/${prog.total}`,
-							...passes.map((p) => `${p.pass} ${p.clean ? "✓" : `✗ ${p.findings.join("; ").slice(0, 120)}`}`),
+							...passes.map(
+								(p) =>
+									`${p.pass} ${p.clean ? "✓" : `✗ ${p.findings.join("; ").slice(0, 120)}`}`,
+							),
 						];
-						return { content: [{ type: "text", text: lines.join("\n") }], details: {} };
+						return {
+							content: [{ type: "text", text: lines.join("\n") }],
+							details: {},
+						};
 					}
 					case "passes": {
 						const plan = activePlan(db, proj.id);
 						if (!plan) throw new Error("no active plan");
 						const passes = runAllPasses(design ? design.body : null, plan.body);
 						return {
-							content: [{ type: "text", text: passes.map((p) => `${p.pass} ${p.clean ? "clean" : p.findings.join("; ")}`).join("\n") }],
+							content: [
+								{
+									type: "text",
+									text: passes
+										.map((p) => `${p.pass} ${p.clean ? "clean" : p.findings.join("; ")}`)
+										.join("\n"),
+								},
+							],
 							details: { passes },
 						};
 					}
@@ -351,14 +521,37 @@ export default function (pi: ExtensionAPI) {
 						const passes = runAllPasses(design ? design.body : null, plan.body);
 						const dirty = passes.filter((p) => !p.clean);
 						if (dirty.length > 0 && !params.force) {
-							const summary = dirty.map((p) => `${p.pass}: ${p.findings.join("; ").slice(0, 100)}`).join("\n");
-							throw new Error(`passes not clean:\n${summary}\n\nfix the findings, or force:true to seed anyway (acknowledged risk)`);
+							const summary = dirty
+								.map((p) => `${p.pass}: ${p.findings.join("; ").slice(0, 100)}`)
+								.join("\n");
+							throw new Error(
+								`passes not clean:\n${summary}\n\nfix the findings, or force:true to seed anyway (acknowledged risk)`,
+							);
 						}
-						const result = seedPlan(db, plan, proj.slug, ctx.sessionManager.getSessionId());
+						const result = seedPlan(
+							db,
+							plan,
+							proj.slug,
+							ctx.sessionManager.getSessionId(),
+						);
 						setPlanStatus(db, plan.id, "building");
-						needle("bb-plan", planBreadcrumb(proj.slug, hex6Of(plan.id), "plan", `approved → seeded ${result.count}`), true);
+						needle(
+							"bb-plan",
+							planBreadcrumb(
+								proj.slug,
+								hex6Of(plan.id),
+								"plan",
+								`approved → seeded ${result.count}`,
+							),
+							true,
+						);
 						return {
-							content: [{ type: "text", text: `seeded ${result.count} tasks${result.errors.length > 0 ? ` (errors: ${result.errors.join("; ")})` : ""}` }],
+							content: [
+								{
+									type: "text",
+									text: `seeded ${result.count} tasks${result.errors.length > 0 ? ` (errors: ${result.errors.join("; ")})` : ""}`,
+								},
+							],
 							details: { ...result },
 						};
 					}
@@ -366,8 +559,15 @@ export default function (pi: ExtensionAPI) {
 						const plan = activePlan(db, proj.id);
 						if (!plan) throw new Error("no active plan");
 						setPlanStatus(db, plan.id, "abandoned");
-						needle("bb-plan", planBreadcrumb(proj.slug, hex6Of(plan.id), "plan", "abandoned"), false);
-						return { content: [{ type: "text", text: "plan abandoned" }], details: {} };
+						needle(
+							"bb-plan",
+							planBreadcrumb(proj.slug, hex6Of(plan.id), "plan", "abandoned"),
+							false,
+						);
+						return {
+							content: [{ type: "text", text: "plan abandoned" }],
+							details: {},
+						};
 					}
 				}
 			} finally {
@@ -388,7 +588,10 @@ export default function (pi: ExtensionAPI) {
 			try {
 				const open = findOpenDesign(db, proj.id);
 				if (!open) {
-					ctx.ui.notify("no open design — bb_design draft <title> or shift+tab", "info");
+					ctx.ui.notify(
+						"no open design — bb_design draft <title> or shift+tab",
+						"info",
+					);
 					return;
 				}
 				const report = checkCompleteness(open.body);

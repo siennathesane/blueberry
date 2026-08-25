@@ -54,7 +54,7 @@ fi
 # Claim shift+tab for the mode ring: rebalance thinking to ctrl+shift+t
 # (§Design mode ring — a distribution's prerogative via stock pi rebinding)
 if [ ! -f "$AGENT_DIR/keybindings.json" ]; then
-  cat > "$AGENT_DIR/keybindings.json" <<'KBEOF'
+  cat >"$AGENT_DIR/keybindings.json" <<'KBEOF'
 {
   "app.thinking.cycle": "ctrl+shift+t"
 }

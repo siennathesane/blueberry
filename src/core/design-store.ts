@@ -88,19 +88,25 @@ date: {{DATE}}
 `;
 
 /** Scaffold a new design doc; returns the file path. */
-export function scaffoldDesign(projectRoot: string, title: string): { path: string; id: string } {
+export function scaffoldDesign(
+	projectRoot: string,
+	title: string,
+): { path: string; id: string } {
 	const id = randomUUID();
 	const hex6 = hex6Of(id);
 	const date = new Date().toISOString().slice(0, 10);
-	const slugBase = title
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 48) || "design";
+	const slugBase =
+		title
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.slice(0, 48) || "design";
 	const dir = join(projectRoot, "docs", "design");
 	mkdirSync(dir, { recursive: true });
 	const path = join(dir, `${date}-${slugBase}.md`);
-	const body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", hex6).replaceAll("{{TITLE}}", title).replaceAll("{{DATE}}", date);
+	const body = DESIGN_SCAFFOLD.replaceAll("{{ID}}", hex6)
+		.replaceAll("{{TITLE}}", title)
+		.replaceAll("{{DATE}}", date);
 	writeFileSync(path, body);
 	return { path, id: hex6 };
 }
@@ -124,7 +130,10 @@ export function stripComments(body: string): string {
 /** Extract section content (between h2 headers) after comment stripping. */
 function sectionContent(body: string, section: string): string | null {
 	const stripped = stripComments(body);
-	const pattern = new RegExp(`^##\\s+${section.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*$`, "m");
+	const pattern = new RegExp(
+		`^##\\s+${section.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*$`,
+		"m",
+	);
 	const match = pattern.exec(stripped);
 	if (!match) return null;
 	const after = stripped.slice(match.index + match[0].length);
@@ -145,7 +154,9 @@ export function checkCompleteness(body: string): CompletenessReport {
 
 	// Requirements ↔ Verification cross-check
 	const reqContent = sectionContent(body, "Requirements") ?? "";
-	const musts = [...reqContent.matchAll(/R\d+\.\s+.*\bMUST\b(?! NOT)/g)].map((m) => m[0].trim());
+	const musts = [...reqContent.matchAll(/R\d+\.\s+.*\bMUST\b(?! NOT)/g)].map(
+		(m) => m[0].trim(),
+	);
 	const verContent = sectionContent(body, "Verification") ?? "";
 	const uncoveredMusts: string[] = [];
 	for (const m of musts) {
@@ -194,13 +205,20 @@ export function readDesignDoc(path: string): DesignDoc | null {
 }
 
 /** Write a status transition into the doc's frontmatter (file stays truth). */
-export function writeDesignStatus(path: string, status: DesignStatus, extra: { supersededBy?: string } = {}): void {
+export function writeDesignStatus(
+	path: string,
+	status: DesignStatus,
+	extra: { supersededBy?: string } = {},
+): void {
 	const raw = readFileSync(path, "utf8");
 	// replace the status line in frontmatter
 	const updated = raw.replace(/^(\s*status:\s*).+$/m, `$1${status}`);
 	if (extra.supersededBy !== undefined) {
 		if (/^superseded-by:/m.test(updated)) {
-			writeFileSync(path, updated.replace(/^(\s*superseded-by:\s*).+$/m, `$1${extra.supersededBy}`));
+			writeFileSync(
+				path,
+				updated.replace(/^(\s*superseded-by:\s*).+$/m, `$1${extra.supersededBy}`),
+			);
 			return;
 		}
 		// insert before the CLOSING --- of frontmatter (the second one, line-oriented)
@@ -228,15 +246,25 @@ export function writeDesignStatus(path: string, status: DesignStatus, extra: { s
 }
 
 /** The open design doc for a project, if any (one-open rule). */
-export function findOpenDesign(db: DatabaseSync, projectId: string): DesignDoc | null {
+export function findOpenDesign(
+	db: DatabaseSync,
+	projectId: string,
+): DesignDoc | null {
 	const row = db
-		.prepare("SELECT path FROM designs WHERE project_id = ? AND status = 'open' ORDER BY ingested_at DESC LIMIT 1")
+		.prepare(
+			"SELECT path FROM designs WHERE project_id = ? AND status = 'open' ORDER BY ingested_at DESC LIMIT 1",
+		)
 		.get(projectId) as { path: string } | undefined;
 	if (!row) return null;
 	return readDesignDoc(row.path);
 }
 
 /** breadcrumb needle for design transitions. */
-export function designBreadcrumb(slug: string, hex6: string, title: string, transition: string): string {
+export function designBreadcrumb(
+	slug: string,
+	hex6: string,
+	title: string,
+	transition: string,
+): string {
 	return `design:${slug}/${hex6} · ${title} · ${transition}`;
 }

@@ -606,7 +606,8 @@ async function searchCmd(rest: string[], deps: CliDeps): Promise<number> {
 			if (!rest[i]!.startsWith("--")) positional.push(rest[i]!);
 		}
 		const query = positional.join(" ");
-		if (!query) return usageErr(deps, "search <text> [--code] [--docs] [--context N]");
+		if (!query)
+			return usageErr(deps, "search <text> [--code] [--docs] [--context N]");
 		const db = openDb(deps.agentDir);
 		try {
 			if (rest.includes("--code")) {

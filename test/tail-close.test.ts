@@ -8,16 +8,40 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openDb, loadRegistrySync, saveRegistrySync, syncConfigFile } from "../src/core/db.ts";
+import {
+	openDb,
+	loadRegistrySync,
+	saveRegistrySync,
+	syncConfigFile,
+} from "../src/core/db.ts";
 import { syncStores, ftsSearch } from "../src/core/sync.ts";
-import { entrySummary, searchCode, indexFileLines } from "../src/core/search.ts";
-import { createTodo, addDep, setStage, WIP_LIMIT } from "../src/core/todo-store.ts";
+import {
+	entrySummary,
+	searchCode,
+	indexFileLines,
+} from "../src/core/search.ts";
+import {
+	createTodo,
+	addDep,
+	setStage,
+	WIP_LIMIT,
+} from "../src/core/todo-store.ts";
 import { loadRegistry, mutations } from "../src/core/registry.ts";
 import { getCentralStoreDir } from "../src/core/agent-dir.ts";
 import { resolveAddress } from "../src/core/library.ts";
 import { createPlan, seedPlan } from "../src/core/plan-store.ts";
-import { checkCompleteness, DESIGN_SCAFFOLD, stripComments } from "../src/core/design-store.ts";
-import { tmpAgentDir, tmpDir, fakeRepo, fakeSession, cleanup } from "./helpers.ts";
+import {
+	checkCompleteness,
+	DESIGN_SCAFFOLD,
+	stripComments,
+} from "../src/core/design-store.ts";
+import {
+	tmpAgentDir,
+	tmpDir,
+	fakeRepo,
+	fakeSession,
+	cleanup,
+} from "./helpers.ts";
 
 let agentDir: string;
 let area: string;
@@ -35,7 +59,9 @@ function seedProject(name: string): { root: string; id: string } {
 	const r = loadRegistry(agentDir);
 	mutations.register(r, { root });
 	saveRegistrySync(agentDir, r);
-	const id = loadRegistrySync(agentDir).projects.find((p) => p.canonicalPath === root)!.id;
+	const id = loadRegistrySync(agentDir).projects.find(
+		(p) => p.canonicalPath === root,
+	)!.id;
 	return { root, id };
 }
 
@@ -44,7 +70,10 @@ function seedProject(name: string): { root: string; id: string } {
 test("sync: orphan detail carries cwd text; errors carry detail", () => {
 	seedProject("orphdet");
 	const store = getCentralStoreDir(agentDir, "orphdet");
-	fakeSession(store, { cwd: "/definitely/not/a/project", firstUserText: "orphan body" });
+	fakeSession(store, {
+		cwd: "/definitely/not/a/project",
+		firstUserText: "orphan body",
+	});
 	const db = openDb(agentDir);
 	const report = syncStores(db, agentDir, loadRegistrySync(agentDir));
 	assert.equal(report.orphans.length, 1);
@@ -81,11 +110,11 @@ test("sync: ingest idempotence across two syncStores runs", () => {
 test("todo: full lifecycle — create→dep→doing→review→done with events", () => {
 	const db = openDb(agentDir);
 	const pid = "tail-life";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 't', '/t', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 't', '/t', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	const a = createTodo(db, pid, "lifecycle a", { sessionId: "s1" });
 	const b = createTodo(db, pid, "lifecycle b", { sessionId: "s1" });
 	assert.ok(a.ok && b.ok);
@@ -96,7 +125,9 @@ test("todo: full lifecycle — create→dep→doing→review→done with events"
 	// b unblocked now
 	assert.ok(setStage(db, pid, b.todo!.hex6, "doing").ok);
 	// events: create×2, dep×1, moves×4 = 7
-	const n = (db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }).n;
+	const n = (
+		db.prepare("SELECT COUNT(*) AS n FROM todo_events").get() as { n: number }
+	).n;
 	assert.equal(n, 7);
 	db.close();
 });
@@ -104,11 +135,11 @@ test("todo: full lifecycle — create→dep→doing→review→done with events"
 test("todo: WIP warning appears at limit+1 and clears below", () => {
 	const db = openDb(agentDir);
 	const pid = "tail-wip";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'w', '/w', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'w', '/w', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	const ids: string[] = [];
 	for (let i = 0; i <= WIP_LIMIT; i++) {
 		const t = createTodo(db, pid, `wip ${i}`, {});
@@ -126,11 +157,22 @@ test("todo: WIP warning appears at limit+1 and clears below", () => {
 // --- search.ts: entrySummary + code search edges ---------------------------------------
 
 test("search: entrySummary with string content and object message", () => {
-	const s1 = entrySummary(JSON.stringify({ type: "message", message: { role: "user", content: "plain string" } }));
+	const s1 = entrySummary(
+		JSON.stringify({
+			type: "message",
+			message: { role: "user", content: "plain string" },
+		}),
+	);
 	assert.equal(s1!.text, "plain string");
-	const s2 = entrySummary(JSON.stringify({ type: "session_info", name: "titled" }));
+	const s2 = entrySummary(
+		JSON.stringify({ type: "session_info", name: "titled" }),
+	);
 	assert.equal(s2!.text, "titled");
-	assert.deepEqual(entrySummary("null-ish garbage"), { ts: null, role: null, text: "" });
+	assert.deepEqual(entrySummary("null-ish garbage"), {
+		ts: null,
+		role: null,
+		text: "",
+	});
 });
 
 test("search: code search excludes empty query; indexFileLines skips blanks", () => {
@@ -173,7 +215,10 @@ test("library: resolveAddress short non-numeric below prefix length refuses", ()
 	const db = openDb(agentDir);
 	const registry = loadRegistrySync(agentDir);
 	const slug = loadRegistrySync(agentDir).projects[0]!.slug;
-	assert.throws(() => resolveAddress(registry, agentDir, slug, "abc"), /no session matching/);
+	assert.throws(
+		() => resolveAddress(registry, agentDir, slug, "abc"),
+		/no session matching/,
+	);
 	db.close();
 });
 
@@ -198,12 +243,18 @@ test("cli: search --docs runs ingest and prints formatted hits", async () => {
 	const dir = join(root, "docs", "design");
 	await import("node:fs").then((fs) => fs.mkdirSync(dir, { recursive: true }));
 	await import("node:fs").then((fs) =>
-		fs.writeFileSync(join(dir, "d.md"), `---\nid: dd9001\n---\n\n## Goal\n\nFindable goal text for docs search`),
+		fs.writeFileSync(
+			join(dir, "d.md"),
+			`---\nid: dd9001\n---\n\n## Goal\n\nFindable goal text for docs search`,
+		),
 	);
 	out.length = 0;
 	const code = await main(["search", "findable goal", "--docs"], deps);
 	assert.equal(code, 0);
-	assert.ok(out.some((l) => l.includes("◈") || l.includes("findable")), out.join("\n"));
+	assert.ok(
+		out.some((l) => l.includes("◈") || l.includes("findable")),
+		out.join("\n"),
+	);
 });
 
 test("cli: search --docs with bad frontmatter warns and still searches", async () => {
@@ -220,11 +271,16 @@ test("cli: search --docs with bad frontmatter warns and still searches", async (
 	await main([], deps);
 	const dir = join(root, "docs", "design");
 	await import("node:fs").then((fs) => fs.mkdirSync(dir, { recursive: true }));
-	await import("node:fs").then((fs) => fs.writeFileSync(join(dir, "broken.md"), "# no frontmatter"));
+	await import("node:fs").then((fs) =>
+		fs.writeFileSync(join(dir, "broken.md"), "# no frontmatter"),
+	);
 	out.length = 0;
 	const code = await main(["search", "anything", "--docs"], deps);
 	assert.equal(code, 0);
-	assert.ok(out.some((l) => l.startsWith("warn:") || l === "no matches"), out.join("\n"));
+	assert.ok(
+		out.some((l) => l.startsWith("warn:") || l === "no matches"),
+		out.join("\n"),
+	);
 });
 
 test("lsp-manager: stopServer on dead server hits shutdown catch", async () => {
@@ -232,12 +288,25 @@ test("lsp-manager: stopServer on dead server hits shutdown catch", async () => {
 	// server that dies 200ms after initialize
 	const FAKE = await fs_readFakeServer();
 	const script = join(area, "die-fast.mjs");
-	await import("node:fs").then((fs) => fs.writeFileSync(script, FAKE.replace(
-		'if (msg.method === "initialized") {',
-		'if (msg.method === "initialized") { setTimeout(() => process.exit(0), 200);',
-	)));
+	await import("node:fs").then((fs) =>
+		fs.writeFileSync(
+			script,
+			FAKE.replace(
+				'if (msg.method === "initialized") {',
+				'if (msg.method === "initialized") { setTimeout(() => process.exit(0), 200);',
+			),
+		),
+	);
 	const mgr = new LspManager(area, {
-		specs: [{ name: "dying", command: process.execPath, args: [script], languageIds: ["typescript"], warmupMs: 30 }],
+		specs: [
+			{
+				name: "dying",
+				command: process.execPath,
+				args: [script],
+				languageIds: ["typescript"],
+				warmupMs: 30,
+			},
+		],
 		maxServers: 1,
 	});
 	const ts = join(area, "dying.ts");
@@ -246,14 +315,24 @@ test("lsp-manager: stopServer on dead server hits shutdown catch", async () => {
 	await new Promise((r) => setTimeout(r, 450)); // dead by now
 	// force eviction → stopServer on the dead client → catch branch
 	const { defaultServers } = await import("../src/core/lsp-manager.ts");
-	const mgr2 = new LspManager(area, { specs: defaultServers().slice(0, 0), maxServers: 0 });
+	const mgr2 = new LspManager(area, {
+		specs: defaultServers().slice(0, 0),
+		maxServers: 0,
+	});
 	mgr2.dispose();
 	mgr.dispose();
 });
 
 async function fs_readFakeServer(): Promise<string> {
 	const fs = await import("node:fs");
-	return fs.readFileSync(new URL("./lsp.test.ts", import.meta.url).pathname.replace(/\/test\//, "/test/"), "utf8")
+	return fs
+		.readFileSync(
+			new URL("./lsp.test.ts", import.meta.url).pathname.replace(
+				/\/test\//,
+				"/test/",
+			),
+			"utf8",
+		)
 		.split("const FAKE_SERVER = `")[1]!
 		.split("`;")[0];
 }
@@ -264,12 +343,20 @@ test("lsp-manager: diagnostics push with empty array clears entry", async () => 
 	// server pushes empty diagnostics on 'initialized' (the clear branch)
 	const script = join(area, "clear-diag.mjs");
 	const cleared = FAKE.replace(
-		"diagnostics: [{ severity: 1, message: \"fake diagnostic\", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } }]",
+		'diagnostics: [{ severity: 1, message: "fake diagnostic", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } }]',
 		"diagnostics: []",
 	);
 	await import("node:fs").then((fs) => fs.writeFileSync(script, cleared));
 	const mgr = new LspManager(area, {
-		specs: [{ name: "clearer", command: process.execPath, args: [script], languageIds: ["typescript"], warmupMs: 30 }],
+		specs: [
+			{
+				name: "clearer",
+				command: process.execPath,
+				args: [script],
+				languageIds: ["typescript"],
+				warmupMs: 30,
+			},
+		],
 	});
 	const ts = join(area, "clear.ts");
 	await import("node:fs").then((fs) => fs.writeFileSync(ts, "const b = 2;\n"));
@@ -283,11 +370,11 @@ test("lsp-manager: diagnostics push with empty array clears entry", async () => 
 test("plan: seedPlan error path — step create failure lands in errors", () => {
 	const db = openDb(agentDir);
 	const pid = "plan-err";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'pe', '/pe', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'pe', '/pe', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	// sabotage: a title that becomes empty AFTER prefix? impossible — so use a
 	// step whose dep target fails to create instead (dep-add error branch)
 	const body = `## Steps\n\n1. **Good** \`R1\`\n\n2. **Also** \`R2\` ⟵ 99\n`;
@@ -298,11 +385,25 @@ test("plan: seedPlan error path — step create failure lands in errors", () => 
 	db.close();
 });
 
-
 test("design: untagged MUST with empty verification hits the rid-null branch", () => {
-	let body = stripComments(DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x").replaceAll("{{TITLE}}", "T").replaceAll("{{DATE}}", "d"));
-	body = body.replace("## Requirements\n", "## Requirements\n\nThe system MUST absolutely work without tags.\n");
-	for (const s of ["Audience", "Problem", "Goal", "Non-goals", "Approaches considered", "Decision", "Risks & open questions"]) {
+	let body = stripComments(
+		DESIGN_SCAFFOLD.replaceAll("{{ID}}", "x")
+			.replaceAll("{{TITLE}}", "T")
+			.replaceAll("{{DATE}}", "d"),
+	);
+	body = body.replace(
+		"## Requirements\n",
+		"## Requirements\n\nThe system MUST absolutely work without tags.\n",
+	);
+	for (const s of [
+		"Audience",
+		"Problem",
+		"Goal",
+		"Non-goals",
+		"Approaches considered",
+		"Decision",
+		"Risks & open questions",
+	]) {
 		body = body.replace(`## ${s}\n`, `## ${s}\n\ncontent.\n`);
 	}
 	// Verification stays empty; the MUST regex won't collect untagged — so
@@ -313,13 +414,18 @@ test("design: untagged MUST with empty verification hits the rid-null branch", (
 	assert.equal(r.unanswered.length, 1, "Verification unanswered (empty)");
 });
 
-
 test("doc-index: unreadable file lands in errors, others proceed", () => {
 	const { chmodSync } = fsmod;
 	const dir = join(area, "docs", "design");
 	fsmod.mkdirSync(dir, { recursive: true });
-	fsmod.writeFileSync(join(dir, "ok.md"), `---\nid: ok7777\n---\n\n## Goal\n\nFine.`);
-	fsmod.writeFileSync(join(dir, "locked.md"), `---\nid: lk8888\n---\n\n## Goal\n\nLocked.`);
+	fsmod.writeFileSync(
+		join(dir, "ok.md"),
+		`---\nid: ok7777\n---\n\n## Goal\n\nFine.`,
+	);
+	fsmod.writeFileSync(
+		join(dir, "locked.md"),
+		`---\nid: lk8888\n---\n\n## Goal\n\nLocked.`,
+	);
 	chmodSync(join(dir, "locked.md"), 0o000);
 	const db = openDb(agentDir);
 	const r = ingestDesignDocs2(db, area, "p2");
@@ -337,11 +443,11 @@ import { ingestDesignDocs as ingestDesignDocs2 } from "../src/core/doc-index.ts"
 test("todo: rows with all-null optional fields map cleanly (track/done_at null)", () => {
 	const db = openDb(agentDir);
 	const pid = "opt-null";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'on', '/on', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'on', '/on', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	const t = createTodo(db, pid, "bare row", {});
 	assert.ok(t.ok);
 	// force track/done_at nulls (they already are) and read back
@@ -387,9 +493,15 @@ test("sync: ingest with explicit-null detail arms (orphan+error pushes)", () => 
 import { ingestSessionFile as ingestSessionFile2 } from "../src/core/sync.ts";
 
 test("lsp: friendlyError remaining arms (not-initialized, no-symbol)", () => {
-	const m1 = lspmod.LspManager.friendlyError("hover", new Error("Server not initialized yet"));
+	const m1 = lspmod.LspManager.friendlyError(
+		"hover",
+		new Error("Server not initialized yet"),
+	);
 	assert.ok(m1.includes("not ready"));
-	const m2 = lspmod.LspManager.friendlyError("rename", new Error("no symbol at the given location here"));
+	const m2 = lspmod.LspManager.friendlyError(
+		"rename",
+		new Error("no symbol at the given location here"),
+	);
 	assert.ok(m2.includes("cursor"));
 });
 
@@ -398,11 +510,11 @@ import * as lspmod from "../src/core/lsp-manager.ts";
 test("plan: getPlan on ghost returns null; seedPlan with zero steps seeds nothing", () => {
 	const db = openDb(agentDir);
 	const pid = "ghost-plan";
-	db.prepare("INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'gp', '/gp', ?, ?)").run(
-		pid,
-		new Date().toISOString(),
-		new Date().toISOString(),
-	);
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'gp', '/gp', ?, ?)",
+		)
+		.run(pid, new Date().toISOString(), new Date().toISOString());
 	assert.equal(getPlan2(db, "nope"), null);
 	const plan = createPlan(db, pid, "## Steps\n\n(none parsed)");
 	const result = seedPlan(db, plan, "gp", null);
