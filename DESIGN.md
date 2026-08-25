@@ -1075,18 +1075,33 @@ The model must hold context the way a principal engineer does: always oriented
 (what mode, what's next), always ambiently aware (time, state), never
 blind-sided by invisible UI. Three layers, two rails.
 
-### The two rails (volatility split)
+### The two rails (volatility split) — REVISED 2025-08-25: zero-eviction rule
 
-- **System-prompt rail** (`before_agent_start` systemPrompt append): the
-  provider's cache PREFIX — content must be delta-stable. State goes here;
-  the injection re-appends every turn but byte-compares against last turn's
-  text, so cache busts only on real state change (mode hop, task completion,
-  doc revise). Target: ~5 invalidations per 100-turn session.
-- **Message rail** (`context` event, ephemeral, non-persisted): fresh each
-  turn, appended AFTER the cached prefix — never cache-hostile. Ambient
-  context goes here: **datetime + timezone** ("2025-08-25T14:32 PDT") every
-  turn, always accurate, zero accumulation (rebuilt from scratch each call —
-  the session file never stores it).
+**The system prompt is the root of the provider's cache prefix. Any byte
+change evicts not just the system prompt but the ENTIRE message history
+behind it — the most expensive eviction possible.** The earlier "~5
+invalidations per 100 turns" tolerance is dead: the target is ZERO
+evictions per session from blueberry's own injections.
+
+- **System-prompt rail** (`before_agent_start` systemPrompt append): **identity
+  ONLY, frozen at session_start** — composed once (capability-probed), stored
+  in module memory, appended byte-identically every turn for the whole session.
+  Delta-compare is demoted from cache mechanism to **invariant guard**: if our
+  appended block ever differs turn-to-turn, that's a bug, not a cache event.
+- **Message rail** (`context` event, ephemeral, non-persisted): **everything
+  volatile**, appended at the TAIL after the cached prefix — a changed tail
+  never invalidates the prefix before it, so this rail cannot evict cache by
+  construction. State block, datetime + timezone ("2025-08-25T14:32 PDT"),
+  and evented hints all live here, rebuilt fresh each turn, never persisted.
+
+Verified in fork source (pi/packages/coding-agent): pi's own base prompt is
+clean — `buildSystemPrompt` inputs are session-static (cwd, tool list,
+AGENTS.md context files, skills) with zero date/time content, and
+`_rebuildSystemPrompt` re-fires only on semantic changes (tool-set change
+via `setActiveToolsByName`, extension resource registration). Those are
+legitimate, rare, and capability-real — the model must be told. Blueberry
+extensions MUST NOT flap tools per-turn (mode-ring tool changes fire once
+per mode hop, which is semantic).
 
 ### Layer 1 — identity (core extension, project-aware) — DECIDED: injected
 
@@ -1110,9 +1125,11 @@ exist. Never mention tools whose surface isn't actually present. Identity
 bragging rights: this functionally replaces pi's APPEND_SYSTEM.md slot —
 blueberry owns its model-facing text.
 
-### Layer 2 — live state (system-prompt rail, delta-compared)
+### Layer 2 — live state (message rail, ephemeral tail) — REVISED with rails
 
-Derived from DB each turn, one compact block:
+Moved OFF the system-prompt rail (it was the one volatile-bytes risk left;
+see zero-eviction rule above). Derived from DB each turn, rebuilt fresh,
+appended at the tail via the context event — never persisted, never cached:
 
 ```text
 [state] mode: design (open: "session management") · missing sections:
@@ -1122,7 +1139,7 @@ Requirements, Verification, Decision
 
 - design mode: title + **missing section NAMES** (user decision: steering,
   not status — directs the next action; changes only when the doc changes,
-  which is legitimate cache-busting)
+  which is fine on the message rail — zero cache cost now)
 - plan mode: plan rev + pass state (clean/dirty counts)
 - building: title + done/total + NOW/NEXT task titles
 - normal, no active work: block collapses to nothing (no noise)

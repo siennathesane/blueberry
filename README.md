@@ -1,10 +1,14 @@
-# blueberry 🫐🍊
+# blueberry 🫐
 
-A personal [pi](https://github.com/earendil-works/pi-mono) distribution.
-Not a fork of pi — pi stays stock. This is everything *around* pi that makes it mine:
-extensions, skills, prompts, a theme, and its own isolated agent directory.
+This is my harness. There are many like it, but this one is mine.
 
-Blueberry pi, served with orange juice.
+A personal agentic coding harness based on [pi](https://github.com/earendil-works/pi-mono). 
+
+Pull requests are not accepted, and issues are not welcome. If you have a feature request, you can send me an email about it, but if I will report your email as spam if I suspect it's written by AI.
+
+This harness reflects my specific way of working. I had been a Principal Engineer at multiple tech companies before adopting AI tooling, so this harness reflects my experience, my desires, and my needs. It is not designed for vibe coding, and it is not designed to be generic. Using this harness requires advanced knowledge in engineering practices and it designed for focused, long-horizon work. I encode my way of working into every aspect of this harness, from the system prompt to mid-conversation context to on-disk storage to built-in tooling.
+
+You are welcome to use this harness as much as you'd like, you can clone it, fork it, or use it as a reference. However it is mine, and I will not accept contributions. You are also welcome to tag me on Threads if you want to discuss it, I'm always happy to chat.
 
 ## Quick start
 
