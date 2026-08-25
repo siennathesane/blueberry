@@ -7,6 +7,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
+import platform from "node:os";
 import { join } from "node:path";
 import {
 	openDb,
@@ -428,13 +429,23 @@ test("doc-index: unreadable file lands in errors, others proceed", () => {
 		join(dir, "locked.md"),
 		`---\nid: lk8888\n---\n\n## Goal\n\nLocked.`,
 	);
-	chmodSync(join(dir, "locked.md"), 0o000);
-	const db = openDb(agentDir);
-	const r = ingestDesignDocs2(db, area, "p2");
-	assert.equal(r.ingested, 1);
-	assert.equal(r.errors.length, 1);
-	chmodSync(join(dir, "locked.md"), 0o644);
-	db.close();
+	if (platform !== "win32") {
+		// #32: chmod semantics differ on Windows; unix-only behavior tested
+		chmodSync(join(dir, "locked.md"), 0o000);
+		const db = openDb(agentDir);
+		const r = ingestDesignDocs2(db, area, "p2");
+		assert.equal(r.ingested, 1);
+		assert.equal(r.errors.length, 1);
+		chmodSync(join(dir, "locked.md"), 0o644);
+		db.close();
+	} else {
+		// On Windows, skip the unreadable-file test as chmod does not enforce
+		const db = openDb(agentDir);
+		const r = ingestDesignDocs2(db, area, "p2");
+		assert.equal(r.ingested, 2);
+		assert.equal(r.errors.length, 0);
+		db.close();
+	}
 });
 
 import * as fsmod from "node:fs";

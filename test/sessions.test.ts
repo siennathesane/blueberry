@@ -1,5 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import platform from "node:os";
 import {
 	chmodSync,
 	existsSync,
@@ -214,9 +215,12 @@ test("readSessionHeader: unreadable and wrong-type files return null", () => {
 	mkdirSync(edge, { recursive: true });
 	const unreadable = `${edge}/a.jsonl`;
 	writeFileSync(unreadable, "{}\n");
-	chmodSync(unreadable, 0o000);
-	assert.equal(readSessionHeader(unreadable), null);
-	chmodSync(unreadable, 0o644);
+	if (platform !== "win32") {
+		// #32: chmod semantics differ on Windows; unix-only behavior tested
+		chmodSync(unreadable, 0o000);
+		assert.equal(readSessionHeader(unreadable), null);
+		chmodSync(unreadable, 0o644);
+	}
 
 	const wrongType = `${edge}/b.jsonl`;
 	writeFileSync(wrongType, `${JSON.stringify({ type: "message", id: "x" })}\n`);
@@ -276,9 +280,15 @@ test("listSessions: survives malformed lines, counts array-form messages, skips 
 		f2,
 		`${JSON.stringify({ type: "session", version: 3, id: "id-np", timestamp: ts, cwd: "/x" })}\n`,
 	);
-	chmodSync(f2, 0o000);
-	assert.equal(listSessions(edge).length, 1);
-	chmodSync(f2, 0o644);
+	if (platform !== "win32") {
+		// #32: chmod semantics differ on Windows; unix-only behavior tested
+		chmodSync(f2, 0o000);
+		assert.equal(listSessions(edge).length, 1);
+		chmodSync(f2, 0o644);
+	} else {
+		// On Windows, skip the unreadable-file test as chmod does not enforce
+		assert.equal(listSessions(edge).length, 1);
+	}
 });
 
 test("renameSession: file without trailing newline still chains to the leaf", () => {
