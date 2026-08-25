@@ -814,6 +814,7 @@ test("manager: getDiagnostics filtered by uri", async () => {
 // --- mock-heavy branch closure: error paths, resolver fixtures, lifecycle edges -------
 
 import { mkdirSync as mk, chmodSync as ch, rmSync as rmf } from "node:fs";
+import platform from "node:os";
 
 test("onExit: in-memory client resolves 0 (no process)", async () => {
 	const { reader, writer } = makePipe();
@@ -1181,19 +1182,33 @@ test("resolveRustAnalyzer: unreadable shim falls through to toolchains", () => {
 	});
 	const shim = join(home, ".cargo", "bin", "rust-analyzer");
 	writeFileSync(shim, "#!/bin/sh\nrustup stuff");
-	ch(shim, 0o000); // unreadable → readFileSync throws → catch
-	writeFileSync(
-		join(home, ".rustup", "toolchains", "stable-t", "bin", "rust-analyzer"),
-		"toolchain bin",
-	);
-	try {
+	if (platform !== "win32") {
+		// #32: chmod semantics differ on Windows; unix-only behavior tested
+		ch(shim, 0o000); // unreadable → readFileSync throws → catch
+		writeFileSync(
+			join(home, ".rustup", "toolchains", "stable-t", "bin", "rust-analyzer"),
+			"toolchain bin",
+		);
+		try {
+			const resolved = resolveRustAnalyzer(home);
+			assert.ok(
+				resolved.includes("stable-t"),
+				`fell through to toolchain: ${resolved}`,
+			);
+		} finally {
+			ch(shim, 0o644); // restore so cleanup works
+		}
+	} else {
+		// On Windows, skip the unreadable-shim test as chmod does not enforce
+		writeFileSync(
+			join(home, ".rustup", "toolchains", "stable-t", "bin", "rust-analyzer"),
+			"toolchain bin",
+		);
 		const resolved = resolveRustAnalyzer(home);
 		assert.ok(
 			resolved.includes("stable-t"),
-			`fell through to toolchain: ${resolved}`,
+			`directly found in toolchain: ${resolved}`,
 		);
-	} finally {
-		ch(shim, 0o644); // restore so cleanup works
 	}
 });
 
