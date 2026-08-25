@@ -15,15 +15,22 @@
  * from a checkout; no node_modules resolution involved).
  */
 import {
-	fauxAssistantMessage,
-	fauxProvider,
+ fauxAssistantMessage,
+ fauxProvider,
 } from "../pi/packages/ai/src/providers/faux.ts";
 import type { ExtensionAPI } from "../pi/packages/coding-agent/src/core/extensions/types.ts";
 
 export default function (pi: ExtensionAPI): void {
-	const handle = fauxProvider({
-		models: [{ id: "faux-1", name: "Faux Smoke Model", reasoning: false, input: ["text"] }],
-	});
-	handle.setResponses([fauxAssistantMessage("compile-smoke-ok")]);
-	pi.registerProvider(handle.provider);
+ const handle = fauxProvider({
+  models: [
+   {
+    id: "faux-1",
+    name: "Faux Smoke Model",
+    reasoning: false,
+    input: ["text"],
+   },
+  ],
+ });
+ handle.setResponses([fauxAssistantMessage("compile-smoke-ok")]);
+ pi.registerProvider(handle.provider);
 }

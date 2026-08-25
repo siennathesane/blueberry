@@ -20,7 +20,6 @@ cd "$REPO_ROOT"
 OUT_DIR="$REPO_ROOT/dist"
 ENTRY="src/cli/entry.ts"
 ASSETS=(
-  --include pi/packages/coding-agent/src/modes/interactive/theme
   --include pi/packages/coding-agent/src/modes/interactive/assets
   --include pi/packages/coding-agent/src/core/export-html
 )

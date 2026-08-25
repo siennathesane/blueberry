@@ -467,16 +467,25 @@ export class Theme {
 // Theme Loading
 // ============================================================================
 
+// FORK(blueberry): built-in themes are STATIC imports — compiled binaries
+// (deno compile) must never read theme JSON from disk. The old runtime walk
+// (getThemesDir → getPackageDir → findNodePackageDir(__dirname)) resolves
+// inside the binary's temp extraction VFS where no files exist, breaking
+// startup everywhere except dev checkouts. Import attributes keep the fork's
+// own tsgo build working (resolveJsonModule is on in tsconfig.base).
+import darkThemeJson from "./dark.json" with { type: "json" };
+import lightThemeJson from "./light.json" with { type: "json" };
+
 let BUILTIN_THEMES: Record<string, ThemeJson> | undefined;
 
 function getBuiltinThemes(): Record<string, ThemeJson> {
 	if (!BUILTIN_THEMES) {
-		const themesDir = getThemesDir();
-		const darkPath = path.join(themesDir, "dark.json");
-		const lightPath = path.join(themesDir, "light.json");
+		// SAFETY: JSON module types are structurally inferred; the schema lives
+		// in theme-schema.json and loadThemeFromPath validated the shapes at
+		// build time — the cast mirrors the previous JSON.parse(...) as ThemeJson.
 		BUILTIN_THEMES = {
-			dark: JSON.parse(stripBom(fs.readFileSync(darkPath, "utf-8"))) as ThemeJson,
-			light: JSON.parse(stripBom(fs.readFileSync(lightPath, "utf-8"))) as ThemeJson,
+			dark: darkThemeJson as unknown as ThemeJson,
+			light: lightThemeJson as unknown as ThemeJson,
 		};
 	}
 	return BUILTIN_THEMES;
