@@ -49,19 +49,27 @@ test("library: parseSessionFile accepts session-header-first files and skips nes
 });
 
 test("todo-store: ageString arms via toCards — hours, days, and invalid ts", () => {
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('ag', 'ag', ?, ?, ?)",
-	).run(area, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('ag', 'ag', ?, ?, ?)",
+		)
+		.run(area, new Date().toISOString(), new Date().toISOString());
 	const t = createTodo(db, "ag", "aged");
 	// backdate: 5h old → `${h}h`; 3d old → `${d}d`; garbage → "?"
 	const back5h = new Date(Date.now() - 5 * 3600_000).toISOString();
 	const back3d = new Date(Date.now() - 3 * 86_400_000).toISOString();
-	db.prepare("UPDATE todos SET created_at = ? WHERE id = ?").run(back5h, t.todo!.id);
+	db
+		.prepare("UPDATE todos SET created_at = ? WHERE id = ?")
+		.run(back5h, t.todo!.id);
 	const [card] = toCards(listTodos(db, "ag"));
 	assert.ok(card!.age.endsWith("h"), `hours arm: ${card!.age}`);
-	db.prepare("UPDATE todos SET created_at = ? WHERE id = ?").run(back3d, t.todo!.id);
+	db
+		.prepare("UPDATE todos SET created_at = ? WHERE id = ?")
+		.run(back3d, t.todo!.id);
 	assert.ok(toCards(listTodos(db, "ag"))[0]!.age.endsWith("d"), "days arm");
-	db.prepare("UPDATE todos SET created_at = ? WHERE id = ?").run("not-a-date", t.todo!.id);
+	db
+		.prepare("UPDATE todos SET created_at = ? WHERE id = ?")
+		.run("not-a-date", t.todo!.id);
 	assert.equal(toCards(listTodos(db, "ag"))[0]!.age, "?", "invalid arm");
 });
 

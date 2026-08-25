@@ -175,11 +175,20 @@ export function resolveAddress(
 	if (/^\d+$/.test(trimmed)) {
 		const idx = Number(trimmed) - 1;
 		const session = sessions[idx];
-		if (!session)
-			throw new Error(
-				`index ${trimmed} out of range (project '${target.slug}' has ${sessions.length})`,
-			);
-		return { project: target, session };
+		if (session) return { project: target, session };
+		// Session ids are hex, so a uuid prefix can be purely numeric
+		// (~2% of 8-char prefixes are all digits). An out-of-range index is
+		// never what the user meant — fall through to prefix matching
+		// before rejecting.
+		if (trimmed.length >= 4) {
+			const byPrefix =
+			sessions.find((s) => s.id === trimmed) ??
+			sessions.find((s) => s.id.startsWith(trimmed));
+			if (byPrefix) return { project: target, session: byPrefix };
+		}
+		throw new Error(
+			`index ${trimmed} out of range (project '${target.slug}' has ${sessions.length})`,
+		);
 	}
 
 	if (trimmed.length >= 4) {

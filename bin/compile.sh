@@ -46,7 +46,10 @@ command -v timeout >/dev/null 2>&1 && TIMEOUT_BIN=timeout
 run_to() {
   # $1 is always the seconds budget; without a timeout binary we drop it
   # (running bare beats not running — the smoke is fast either way)
-  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$@"; else shift; "$@"; fi
+  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$@"; else
+    shift
+    "$@"
+  fi
 }
 
 say() { printf '\033[1;34m▶ %s\033[0m\n' "$*"; }
@@ -115,8 +118,14 @@ ok "built [$BUILD_MODE] → $BIN"
 # there but passes plain, rebuild plain — never ship an unproven artifact.
 smoke() {
   local bin="$1"
-  [ -x "$bin" ] || { echo "smoke diag: binary not executable" >&2; return 1; }
-  "$bin" --version >/dev/null 2>&1 || { echo "smoke diag: --version failed" >&2; return 1; }
+  [ -x "$bin" ] || {
+    echo "smoke diag: binary not executable" >&2
+    return 1
+  }
+  "$bin" --version >/dev/null 2>&1 || {
+    echo "smoke diag: --version failed" >&2
+    return 1
+  }
 
   # DB-only persistence proof: a full session through the compiled fork using
   # the deterministic faux provider (scripted reply, no network, no auth) —

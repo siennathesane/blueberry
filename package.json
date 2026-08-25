@@ -1,6 +1,6 @@
 {
 	"name": "blueberry",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"private": true,
 	"description": "A personal pi distribution. Blueberry pi, served with orange juice.",
 	"keywords": [
