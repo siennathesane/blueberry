@@ -48,11 +48,19 @@ export function composeIdentity(probe: IdentityProbe): string {
 	if (probe.lspLanguages.length > 0) {
 		const langs = [...probe.lspLanguages].sort().join(", ");
 		orchestration.push(
-			`In unfamiliar code, use bb_lsp first (definitions, references, workspace symbols — servers installed: ${langs}).`,
+			`Navigation is LSP-first: for any symbol or code question (where is this defined, who calls it, what's the outline, does it compile) use bb_lsp — definitions, references, workspace symbols, diagnostics (servers installed: ${langs}). Raw grep/read is the FALLBACK when the language server has no answer, not the default.`,
+		);
+	}
+	if (probe.lspLanguages.length > 0) {
+		orchestration.push(
+			"Past decisions and prior context live in history: that is bb_search's domain — context neighborhoods before re-deriving anything. Code questions go to bb_lsp; history questions go to bb_search.",
+		);
+	} else {
+		orchestration.push(
+			"Past decisions and prior context live in history: use bb_search with context neighborhoods before re-deriving anything.",
 		);
 	}
 	orchestration.push(
-		"Past decisions and prior context live in history: use bb_search with context neighborhoods before re-deriving anything.",
 		"Other projects' sessions are reachable: bb_library gives cross-project views when the current repo isn't the whole story.",
 	);
 	if (probe.hasTodos) {

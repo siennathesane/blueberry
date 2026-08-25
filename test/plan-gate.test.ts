@@ -29,9 +29,11 @@ beforeEach(() => {
 	// register the project in the registry exactly as the launcher would
 	db = openDb(agentDir);
 	const slug = "gated";
-	db.prepare(
-		"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-	).run(slug, slug, root, new Date().toISOString(), new Date().toISOString());
+	db
+		.prepare(
+			"INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		)
+		.run(slug, slug, root, new Date().toISOString(), new Date().toISOString());
 	projectId = slug;
 	process.env["PI_CODING_AGENT_DIR"] = agentDir;
 });
@@ -76,7 +78,14 @@ test("gate: normal and design modes never cancel regardless of designs", async (
 });
 
 test("ring: mode writes round-trip freely (no entry guards at the DB layer)", () => {
-	for (const mode of ["design", "plan", "normal", "plan", "design", "normal"] as const) {
+	for (const mode of [
+		"design",
+		"plan",
+		"normal",
+		"plan",
+		"design",
+		"normal",
+	] as const) {
 		writeMode(db, mode);
 		assert.equal(readMode(db), mode, `${mode} round-trips`);
 	}

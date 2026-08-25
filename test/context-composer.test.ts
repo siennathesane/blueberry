@@ -45,6 +45,20 @@ test("identity: ZERO-EVICTION — late capability churn never changes composed b
 	assert.ok(!/\d{1,2}:\d{2}/.test(frozen), "no clock times in identity");
 });
 
+test("identity: LSP-first steering — navigation rule explicit, grep is fallback", () => {
+	const id = composeIdentity(baseProbe);
+	assert.ok(id.includes("LSP-first"), "the decision rule is named");
+	assert.ok(id.includes("FALLBACK"), "raw grep/read is framed as fallback");
+	assert.ok(
+		id.includes("Code questions go to bb_lsp; history questions go to bb_search"),
+		"domain split stated",
+	);
+	// gating: without servers, none of the LSP steering appears
+	const bare = composeIdentity({ ...baseProbe, lspLanguages: [] });
+	assert.ok(!bare.includes("LSP-first"));
+	assert.ok(!bare.includes("bb_lsp"));
+});
+
 test("identity: capability gating — no bb_lsp mention without servers", () => {
 	const withLsp = composeIdentity(baseProbe);
 	assert.ok(withLsp.includes("bb_lsp"));

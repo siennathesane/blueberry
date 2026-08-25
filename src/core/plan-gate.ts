@@ -35,9 +35,11 @@ export function readMode(db: DatabaseSync): Mode {
 }
 
 export function writeMode(db: DatabaseSync, mode: Mode): void {
-	db.prepare(
-		"INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json",
-	).run(MODE_KEY, JSON.stringify({ mode }));
+	db
+		.prepare(
+			"INSERT INTO config (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json",
+		)
+		.run(MODE_KEY, JSON.stringify({ mode }));
 }
 
 export interface GateCancel {
