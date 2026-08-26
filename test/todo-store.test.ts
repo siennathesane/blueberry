@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { openDb } from "../src/core/db.ts";
 import {
   addDep,
+  ageString,
   breadcrumb,
   checkpointDigest,
   createTodo,
   deleteTodo,
+  formatHistoryLines,
   hex6Of,
   listTodos,
   newTodoId,
@@ -374,4 +376,124 @@ test("plain cards have null designId", () => {
   const nonNulls = rows.filter((r) => r.designId !== null);
   assert.equal(nonNulls.length, 1);
   assert.equal(nonNulls[0]!.designId, "aabbcc");
+});
+
+// --- done/dropped history visibility ------------------------------------------
+
+test("listTodos returns done and dropped rows alongside active ones", () => {
+  const a = make("will complete");
+  const b = make("will abandon");
+  const c = make("stays active");
+
+  assert.ok(setStage(db, PROJECT, a, "done").ok);
+  assert.ok(setStage(db, PROJECT, b, "dropped").ok);
+
+  const rows = listTodos(db, PROJECT);
+  const stages = new Set(rows.map((r) => r.stage));
+  assert.ok(stages.has("done"), "done row present");
+  assert.ok(stages.has("dropped"), "dropped row present");
+  assert.ok(stages.has("todo"), "active row present");
+});
+
+test("setStage stamps done_at on done, null on dropped", () => {
+  const a = make("to done");
+  const b = make("to dropped");
+
+  assert.ok(setStage(db, PROJECT, a, "done").ok);
+  assert.ok(setStage(db, PROJECT, b, "dropped").ok);
+
+  const done = listTodos(db, PROJECT).find((t) => t.hex6 === a)!;
+  const dropped = listTodos(db, PROJECT).find((t) => t.hex6 === b)!;
+
+  assert.ok(done.done_at !== null, "done_at set for done");
+  assert.equal(dropped.done_at, null, "done_at null for dropped");
+});
+
+test("formatHistoryLines renders done and dropped, newest first, empty when no history", () => {
+  const a = make("completed task");
+  const b = make("abandoned task");
+  const c = make("stays active");
+
+  assert.ok(setStage(db, PROJECT, a, "done").ok);
+  // backdate done_at so b (dropped just now) appears first
+  db
+    .prepare("UPDATE todos SET done_at = ? WHERE substr(id, -6) = ?")
+    .run(new Date(Date.now() - 60_000).toISOString(), a);
+
+  assert.ok(setStage(db, PROJECT, b, "dropped").ok);
+
+  const rows = listTodos(db, PROJECT);
+  const lines = formatHistoryLines(rows);
+
+  assert.equal(lines.length, 2, "two history lines");
+
+  // b (dropped, newer updated_at) is first
+  assert.ok(lines[0]!.startsWith(`history: ${b}`), "dropped is newest first");
+  assert.ok(lines[0]!.includes("dropped"), "dropped card shows dropped");
+  assert.ok(
+    !lines[0]!.includes("done "),
+    "dropped card does not show done prefix",
+  );
+  assert.ok(lines[0]!.includes("abandoned task"), "title present");
+
+  // a (done, older done_at) is second
+  assert.ok(lines[1]!.startsWith(`history: ${a}`), "done card present");
+  assert.ok(lines[1]!.includes("done "), "done card shows done before age");
+  assert.ok(lines[1]!.includes("completed task"), "title present");
+
+  // active-only rows produce no history
+  const activeOnly = rows.filter(
+    (r) => r.stage !== "done" && r.stage !== "dropped",
+  );
+  assert.deepEqual(
+    formatHistoryLines(activeOnly),
+    [],
+    "no lines when no history rows",
+  );
+});
+
+test("formatHistoryLines indents anchor children and renders dropped anchors", () => {
+  const anchorRes = seedAnchor(db, PROJECT, "x1y2z3", "Design anchor");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+  const child = createTodo(db, PROJECT, "Child of anchor");
+  assert.ok(child.ok && child.todo);
+  assert.ok(
+    addDep(db, PROJECT, child.todo.hex6, anchorRes.todo.hex6).ok,
+  );
+
+  // Drop the anchor
+  assert.ok(setStage(db, PROJECT, anchorRes.todo.hex6, "dropped").ok);
+
+  const rows = listTodos(db, PROJECT);
+  const lines = formatHistoryLines(rows);
+
+  assert.ok(lines.length >= 1, "at least the dropped anchor");
+  const anchorLine = lines.find((l) => l.includes("x1y2z3"));
+  assert.ok(anchorLine, "anchor appears in history");
+  assert.ok(
+    anchorLine!.includes("[x1y2z3]"),
+    "anchor uses designId format",
+  );
+  assert.ok(anchorLine!.includes("dropped"), "anchor shows dropped");
+});
+
+test("ageString rounds correctly for various intervals", () => {
+  assert.equal(ageString(new Date().toISOString()), "new");
+  assert.equal(
+    ageString(new Date(Date.now() - 30_000).toISOString()),
+    "new",
+    "under 1 min is new",
+  );
+  assert.equal(
+    ageString(new Date(Date.now() - 90_000).toISOString()),
+    "1m",
+  );
+  assert.equal(
+    ageString(new Date(Date.now() - 3_600_000).toISOString()),
+    "1h",
+  );
+  assert.equal(
+    ageString(new Date(Date.now() - 25 * 86_400_000).toISOString()),
+    "25d",
+  );
 });

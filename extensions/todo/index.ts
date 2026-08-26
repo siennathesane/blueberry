@@ -33,6 +33,7 @@ import {
   checkpointDigest,
   createTodo,
   deleteTodo,
+  formatHistoryLines,
   listTodos,
   removeDep,
   seedAnchor,
@@ -254,11 +255,14 @@ export default function (pi: ExtensionAPI) {
         switch (params.action) {
           case "list": {
             const rows = listTodos(db, proj.id);
-            const cards = toCards(rows);
-            if (cards.length === 0) {
+            const activeRows = rows.filter(
+              (r) => r.stage !== "done" && r.stage !== "dropped",
+            );
+            const cards = toCards(activeRows);
+            if (rows.length === 0) {
               return {
                 content: [{ type: "text", text: `no todos in '${proj.slug}'` }],
-                details: { cards: [] },
+                details: { cards: [], history: [] },
               };
             }
             const anchorIds = new Set(
@@ -272,11 +276,11 @@ export default function (pi: ExtensionAPI) {
             }
             const cardById = new Map<string, (typeof cards)[number]>(
               cards.map((c) => {
-                const full = rows.find((r) => r.hex6 === c.id);
+                const full = activeRows.find((r) => r.hex6 === c.id);
                 return full ? [full.id, c] : undefined;
               }).filter(Boolean) as Array<[string, (typeof cards)[number]]>,
             );
-            const lines = rows.map((r) => {
+            const lines = activeRows.map((r) => {
               const c = cardById.get(r.id);
               if (!c) return "";
               if (r.isAnchor) {
@@ -291,12 +295,30 @@ export default function (pi: ExtensionAPI) {
                   : ""
               }`;
             });
+            const historyLines = formatHistoryLines(rows);
+            const allLines = [...lines, ...historyLines];
+            const history = rows
+              .filter((r) => r.stage === "done" || r.stage === "dropped")
+              .sort((a, b) => {
+                const tsA =
+                  a.stage === "done" && a.done_at ? a.done_at : a.updated_at;
+                const tsB =
+                  b.stage === "done" && b.done_at ? b.done_at : b.updated_at;
+                return new Date(tsB).getTime() - new Date(tsA).getTime();
+              })
+              .map((r) => ({
+                hex6: r.hex6,
+                stage: r.stage,
+                title: r.title,
+                doneAt: r.done_at,
+                updatedAt: r.updated_at,
+              }));
             return {
               content: [{
                 type: "text",
-                text: `[${proj.slug}]\n${lines.join("\n")}`,
+                text: `[${proj.slug}]\n${allLines.join("\n")}`,
               }],
-              details: { cards },
+              details: { cards, history },
             };
           }
           case "create": {

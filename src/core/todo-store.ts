@@ -162,7 +162,7 @@ export function toCards(
   }));
 }
 
-function ageString(iso: string): string {
+export function ageString(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   if (Number.isNaN(ms)) return "?";
   const m = Math.floor(ms / 60_000);
@@ -172,6 +172,54 @@ function ageString(iso: string): string {
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
   return `${d}d`;
+}
+
+/** Format done/dropped rows as collapsed history lines (newest first). */
+export function formatHistoryLines(
+  rows: Array<
+    TodoRow & {
+      deps: string[];
+      blockedBy: string[];
+      isAnchor: boolean;
+      designId: string | null;
+    }
+  >,
+): string[] {
+  const history = rows.filter(
+    (r) => r.stage === "done" || r.stage === "dropped",
+  );
+  if (history.length === 0) return [];
+
+  // Sort newest first
+  history.sort((a, b) => {
+    const tsA = a.stage === "done" && a.done_at ? a.done_at : a.updated_at;
+    const tsB = b.stage === "done" && b.done_at ? b.done_at : b.updated_at;
+    return new Date(tsB).getTime() - new Date(tsA).getTime();
+  });
+
+  // Determine anchor children (from all rows, not just history)
+  const anchorIds = new Set(rows.filter((r) => r.isAnchor).map((r) => r.id));
+  const childOfAnchor = new Set<string>();
+  for (const row of rows) {
+    if (row.deps.some((d) => anchorIds.has(d))) {
+      childOfAnchor.add(row.id);
+    }
+  }
+
+  return history.map((r) => {
+    const ageTs = r.stage === "done" && r.done_at
+      ? r.done_at
+      : r.updated_at;
+    const age = ageString(ageTs);
+    const agePrefix = r.stage === "done" ? "done " : "";
+
+    if (r.isAnchor) {
+      return `history: [${r.designId}] ${r.title} [${r.stage}] (${agePrefix}${age})`;
+    }
+
+    const prefix = childOfAnchor.has(r.id) ? "  " : "";
+    return `history: ${prefix}${r.hex6} ${r.stage} ${r.title} (${agePrefix}${age})`;
+  });
 }
 
 export interface AnchorRow extends TodoRow {
