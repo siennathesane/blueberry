@@ -12,11 +12,14 @@ import {
   idIsFree,
   mintId,
   parseJunit,
+  readLcovIfPresent,
   registerId,
   retireId,
 } from "../src/core/lifecycle.ts";
 import { openDb } from "../src/core/db.ts";
-import { cleanup, tmpAgentDir } from "./helpers.ts";
+import { cleanup, tmpAgentDir, tmpDir } from "./helpers.ts";
+import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 
 let agentDir: string;
 
@@ -276,5 +279,63 @@ test("junit_results round-trip: parsed cases persist with ids and outcomes", () 
   assert.equal(rows[0]!.id, "abc123");
   assert.equal(rows[1]!.outcome, "fail");
   assert.equal(rows[1]!.id, "def456");
+  db.close();
+});
+
+// --- Lcov opportunistic read (design 005 §Ingestion) --------------------------
+
+test("readLcovIfPresent returns null for absent file", () => {
+  const dir = tmpDir();
+  const result = readLcovIfPresent(join(dir, "nope.lcov"));
+  assert.equal(result, null);
+  cleanup(dir);
+});
+
+test("readLcovIfPresent aggregates LF and LH across multiple SF sections", () => {
+  const dir = tmpDir();
+  const path = join(dir, "cov.lcov");
+  writeFileSync(
+    path,
+    [
+      "SF:A.ts",
+      "LF:10",
+      "LH:8",
+      "end_of_record",
+      "SF:B.ts",
+      "LF:5",
+      "LH:5",
+      "end_of_record",
+    ].join("\n") + "\n",
+  );
+  const summary = readLcovIfPresent(path);
+  assert.notEqual(summary, null);
+  assert.equal(summary!.linesHit, 13);
+  assert.equal(summary!.linesFound, 15);
+  assert.equal(typeof summary!.mtime, "string");
+  assert.ok(summary!.mtime.length > 0);
+  cleanup(dir);
+});
+
+test("readLcovIfPresent returns null for malformed content with no LF lines", () => {
+  const dir = tmpDir();
+  const path = join(dir, "bad.lcov");
+  writeFileSync(path, "SF:A.ts\nend_of_record\n");
+  assert.equal(readLcovIfPresent(path), null);
+  cleanup(dir);
+});
+
+test("lcov_snapshot upsert: second INSERT OR REPLACE overwrites first", () => {
+  const db = openDb(agentDir);
+  const upsert = db.prepare(
+    "INSERT OR REPLACE INTO lcov_snapshot (path, lines_hit, lines_found, mtime, read_at) VALUES (?, ?, ?, ?, ?)",
+  );
+  upsert.run("/a.lcov", 8, 10, "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+  upsert.run("/a.lcov", 9, 10, "2026-01-02T00:00:00.000Z", "2026-01-02T00:00:00.000Z");
+  const rows = db
+    .prepare("SELECT lines_hit, lines_found, mtime FROM lcov_snapshot")
+    .all() as Array<{ lines_hit: number; lines_found: number; mtime: string }>;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.lines_hit, 9);
+  assert.equal(rows[0]!.mtime, "2026-01-02T00:00:00.000Z");
   db.close();
 });

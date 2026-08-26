@@ -189,6 +189,13 @@ CREATE TABLE IF NOT EXISTS junit_results (
   id TEXT,
   ts TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lcov_snapshot (
+  path TEXT PRIMARY KEY,
+  lines_hit INTEGER NOT NULL,
+  lines_found INTEGER NOT NULL,
+  mtime TEXT NOT NULL,
+  read_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS config (
   key TEXT PRIMARY KEY,
   json TEXT NOT NULL

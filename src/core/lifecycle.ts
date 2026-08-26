@@ -9,6 +9,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
 import { hex6Of } from "./todo-store.ts";
 
 /** Trailing six-lowercase-hex id at end of line — the single join pattern. */
@@ -194,4 +195,52 @@ export function parseJunit(xml: string): JunitCase[] {
     out.push({ testName: name, className, outcome, id });
   }
   return out;
+}
+
+// --- Lcov opportunistic read (design 005 §Ingestion) --------------------------
+
+export interface LcovSummary {
+  file: string;
+  linesHit: number;
+  linesFound: number;
+  mtime: string;
+}
+
+/**
+ * Read and aggregate an lcov info file. Returns null if the file is absent,
+ * unreadable, or contains no LF: lines (treated as malformed). Never throws.
+ */
+export function readLcovIfPresent(path: string): LcovSummary | null {
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    return null;
+  }
+  let content: string;
+  try {
+    content = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  let linesFound = 0;
+  let linesHit = 0;
+  for (const line of content.split("\n")) {
+    const lfMatch = /^LF:(\d+)/.exec(line);
+    if (lfMatch) {
+      linesFound += Number(lfMatch[1]);
+      continue;
+    }
+    const lhMatch = /^LH:(\d+)/.exec(line);
+    if (lhMatch) {
+      linesHit += Number(lhMatch[1]);
+    }
+  }
+  if (linesFound === 0) return null;
+  return {
+    file: path,
+    linesHit,
+    linesFound,
+    mtime: stat.mtime.toISOString(),
+  };
 }

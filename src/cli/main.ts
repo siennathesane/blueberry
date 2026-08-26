@@ -44,7 +44,7 @@ import {
   type ViewKind,
 } from "../core/library.ts";
 import { getVersion } from "../core/version.ts";
-import { parseJunit } from "../core/lifecycle.ts";
+import { parseJunit, readLcovIfPresent } from "../core/lifecycle.ts";
 import type { UpdaterIO } from "../core/updater.ts";
 import { loadRegistryDb, openDb } from "../core/db.ts";
 import { restoreMissing, syncStores } from "../core/sync.ts";
@@ -1150,8 +1150,29 @@ async function lifecycleCmd(rest: string[], deps: CliDeps): Promise<number> {
       return 0;
     }
     case "lcov": {
-      deps.err("not yet implemented");
-      return 1;
+      const path = args[0];
+      if (!path) return usageErr(deps, "lifecycle lcov <path>");
+      const summary = readLcovIfPresent(path);
+      if (summary === null) {
+        deps.err(`no lcov file at ${path} (or unreadable) — skipping; nothing stored`);
+        return 0;
+      }
+      const db = openDb(deps.agentDir);
+      try {
+        db.prepare(
+          "INSERT OR REPLACE INTO lcov_snapshot (path, lines_hit, lines_found, mtime, read_at) VALUES (?, ?, ?, ?, ?)",
+        ).run(
+          path,
+          summary.linesHit,
+          summary.linesFound,
+          summary.mtime,
+          new Date().toISOString(),
+        );
+      } finally {
+        db.close();
+      }
+      deps.out(`lcov: ${summary.linesHit}/${summary.linesFound} lines (mtime ${summary.mtime})`);
+      return 0;
     }
     default:
       return usageErr(deps, "lifecycle junit <path> | lcov <path>");
