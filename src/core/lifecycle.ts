@@ -11,6 +11,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { hex6Of } from "./todo-store.ts";
+import type { LinkCapability } from "./deeplink.ts";
+import { renderCardRef } from "./deeplink.ts";
 
 /** Trailing six-lowercase-hex id at end of line — the single join pattern. */
 export const ID_LINE_PATTERN = /\[([0-9a-f]{6})\]\s*$/;
@@ -205,7 +207,11 @@ export function parseJunit(xml: string): JunitCase[] {
  * Looks up the id in the lifecycle_ids registry, fetches open (non-done/dropped)
  * cards under its anchor, and composes a compact block.
  */
-export function buildFailureBlock(db: DatabaseSync, id: string): string {
+export function buildFailureBlock(
+  db: DatabaseSync,
+  id: string,
+  opts?: { cap?: LinkCapability; slug?: string },
+): string {
   const row = db
     .prepare(
       "SELECT design_doc, paragraph, status FROM lifecycle_ids WHERE id = ?",
@@ -233,7 +239,12 @@ export function buildFailureBlock(db: DatabaseSync, id: string): string {
     )
     .all(id, id) as Array<{ id: string; title: string; stage: string }>;
   for (const card of openCards) {
-    lines.push(`open: ${hex6Of(card.id)} ${card.title}`);
+    const h = hex6Of(card.id);
+    if (opts?.cap && opts.slug) {
+      lines.push(renderCardRef({ hex6: h, title: card.title, stage: card.stage, slug: opts.slug }, opts.cap));
+    } else {
+      lines.push(`open: ${h} ${card.title}`);
+    }
   }
   lines.push(`status: ${row.status}`);
   return lines.join("\n");
@@ -249,6 +260,7 @@ export function collectFailureBlocks(
   db: DatabaseSync,
   ids: string[],
   cap = 3,
+  opts?: { linkCap?: LinkCapability; slug?: string },
 ): { blocks: string[]; overflowIds: string[] } {
   if (ids.length === 0) return { blocks: [], overflowIds: [] };
   // Dedupe preserving first occurrence
@@ -260,7 +272,9 @@ export function collectFailureBlocks(
       unique.push(id);
     }
   }
-  const blocks = unique.slice(0, cap).map((id) => buildFailureBlock(db, id));
+  const blocks = unique.slice(0, cap).map((id) =>
+    buildFailureBlock(db, id, opts?.linkCap ? { cap: opts.linkCap, slug: opts.slug } : undefined),
+  );
   const overflowIds = unique.slice(cap);
   return { blocks, overflowIds };
 }

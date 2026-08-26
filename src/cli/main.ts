@@ -61,6 +61,7 @@ import {
   unregisterScheme,
   shimAppDir,
 } from "../core/deeplink.ts";
+import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -71,6 +72,8 @@ export interface CliDeps {
   out: (line: string) => void;
   err: (line: string) => void;
   gitRemoteReader?: (root: string) => string | null;
+  /** Open a deeplink in a new Ghostty tab. Injected for testing. */
+  ghosttyTab?: (slug: string, hex6: string) => void;
 }
 
 export function defaultDeps(): CliDeps {
@@ -1304,6 +1307,29 @@ function deeplinkCmd(rest: string[], deps: CliDeps): number {
         return 1;
       }
       if (parsed.kind === "todo") {
+        // If launched by LaunchServices (no terminal), try Ghostty new tab
+        if (process.env["TERM_PROGRAM"] === undefined) {
+          if (deps.ghosttyTab) {
+            deps.ghosttyTab(parsed.slug, parsed.hex6);
+            return 0;
+          }
+          // Real exec: check for ghostty on PATH
+          try {
+            const which = execSync("command -v ghostty", {
+              stdio: ["ignore", "pipe", "ignore"],
+              encoding: "utf8",
+            }).trim();
+            if (which) {
+              execSync(
+                `ghostty +new-tab -e blueberry todo show ${parsed.slug} ${parsed.hex6}`,
+                { stdio: "ignore" },
+              );
+              return 0;
+            }
+          } catch {
+            // ghostty not found — fall through to in-terminal path
+          }
+        }
         return todoCmd(["show", parsed.slug, parsed.hex6], deps);
       }
       deps.err(`blueberry: unhandled deeplink kind '${parsed.kind}'`);

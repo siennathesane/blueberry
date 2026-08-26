@@ -33,6 +33,7 @@ import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { collectFailureBlocks, parseJunit } from "../../src/core/lifecycle.ts";
+import { probeLinkCapability, type LinkCapability } from "../../src/core/deeplink.ts";
 
 /** Current branch name from .git/HEAD; null when not a git repo / unreadable. */
 function gitBranch(root: string): string | null {
@@ -241,7 +242,7 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("context", async (event) => {
+  pi.on("context", async (event, ctx) => {
     if (pendingFailureIds.length === 0) return undefined;
     const agentDir = process.env["PI_CODING_AGENT_DIR"];
     if (!agentDir) {
@@ -252,9 +253,29 @@ export default function (pi: ExtensionAPI) {
       const { openDb } = await import("../../src/core/db.ts");
       const db = openDb(agentDir);
       try {
+        const linkCap: LinkCapability = probeLinkCapability();
+        // resolve slug for card refs (best-effort: use the first project)
+        let failSlug: string | undefined;
+        try {
+          const { loadRegistryDb } = await import("../../src/core/db.ts");
+          const { normalizePathForCompare } = await import("../../src/core/util.ts");
+          const registry = loadRegistryDb(db);
+          const boundary = findProjectBoundary(resolve(ctx.cwd));
+          const root = boundary ? boundary.root : resolve(ctx.cwd);
+          const project = registry.projects.find(
+            (p) =>
+              normalizePathForCompare(p.canonicalPath) ===
+                normalizePathForCompare(root),
+          );
+          failSlug = project?.slug;
+        } catch {
+          // best-effort
+        }
         const { blocks, overflowIds } = collectFailureBlocks(
           db,
           pendingFailureIds,
+          3,
+          { linkCap, slug: failSlug },
         );
         const content = "[lifecycle]" + "\n" + blocks.join("\n\n") +
           (overflowIds.length

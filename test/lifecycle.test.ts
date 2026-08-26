@@ -636,3 +636,50 @@ function anchorHex(
   if (!row) throw new Error(`no anchor for ${designId}`);
   return hex6Of(row.id);
 }
+
+
+// --- buildFailureBlock with link capability ----------------------------------
+
+test("buildFailureBlock with cap inline renders inline card form", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  const projectId = "proj-failblock-cap";
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)",
+    )
+    .run(projectId, now, now);
+
+  registerId(db, "cc11dd", {
+    designDoc: "006-ref.md",
+    paragraph: "Links degrade gracefully. [cc11dd]",
+  });
+  const anchorRes = seedAnchor(db, projectId, "cc11dd", "anchor for cap test");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+
+  // Create a non-anchor child card and make it a dep of the anchor
+  const childRes = createTodo(db, projectId, "impl the link thing");
+  assert.ok(childRes.ok && childRes.todo);
+  const childHex = childRes.todo.hex6;
+  const anchorHex = anchorRes.todo.hex6;
+  const depRes = addDep(db, projectId, childHex, anchorHex);
+  assert.ok(depRes.ok);
+
+  const block = buildFailureBlock(db, "cc11dd", {
+    cap: "inline",
+    slug: "p",
+  });
+
+  // Must contain the inline form (with show command), not the old "open: hex6 title" form
+  assert.ok(block.includes("impl the link thing"), "contains child card title");
+  assert.ok(
+    block.includes("blueberry todo show p " + childHex),
+    "contains inline show command for child card",
+  );
+  // Must still contain the requirement text
+  assert.ok(block.includes("Links degrade gracefully"), "contains paragraph");
+  // Must NOT contain old "open:" prefix for the child card
+  assert.ok(!block.includes("open: " + childHex), "no old open: prefix for card ref");
+
+  db.close();
+});

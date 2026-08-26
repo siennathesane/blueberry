@@ -337,3 +337,127 @@ test("deeplink open shares output with todo show", async () => {
 
   assert.deepEqual(openOutput, showOutput);
 });
+
+
+// --- probeLinkCapability --------------------------------------------------------
+
+import {
+  probeLinkCapability,
+  renderCardRef,
+  type LinkCapability,
+} from "../src/core/deeplink.ts";
+
+test("probeLinkCapability returns scheme when registered", () => {
+  assert.equal(
+    probeLinkCapability({}, { isRegistered: () => true }),
+    "scheme",
+  );
+});
+
+test("probeLinkCapability returns matcher for Ghostty env", () => {
+  assert.equal(
+    probeLinkCapability(
+      { TERM_PROGRAM: "ghostty" },
+      { isRegistered: () => false },
+    ),
+    "matcher",
+  );
+});
+
+test("probeLinkCapability returns matcher for GHOSTTY_RESOURCES_DIR env", () => {
+  assert.equal(
+    probeLinkCapability(
+      { GHOSTTY_RESOURCES_DIR: "/opt/ghostty" },
+      { isRegistered: () => false },
+    ),
+    "matcher",
+  );
+});
+
+test("probeLinkCapability returns inline when neither registered nor Ghostty", () => {
+  assert.equal(
+    probeLinkCapability({}, { isRegistered: () => false }),
+    "inline",
+  );
+});
+
+// --- renderCardRef -------------------------------------------------------------
+
+const CARD = { hex6: "ab12cd", title: "test card", stage: "todo", slug: "myproj" };
+
+test("renderCardRef scheme+tty produces OSC 8 hyperlink", () => {
+  const result = renderCardRef(CARD, "scheme", { tty: true });
+  assert.ok(result.includes("]8;;"), "contains OSC 8 open");
+  assert.ok(result.includes("bb://todo/myproj/ab12cd"), "contains URL");
+  assert.ok(result.includes("ab12cd test card"), "contains display text");
+  assert.ok(result.includes(""), "contains BEL");
+});
+
+test("renderCardRef scheme non-tty produces markdown link", () => {
+  const result = renderCardRef(CARD, "scheme", { tty: false });
+  assert.equal(
+    result,
+    "[ab12cd test card](bb://todo/myproj/ab12cd)",
+  );
+});
+
+test("renderCardRef matcher produces bare URL", () => {
+  const result = renderCardRef(CARD, "matcher");
+  assert.equal(result, "bb://todo/myproj/ab12cd");
+});
+
+test("renderCardRef inline contains show command", () => {
+  const result = renderCardRef(CARD, "inline");
+  assert.ok(result.includes("ab12cd"), "contains hex6");
+  assert.ok(result.includes("[todo]"), "contains stage");
+  assert.ok(result.includes("test card"), "contains title");
+  assert.ok(
+    result.includes("blueberry todo show myproj ab12cd"),
+    "contains show command",
+  );
+});
+
+// --- appleScriptShim unchanged shape -------------------------------------------
+
+test("appleScriptShim contains deeplink open command", () => {
+  const script = appleScriptShim();
+  assert.ok(script.includes("deeplink open"), "must invoke deeplink open");
+  assert.ok(script.includes("on open location theURL"), "must be an open location handler");
+});
+
+// --- ghostty tab path (spy via CliDeps.ghosttyTab) -----------------------------
+
+test("deeplink open calls ghosttyTab spy when TERM_PROGRAM is absent", async () => {
+  const hex6 = (globalThis as Record<string, unknown>).__dlHex6 as string;
+  const url = `bb://todo/${DL_PROJECT}/${hex6}`;
+  const called: Array<[string, string]> = [];
+  const d: CliDeps = {
+    ...deeplinkDeps(),
+    ghosttyTab: (slug, h) => { called.push([slug, h]); },
+  };
+  // TERM_PROGRAM is undefined by default in test env
+  delete process.env["TERM_PROGRAM"];
+  const rc = await main(["deeplink", "open", url], d);
+  assert.equal(rc, 0);
+  assert.deepEqual(called, [[DL_PROJECT, hex6]], "spy called with slug and hex6");
+  assert.equal(deeplinkOutLines.length, 0, "prints nothing when opening in ghostty tab");
+});
+
+test("deeplink open skips ghosttyTab when TERM_PROGRAM is set", async () => {
+  const hex6 = (globalThis as Record<string, unknown>).__dlHex6 as string;
+  const url = `bb://todo/${DL_PROJECT}/${hex6}`;
+  const called: Array<[string, string]> = [];
+  const d: CliDeps = {
+    ...deeplinkDeps(),
+    ghosttyTab: (slug, h) => { called.push([slug, h]); },
+  };
+  process.env["TERM_PROGRAM"] = "ghostty";
+  try {
+    const rc = await main(["deeplink", "open", url], d);
+    assert.equal(rc, 0);
+    assert.equal(called.length, 0, "spy should not be called when TERM_PROGRAM is set");
+    assert.ok(deeplinkOutLines.length > 0, "prints card when in terminal");
+  } finally {
+    delete process.env["TERM_PROGRAM"];
+  }
+});

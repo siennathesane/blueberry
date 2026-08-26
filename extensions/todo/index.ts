@@ -22,6 +22,11 @@ import {
   type TodoCard,
   visibleCells,
 } from "../../src/core/todo-pane.ts";
+import {
+  probeLinkCapability,
+  renderCardRef,
+  type LinkCapability,
+} from "../../src/core/deeplink.ts";
 
 /** Minimal TUI surface the pane needs (requestRender). */
 interface TuiLike {
@@ -138,6 +143,13 @@ async function openTodoPane(ctx: {
     };
     return component;
   });
+}
+
+// Probed once per extension load — stable for the session.
+let _resolvedCap: LinkCapability | null = null;
+function resolvedCap(): LinkCapability {
+  if (_resolvedCap === null) _resolvedCap = probeLinkCapability();
+  return _resolvedCap;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -280,6 +292,8 @@ export default function (pi: ExtensionAPI) {
                 return full ? [full.id, c] : undefined;
               }).filter(Boolean) as Array<[string, (typeof cards)[number]]>,
             );
+            const cap = resolvedCap();
+            const tty = Deno.stdout.isTerminal?.() ?? true;
             const lines = activeRows.map((r) => {
               const c = cardById.get(r.id);
               if (!c) return "";
@@ -287,7 +301,12 @@ export default function (pi: ExtensionAPI) {
                 return `[${r.designId}] ${r.title} [${c.stage}] (${c.age})`;
               }
               const prefix = childOfAnchor.has(r.id) ? "  " : "";
-              return `${prefix}${c.id} [${c.stage}] ${r.title} (${c.age})${
+              const ref = renderCardRef(
+                { hex6: r.hex6, title: r.title, stage: r.stage, slug: proj.slug },
+                cap,
+                { tty },
+              );
+              return `${prefix}${ref} (${c.age})${
                 c.ready ? " ready" : ""
               }${
                 r.blockedBy?.length

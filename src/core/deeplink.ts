@@ -6,6 +6,7 @@
  */
 
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import {
   existsSync,
   readFileSync,
@@ -41,6 +42,68 @@ export function parseDeeplink(
 
 export function osc8(text: string, url: string): string {
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+}
+
+// --- link capability fallback chain --------------------------------------------
+
+export type LinkCapability = "scheme" | "matcher" | "inline";
+
+/**
+ * Probe the current environment for the best available link capability.
+ *
+ * - "scheme": the bb:// shim is registered (LaunchServices / xdg-mime)
+ * - "matcher": Ghostty is the active terminal (env detection)
+ * - "inline": no link support — render content in-line
+ *
+ * All IO is injected for testability.
+ */
+export function probeLinkCapability(
+  env: Record<string, string | undefined> = Deno.env.toObject(),
+  opts: { isRegistered?: () => boolean } = {},
+): LinkCapability {
+  const isRegistered = opts.isRegistered ?? (() => existsSync(shimAppDir(homedir())));
+  if (isRegistered()) return "scheme";
+  if (
+    env["TERM_PROGRAM"] === "ghostty" ||
+    env["GHOSTTY_RESOURCES_DIR"] !== undefined
+  ) {
+    return "matcher";
+  }
+  return "inline";
+}
+
+export interface CardRefInput {
+  hex6: string;
+  title: string;
+  stage: string;
+  slug: string;
+}
+
+/**
+ * Render a card reference according to the detected link capability.
+ *
+ * - scheme + tty: OSC 8 hyperlink
+ * - scheme + no tty: markdown link
+ * - matcher: bare bb:// URL (Ghostty's URL matcher catches it)
+ * - inline: card summary with show command
+ */
+export function renderCardRef(
+  card: CardRefInput,
+  cap: LinkCapability,
+  opts: { tty?: boolean } = {},
+): string {
+  const url = formatDeeplink(card.slug, card.hex6);
+  if (cap === "scheme") {
+    if (opts.tty) {
+      return osc8(`${card.hex6} ${card.title}`, url);
+    }
+    return `[${card.hex6} ${card.title}](${url})`;
+  }
+  if (cap === "matcher") {
+    return url;
+  }
+  // inline
+  return `${card.hex6} [${card.stage}] ${card.title} (card summary — open with: blueberry todo show ${card.slug} ${card.hex6})`;
 }
 
 // --- scheme registration (SYSTEM-INTEGRATION artifacts only) -------------------
