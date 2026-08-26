@@ -71,7 +71,14 @@ function rowToTodo(row: Record<string, unknown>): TodoRow {
 export function listTodos(
   db: DatabaseSync,
   projectId: string,
-): Array<TodoRow & { deps: string[]; blockedBy: string[] }> {
+): Array<
+  TodoRow & {
+    deps: string[];
+    blockedBy: string[];
+    isAnchor: boolean;
+    designId: string | null;
+  }
+> {
   const rows = db
     .prepare("SELECT * FROM todos WHERE project_id = ? ORDER BY created_at")
     .all(projectId) as Array<Record<string, unknown>>;
@@ -93,7 +100,7 @@ export function listTodos(
     rows.map((r) => [String(r["id"]), hex6Of(String(r["id"]))]),
   );
 
-  return rows.map((r) => {
+  const result = rows.map((r) => {
     const todo = rowToTodo(r);
     const deps = depsByTodo.get(todo.id) ?? [];
     const blockedBy = deps.filter((dep) => {
@@ -104,8 +111,41 @@ export function listTodos(
       ...todo,
       deps,
       blockedBy: blockedBy.map((d) => hexById.get(d) ?? hex6Of(d)),
+      isAnchor: (r["is_anchor"] as number) === 1,
+      designId: (r["design_id"] as string | null) ?? null,
     };
   });
+
+  // Anchor-first ordering: hoist each anchor's direct children right after it
+  const anchorIds = new Set(
+    result.filter((r) => r.isAnchor).map((r) => r.id),
+  );
+  const childToAnchor = new Map<string, string>();
+  for (const row of result) {
+    if (row.isAnchor) continue;
+    for (const dep of row.deps) {
+      if (anchorIds.has(dep)) {
+        childToAnchor.set(row.id, dep);
+        break;
+      }
+    }
+  }
+  const placed = new Set<string>();
+  const ordered: typeof result = [];
+  for (const row of result) {
+    if (placed.has(row.id)) continue;
+    placed.add(row.id);
+    ordered.push(row);
+    if (row.isAnchor) {
+      for (const child of result) {
+        if (!placed.has(child.id) && childToAnchor.get(child.id) === row.id) {
+          placed.add(child.id);
+          ordered.push(child);
+        }
+      }
+    }
+  }
+  return ordered;
 }
 
 /** Map DB rows to pane cards (ages derived from timestamps). */
@@ -132,6 +172,11 @@ function ageString(iso: string): string {
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
   return `${d}d`;
+}
+
+export interface AnchorRow extends TodoRow {
+  isAnchor: boolean;
+  designId: string | null;
 }
 
 export interface MutationResult {
@@ -189,6 +234,38 @@ export function createTodo(
     : { ok: false, reason: "internal: row vanished after insert" };
 }
 
+/** Create (or return existing) an anchor node for a design id. */
+export function seedAnchor(
+  db: DatabaseSync,
+  projectId: string,
+  designId: string,
+  title: string,
+): MutationResult {
+  const existing = db
+    .prepare(
+      "SELECT id FROM todos WHERE project_id = ? AND design_id = ? LIMIT 1",
+    )
+    .get(projectId, designId) as { id: string } | undefined;
+  if (existing) {
+    const todo = getTodo(db, projectId, hex6Of(existing.id));
+    return todo
+      ? { ok: true, todo }
+      : { ok: false, reason: "internal: anchor row vanished" };
+  }
+  const now = new Date().toISOString();
+  const { id } = newTodoId(db, projectId);
+  db
+    .prepare(
+      "INSERT INTO todos (id, project_id, title, stage, is_anchor, design_id, created_at, updated_at) VALUES (?, ?, ?, 'todo', 1, ?, ?, ?)",
+    )
+    .run(id, projectId, title.trim(), designId, now, now);
+  appendEvent(db, id, "anchor_seed", null, title.trim());
+  const saved = getTodo(db, projectId, hex6Of(id));
+  return saved
+    ? { ok: true, todo: saved }
+    : { ok: false, reason: "internal: row vanished after anchor insert" };
+}
+
 export function setStage(
   db: DatabaseSync,
   projectId: string,
@@ -199,6 +276,21 @@ export function setStage(
   const todo = getTodo(db, projectId, hex6);
   if (!todo) return { ok: false, reason: `no todo '${hex6}'` };
   if (todo.stage === stage) return { ok: true, todo };
+
+  // Anchor stage lock: anchors are not work — only todo/drop allowed
+  if (stage === "doing" || stage === "review" || stage === "done") {
+    const row = db
+      .prepare(
+        "SELECT is_anchor FROM todos WHERE project_id = ? AND substr(id, -6) = ?",
+      )
+      .get(projectId, hex6) as { is_anchor: number } | undefined;
+    if (row?.is_anchor) {
+      return {
+        ok: false,
+        reason: "anchors are not work — stage locked to todo/dropped",
+      };
+    }
+  }
 
   // DAG legality
   if (stage === "doing" || stage === "review" || stage === "done") {

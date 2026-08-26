@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS todos (
   project_id TEXT NOT NULL,
   title TEXT NOT NULL,
   track TEXT,
+  is_anchor INTEGER NOT NULL DEFAULT 0,
+  design_id TEXT,
   stage TEXT NOT NULL DEFAULT 'todo',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -249,6 +251,20 @@ export function openDb(agentDir: string): DatabaseSync {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+
+  // Migration: anchor columns on todos (idempotent — ALTER fails if column exists)
+  try {
+    db.exec(
+      "ALTER TABLE todos ADD COLUMN is_anchor INTEGER NOT NULL DEFAULT 0",
+    );
+  } catch {
+    /* column already present */
+  }
+  try {
+    db.exec("ALTER TABLE todos ADD COLUMN design_id TEXT");
+  } catch {
+    /* column already present */
+  }
 
   const existed = db
     .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
