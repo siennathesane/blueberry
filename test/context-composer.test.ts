@@ -13,10 +13,13 @@ import {
 	composeDatetimeLine,
 	composeIdentity,
 	composeStateBlock,
+	composeSystemPrompt,
+	extractToolSurfaces,
 	supersedeNudges,
 	type DiagnosticNudge,
 	type IdentityProbe,
 } from "../src/core/context-composer.ts";
+import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 // Platform-conditional fake cwd paths for Windows compatibility (#32)
@@ -217,4 +220,89 @@ test("supersede: latest nudge per file wins, order preserved otherwise", () => {
 test("supersede: empty inputs", () => {
 	assert.deepEqual(supersedeNudges([], []), []);
 	assert.deepEqual(supersedeNudges([{ file: "x", text: "t" }], []).length, 1);
+});
+
+// ─── composeSystemPrompt (design 006) ────────────────────────────────────
+
+const fullProbe: IdentityProbe = {
+	cwd: TMP_PROJ,
+	lspLanguages: ["go", "rust"],
+	hasDesignLifecycle: true,
+	hasTodos: true,
+	isPiInternals: true,
+};
+
+const sampleSnippets = ["snippet-one", "snippet-two"];
+const sampleGuidelines = ["Always check types first"];
+
+test("composeSystemPrompt: exactly one You-are opener at line starts", () => {
+	const prompt = composeSystemPrompt({
+		cwd: TMP_PROJ,
+		probe: fullProbe,
+		toolSnippets: sampleSnippets,
+		promptGuidelines: sampleGuidelines,
+	});
+	const youAreLines = prompt.split("\n").filter((l) => /^You are/.test(l));
+	assert.equal(youAreLines.length, 1, `expected 1 'You are' line start, got ${youAreLines.length}`);
+});
+
+test("composeSystemPrompt: corrected design-lifecycle grammar (six-hex, no RFC 2119)", () => {
+	const prompt = composeSystemPrompt({
+		cwd: TMP_PROJ,
+		probe: fullProbe,
+		toolSnippets: sampleSnippets,
+		promptGuidelines: sampleGuidelines,
+	});
+	assert.ok(prompt.includes("six-hex"), "must mention six-hex ids");
+	assert.ok(!prompt.includes("RFC 2119"), "must not contain RFC 2119");
+});
+
+test("composeSystemPrompt: pi-docs block present only when isPiInternals is true", () => {
+	const withPi = composeSystemPrompt({
+		cwd: TMP_PROJ,
+		probe: { ...fullProbe, isPiInternals: true },
+		toolSnippets: sampleSnippets,
+		promptGuidelines: sampleGuidelines,
+	});
+	assert.ok(withPi.includes("Pi documentation lives under"), "pi-docs present when isPiInternals true");
+
+	const withoutPi = composeSystemPrompt({
+		cwd: TMP_PROJ,
+		probe: { ...fullProbe, isPiInternals: false },
+		toolSnippets: sampleSnippets,
+		promptGuidelines: sampleGuidelines,
+	});
+	assert.ok(!withoutPi.includes("Pi documentation lives under"), "pi-docs absent when isPiInternals false");
+});
+
+test("composeSystemPrompt: guidelines fold — Be concise appears exactly once", () => {
+	const prompt = composeSystemPrompt({
+		cwd: TMP_PROJ,
+		probe: fullProbe,
+		toolSnippets: sampleSnippets,
+		promptGuidelines: [...sampleGuidelines, "Be concise in your responses"],
+	});
+	const matches = prompt.split("Be concise in your responses").length - 1;
+	assert.equal(matches, 1, `expected 'Be concise' exactly once, got ${matches}`);
+});
+
+// ─── extractToolSurfaces ─────────────────────────────────────────────────
+
+test("extractToolSurfaces: returns real snippets and guidelines from tool sources", () => {
+	const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+	const toolSources = [
+		resolve(repoRoot, "src/core/tools/search.ts"),
+		resolve(repoRoot, "extensions/library/index.ts"),
+		resolve(repoRoot, "extensions/lsp/index.ts"),
+		resolve(repoRoot, "extensions/todo/index.ts"),
+	];
+	const { snippets, guidelines } = extractToolSurfaces(toolSources);
+	assert.ok(snippets.length >= 4, `expected >= 4 snippets, got ${snippets.length}`);
+	assert.ok(guidelines.length >= 6, `expected >= 6 guidelines, got ${guidelines.length}`);
+	for (const s of snippets) {
+		assert.ok(s.length > 0, "every snippet must be non-empty");
+	}
+	for (const g of guidelines) {
+		assert.ok(g.length > 0, "every guideline must be non-empty");
+	}
 });

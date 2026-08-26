@@ -16,14 +16,16 @@
  * startup message that SHOULD interrupt.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { fileURLToPath } from "node:url";
 import { findProjectBoundary } from "../../src/core/markers.ts";
 import { getVersion } from "../../src/core/version.ts";
 import { projectNameFor, terminalTitle } from "../../src/core/identity.ts";
 import { installInterceptor } from "../../src/core/title-guard.ts";
 import {
   composeDatetimeLine,
-  composeIdentity,
   composeStateBlock,
+  composeSystemPrompt,
+  extractToolSurfaces,
   type IdentityProbe,
   type LiveState,
 } from "../../src/core/context-composer.ts";
@@ -58,7 +60,7 @@ export default function (pi: ExtensionAPI) {
   // the cache-prefix root; our bytes never change mid-session (zero-
   // eviction). Rail 2 (context event): state + datetime, rebuilt fresh per
   // turn at the tail — never persisted, never cache-hostile.
-  let frozenIdentity: string | null = null;
+  let frozenPrompt: string | null = null;
 
   const probeIdentity = async (cwd: string): Promise<IdentityProbe> => {
     const boundary = findProjectBoundary(resolve(cwd));
@@ -68,6 +70,7 @@ export default function (pi: ExtensionAPI) {
       lspLanguages: [],
       hasDesignLifecycle: existsSync(join(root, "docs", "design")),
       hasTodos: false,
+      isPiInternals: existsSync(join(root, "pi")),
     };
     try {
       const { defaultServers } = await import("../../src/core/lsp-manager.ts");
@@ -96,17 +99,36 @@ export default function (pi: ExtensionAPI) {
     return probe;
   };
 
-  const ensureIdentity = async (cwd: string): Promise<string> => {
-    if (frozenIdentity === null) {
-      frozenIdentity = composeIdentity(await probeIdentity(cwd));
+  const TOOL_SOURCES = [
+    "src/core/tools/search.ts",
+    "extensions/library/index.ts",
+    "extensions/lsp/index.ts",
+    "extensions/todo/index.ts",
+  ];
+
+  const ensurePrompt = async (cwd: string): Promise<string> => {
+    if (frozenPrompt === null) {
+      const probe = await probeIdentity(cwd);
+      const repoRoot = resolve(
+        fileURLToPath(new URL("..", import.meta.url)),
+        "..",
+      );
+      const toolPaths = TOOL_SOURCES.map((s) => join(repoRoot, s));
+      const { snippets, guidelines } = extractToolSurfaces(toolPaths);
+      frozenPrompt = composeSystemPrompt({
+        cwd,
+        probe,
+        toolSnippets: snippets,
+        promptGuidelines: guidelines,
+      });
     }
-    return frozenIdentity;
+    return frozenPrompt;
   };
 
   pi.on("before_agent_start", async (event, ctx) => {
-    // Rail 1 — frozen identity, byte-identical every turn (zero-eviction)
-    const identity = await ensureIdentity(ctx.cwd);
-    event.systemPrompt = `${event.systemPrompt}\n\n${identity}`;
+    // Rail 1 — frozen prompt, byte-identical every turn (zero-eviction)
+    const prompt = await ensurePrompt(ctx.cwd);
+    event.systemPrompt = prompt;
   });
 
   // Derive the live state snapshot from the DB (never stale, never cached).

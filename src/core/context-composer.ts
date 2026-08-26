@@ -12,9 +12,11 @@
  *   MESSAGE rail (ephemeral tail via the context event). Never persisted,
  *   never part of the cached prefix — volatile by design, zero cache cost.
  *
- * Everything here is pure: no DB handles, no clock reads inside compose
- * (datetime takes a Date argument), no filesystem. Extensions wire it;
- * tests pin it.
+ * composeIdentity, composeStateBlock, composeDatetimeLine, supersedeNudges
+ * are pure (no DB handles, no clock reads inside compose, no filesystem).
+ * composeSystemPrompt and extractToolSurfaces read tool source files;
+ * composeSystemPrompt delegates final assembly to the fork's
+ * buildSystemPrompt.
  */
 
 // ─── Layer 1: identity (frozen) ────────────────────────────────────────────
@@ -28,6 +30,8 @@ export interface IdentityProbe {
   hasDesignLifecycle: boolean;
   /** Any todos exist in the DAG. */
   hasTodos: boolean;
+  /** Project boundary contains an in-tree pi/ fork. */
+  isPiInternals?: boolean;
 }
 
 /**
@@ -81,7 +85,7 @@ export function composeIdentity(probe: IdentityProbe): string {
 
   if (probe.hasDesignLifecycle) {
     lines.push(
-      "Designs are files under docs/design/ with required sections (Requirements with RFC 2119 keywords, each MUST carrying Verification); plans are reviewed rows consumed into the todo DAG. Shift+tab moves normal → design → plan; the completeness gate blocks half-written designs.",
+      "Designs are files under docs/design/ with required sections (requirements are prose paragraphs ending in a bracketed six-hex design id; acceptance tests carry the same id in their names); plans are reviewed rows consumed into the todo DAG. Shift+tab moves normal → design → plan; the completeness gate blocks half-written designs.",
     );
     lines.push(
       "## Feature lifecycle\n\nA test whose name ends in [hex6] is an acceptance contract for a design requirement — not an ordinary test. When one fails, a decided requirement is broken, not merely red. Before editing what such a test covers, read its requirement: the [lifecycle] block that appears after a failing gate run carries the requirement paragraph, the design doc path, and open cards. That block is harness-generated — trust it like git status. A tagged test's meaning may change only after its design doc changes. Untagged tests are interiors: refactor freely.",
@@ -184,4 +188,84 @@ export function supersedeNudges(
     byFile.set(nudge.file, nudge); // incoming wins on collision
   }
   return [...byFile.values()];
+}
+
+// ─── Tool surface extraction ─────────────────────────────────────────────
+
+/** Extract promptSnippet and promptGuidelines from tool source files. */
+export function extractToolSurfaces(
+  toolSources: string[],
+): { snippets: string[]; guidelines: string[] } {
+  const snippets: string[] = [];
+  const guidelines: string[] = [];
+  for (const path of toolSources) {
+    const src = Deno.readTextFileSync(path);
+    for (const m of src.matchAll(/promptSnippet:\s*"((?:[^"\\]|\\.)*)"/g)) {
+      if (!snippets.includes(m[1]!)) snippets.push(m[1]!);
+    }
+    const g = /promptGuidelines:\s*\[([\s\S]*?)\]/.exec(src);
+    if (g) {
+      for (const q of g[1]!.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+        if (!guidelines.includes(q[1]!)) guidelines.push(q[1]!);
+      }
+    }
+  }
+  return { snippets, guidelines };
+}
+
+// ─── Full system prompt ownership (design 006) ───────────────────────────
+
+import { buildSystemPrompt } from "../../pi/packages/coding-agent/src/core/system-prompt.ts";
+
+/** Stock guideline lines folded into the blueberry guideline list. */
+const STOCK_GUIDELINES = [
+  "Be concise in your responses",
+  "Show file paths clearly when working with files",
+];
+
+/**
+ * Compose the full system prompt, owning the base text end to end.
+ *
+ * Uses the fork's buildSystemPrompt assembler with customPrompt set to
+ * blueberry's own identity + tool surfaces + guidelines. The pi-docs
+ * routing block is shortened and gated on isPiInternals (design 006).
+ */
+export function composeSystemPrompt(input: {
+  cwd: string;
+  probe: IdentityProbe;
+  toolSnippets: string[];
+  promptGuidelines: string[];
+}): string {
+  const { cwd, probe, toolSnippets, promptGuidelines } = input;
+
+  // Base text: identity paragraphs from composeIdentity
+  const identity = composeIdentity(probe);
+
+  // Tool descriptions
+  const toolsSection = toolSnippets.length > 0
+    ? "\n\nAvailable tools:\n" + toolSnippets.map((s) => `- ${s}`).join("\n")
+    : "";
+
+  // Guidelines: input list + folded stock lines (deduplicated)
+  const guidelines = [...promptGuidelines];
+  for (const line of STOCK_GUIDELINES) {
+    if (!guidelines.includes(line)) {
+      guidelines.push(line);
+    }
+  }
+  const guidelinesSection = guidelines.length > 0
+    ? "\n\nGuidelines:\n" + guidelines.map((g) => `- ${g}`).join("\n")
+    : "";
+
+  // Pi-docs routing: only when the project actually contains the in-tree fork
+  const piDocsSection = probe.isPiInternals
+    ? "\n\nPi documentation lives under pi/packages/coding-agent/ (README, docs/, examples/) — read it only for pi-internals work, following .md cross-references."
+    : "";
+
+  const customPrompt = identity + toolsSection + guidelinesSection + piDocsSection;
+
+  return buildSystemPrompt({
+    cwd,
+    customPrompt,
+  });
 }
