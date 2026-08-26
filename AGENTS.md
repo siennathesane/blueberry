@@ -18,7 +18,7 @@ You are almost always developing extensions here, not using them.
 - `extensions/core/` — branding, header, small behaviors
 - `extensions/plan/` — plan mode rewrite (flagship)
 - `extensions/todo/` — todo system rewrite (flagship)
-- `extensions/search/` — embedded disk-based search engine (flagship)
+- `src/core/search.ts` + `src/core/tools/search.ts` — embedded disk-based search engine (flagship): logic in core, tool registration under tools/
 - `themes/` — `orange-juice.json` and friends
 - `bin/blueberry` — launcher: prefers the compiled binary (`deno task compile` → `dist/blueberry`), falls back to `deno run`
 - `bin/setup.sh` — writes `~/.blueberry/settings.json`, carries auth + packages

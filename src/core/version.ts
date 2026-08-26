@@ -15,24 +15,24 @@ import { fileURLToPath } from "node:url";
 
 /** Read the version from the package.json two levels above `dir`. */
 export function readPkgVersion(dir: string): string {
-	try {
-		const pkg = JSON.parse(
-			readFileSync(join(dir, "..", "..", "package.json"), "utf8"),
-		) as {
-			version?: string;
-		};
-		return pkg.version ?? "dev";
-	} catch {
-		return "dev";
-	}
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(dir, "..", "..", "package.json"), "utf8"),
+    ) as {
+      version?: string;
+    };
+    return pkg.version ?? "dev";
+  } catch {
+    return "dev";
+  }
 }
 
 export function getVersion(): string {
-	const env = (process.env as Record<string, string | undefined>)[
-		"BLUEBERRY_VERSION"
-	];
-	if (env !== undefined && env.trim() !== "") {
-		return env.trim();
-	}
-	return readPkgVersion(dirname(fileURLToPath(import.meta.url)));
+  const env = (process.env as Record<string, string | undefined>)[
+    "BLUEBERRY_VERSION"
+  ];
+  if (env !== undefined && env.trim() !== "") {
+    return env.trim();
+  }
+  return readPkgVersion(dirname(fileURLToPath(import.meta.url)));
 }

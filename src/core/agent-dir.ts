@@ -10,36 +10,36 @@ import { expandTilde, resolve } from "./util.ts";
 
 /** The blueberry state root. */
 export function getAgentDir(env: NodeJS.ProcessEnv = process.env): string {
-	const override = env["BLUEBERRY_AGENT_DIR"];
-	if (override && override.trim() !== "") {
-		return resolve(expandTilde(override, homedir()));
-	}
-	return join(homedir(), ".blueberry");
+  const override = env["BLUEBERRY_AGENT_DIR"];
+  if (override && override.trim() !== "") {
+    return resolve(expandTilde(override, homedir()));
+  }
+  return join(homedir(), ".blueberry");
 }
 
 export function getRegistryPath(agentDir: string): string {
-	return join(agentDir, "registry.json");
+  return join(agentDir, "registry.json");
 }
 
 export function getSessionsRoot(agentDir: string): string {
-	return join(agentDir, "sessions");
+  return join(agentDir, "sessions");
 }
 
 /** Central session store for a project slug. */
 export function getCentralStoreDir(agentDir: string, slug: string): string {
-	return join(getSessionsRoot(agentDir), slug);
+  return join(getSessionsRoot(agentDir), slug);
 }
 
 /** pi's trust store lives at <agentDir>/trust.json (verified in pi source). */
 export function getTrustPath(agentDir: string): string {
-	return join(agentDir, "trust.json");
+  return join(agentDir, "trust.json");
 }
 
 export function getTrashDir(agentDir: string): string {
-	return join(agentDir, "trash");
+  return join(agentDir, "trash");
 }
 
 /** In-repo session store (travels with the project directory). */
 export function getInRepoStoreDir(projectRoot: string): string {
-	return join(projectRoot, ".blueberry", "sessions");
+  return join(projectRoot, ".blueberry", "sessions");
 }

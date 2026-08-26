@@ -14,7 +14,7 @@ export const TITLE_MARK = "blueberry";
 
 /** Project name from a root path (last segment). */
 export function projectNameFor(root: string): string {
- return root.split("/").filter(Boolean).pop() ?? root;
+  return root.split("/").filter(Boolean).pop() ?? root;
 }
 
 /**
@@ -23,18 +23,18 @@ export function projectNameFor(root: string): string {
  * Without: `blueberry — <project>`.
  */
 export function terminalTitle(
- project: string,
- sessionName?: string | null,
+  project: string,
+  sessionName?: string | null,
 ): string {
- const p = project.trim() === "" ? "blueberry" : project.trim();
- if (
-  sessionName !== undefined &&
-  sessionName !== null &&
-  sessionName.trim() !== ""
- ) {
-  return `${TITLE_MARK} — ${sessionName.trim()} — ${p}`;
- }
- return `${TITLE_MARK} — ${p}`;
+  const p = project.trim() === "" ? "blueberry" : project.trim();
+  if (
+    sessionName !== undefined &&
+    sessionName !== null &&
+    sessionName.trim() !== ""
+  ) {
+    return `${TITLE_MARK} — ${sessionName.trim()} — ${p}`;
+  }
+  return `${TITLE_MARK} — ${p}`;
 }
 
 /**
@@ -44,16 +44,16 @@ export function terminalTitle(
  * This is the denylist every claim must pass.
  */
 export const UNSAFE_KEY_ALIASES: Record<string, string> = {
- "ctrl+m": "Enter (CR, 0x0D)",
- "ctrl+j": "Line Feed (LF, 0x0A) — aliases shift+enter on some terminals",
- "ctrl+i": "Tab (0x09)",
- "ctrl+h": "Backspace on some terminals",
- "ctrl+[": "Escape on some terminals",
+  "ctrl+m": "Enter (CR, 0x0D)",
+  "ctrl+j": "Line Feed (LF, 0x0A) — aliases shift+enter on some terminals",
+  "ctrl+i": "Tab (0x09)",
+  "ctrl+h": "Backspace on some terminals",
+  "ctrl+[": "Escape on some terminals",
 };
 
 /** Every key blueberry claims must pass this or the contract test fails. */
 export function validateClaimedKey(key: string): string | null {
- return UNSAFE_KEY_ALIASES[key] ?? null;
+  return UNSAFE_KEY_ALIASES[key] ?? null;
 }
 
 /** Validate the whole contract; throws on the first unsafe claim. */
@@ -61,14 +61,16 @@ export function validateClaimedKey(key: string): string | null {
 export type KeyClaim = string | string[];
 
 export function validateKeybindings(bindings: Record<string, KeyClaim>): void {
- for (const [id, key] of Object.entries(bindings)) {
-  // empty array = unbind (nothing claimed — always safe)
-  if (Array.isArray(key)) continue;
-  const alias = validateClaimedKey(key);
-  if (alias !== null) {
-   throw new Error(`keybindings claim unsafe: ${id} → ${key} aliases ${alias}`);
+  for (const [id, key] of Object.entries(bindings)) {
+    // empty array = unbind (nothing claimed — always safe)
+    if (Array.isArray(key)) continue;
+    const alias = validateClaimedKey(key);
+    if (alias !== null) {
+      throw new Error(
+        `keybindings claim unsafe: ${id} → ${key} aliases ${alias}`,
+      );
+    }
   }
- }
 }
 
 /**
@@ -83,10 +85,10 @@ export function validateKeybindings(bindings: Record<string, KeyClaim>): void {
  *   shipped 2025-08-25 and made Enter cycle models)
  */
 export const DEFAULT_KEYBINDINGS: Record<string, KeyClaim> = {
- "app.thinking.cycle": "ctrl+shift+t",
- "app.model.cycleForward": "alt+m",
- // ctrl+p is OURS: unbind every pi builtin that claims it (empty = disable)
- "app.models.toggleProvider": [],
- "app.model.cycleBackward": [],
- "app.session.togglePath": [],
+  "app.thinking.cycle": "ctrl+shift+t",
+  "app.model.cycleForward": "alt+m",
+  // ctrl+p is OURS: unbind every pi builtin that claims it (empty = disable)
+  "app.models.toggleProvider": [],
+  "app.model.cycleBackward": [],
+  "app.session.togglePath": [],
 };
