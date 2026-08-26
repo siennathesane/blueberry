@@ -481,6 +481,128 @@ export function passIdInheritance(
   return { pass: "P5", clean: findings.length === 0, findings };
 }
 
+/** P6: reference hygiene — sigil-free prose per design 006 §reference grammar.
+ * Flags §, bare R\d+, todo: needles, and bare 00\d document numbers.
+ * Skips fenced code blocks and table rows. */
+export function passReferenceHygiene(planBody: string): PassResult {
+  const findings: string[] = [];
+  const lines = planBody.split("\n");
+  let inFence = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const lineNum = i + 1;
+
+    // Track fenced code blocks (lines between ``` fences)
+    if (line.trimStart().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    // Skip table rows (the Test matrix legitimately carries id columns)
+    if (line.trimStart().startsWith("|")) continue;
+
+    // Helper: check if a position is inside a backtick code span.
+    // Odd number of backticks before matchStart → inside a code span.
+    const isInsideCodeSpan = (matchStart: number): boolean => {
+      let count = 0;
+      for (let j = 0; j < matchStart; j++) {
+        if (line[j] === "`") count++;
+      }
+      return count % 2 === 1;
+    };
+
+    // Helper: check if a range overlaps any [text](url) markdown link.
+    const isInsideMarkdownLink = (
+      matchStart: number,
+      matchEnd: number,
+    ): boolean => {
+      let j = 0;
+      while (j < line.length) {
+        const bracketIdx = line.indexOf("[", j);
+        if (bracketIdx === -1) break;
+        const closeBracket = line.indexOf("]", bracketIdx + 1);
+        if (closeBracket === -1) break;
+        // Check if followed by (...)
+        if (
+          closeBracket + 1 < line.length &&
+          line[closeBracket + 1] === "("
+        ) {
+          const closeParen = line.indexOf(")", closeBracket + 2);
+          if (closeParen !== -1) {
+            if (matchStart <= closeParen && matchEnd > bracketIdx) {
+              return true;
+            }
+            j = closeParen + 1;
+            continue;
+          }
+        }
+        j = closeBracket + 1;
+      }
+      return false;
+    };
+
+    // 1. § sigil anywhere in a non-exempt line (code spans exempt)
+    const sectionHits = [...line.matchAll(/\u00a7/g)].filter((m) =>
+      !isInsideCodeSpan(m.index ?? 0)
+    );
+    if (sectionHits.length > 0) {
+      findings.push(
+        `sigil § at line ${lineNum} — write the name and link instead`,
+      );
+    }
+
+    // 2. Bare R\d+ (word boundary) — except inside code spans
+    for (const m of line.matchAll(/R\d+\b/g)) {
+      if (m.index !== undefined && !isInsideCodeSpan(m.index)) {
+        findings.push(
+          `bare requirement sigil '${
+            m[0]
+          }' at line ${lineNum} — write the name and link instead`,
+        );
+      }
+    }
+
+    // 3. todo: needles outside code spans
+    for (const m of line.matchAll(/todo:[a-z0-9-]+\/[0-9a-f]{6}/g)) {
+      if (m.index !== undefined && !isInsideCodeSpan(m.index)) {
+        findings.push(
+          `todo needle '${
+            m[0]
+          }' at line ${lineNum} — reference cards by name and link, or the bb:// deep link`,
+        );
+      }
+    }
+
+    // 4. Bare document numbers 00\d (code spans exempt)
+    for (const m of line.matchAll(/\b00\d\b/g)) {
+      if (isInsideCodeSpan(m.index ?? 0)) continue;
+      if (m.index === undefined) continue;
+      const matchStart = m.index;
+      const matchEnd = matchStart + m[0]!.length;
+
+      // Skip if inside a code span
+      if (isInsideCodeSpan(matchStart)) continue;
+
+      // Skip if inside a markdown link [text](url)
+      if (isInsideMarkdownLink(matchStart, matchEnd)) continue;
+
+      // Skip if followed by a dash (filename like 005-lifecycle...)
+      const afterChar = line[matchEnd];
+      if (afterChar === "-") continue;
+
+      findings.push(
+        `bare document number '${
+          m[0]
+        }' at line ${lineNum} — link the document instead`,
+      );
+    }
+  }
+
+  return { pass: "P6", clean: findings.length === 0, findings };
+}
+
 export function runAllPasses(
   designBody: string | null,
   planBody: string,
@@ -496,6 +618,7 @@ export function runAllPasses(
   }
   passes.push(passDependencySanity(planBody));
   passes.push(passIdInheritance(planBody, designBody, registryIds));
+  passes.push(passReferenceHygiene(planBody));
   return passes;
 }
 

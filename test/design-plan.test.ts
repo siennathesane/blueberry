@@ -27,6 +27,7 @@ import {
   passDesignCompleteness,
   passIdInheritance,
   passPlanPurity,
+  passReferenceHygiene,
   passTestCompleteness,
   planBreadcrumb,
   planProgress,
@@ -380,7 +381,7 @@ test("runAllPasses: full pipeline on a good design+plan", () => {
   const plan =
     `## Steps\n\n1. **Build** \`R1\`\n   - Deliverable: module\n   - Acceptance: tests\n\n## Test matrix\n\n| Case | Type | Proves | Covers | Step |\n|------|------|--------|--------|------|\n| T1 | happy | R1 | R1 | 1 |\n\n## Coverage matrix\n\n| Aspect | Steps | Cases |\n|---------|-------|-------|\n| R1 | 1 | T1 |`;
   const results = runAllPasses(design, plan);
-  assert.equal(results.length, 5);
+  assert.equal(results.length, 6);
   for (const r of results) {
     assert.ok(r.clean, `${r.pass}: ${r.findings.join("; ")}`);
   }
@@ -633,16 +634,16 @@ test("passIdInheritance: ids in plan with null designBody fires finding", () => 
   assert.ok(r.findings[0]!.includes("no parent design"));
 });
 
-test("runAllPasses: 2-arg call returns 5 passes (back-compat, default registry)", () => {
+test("runAllPasses: 2-arg call returns 6 passes (back-compat, default registry)", () => {
   const design = designWithRequirements("R1. The system MUST sync fast.");
   const plan =
     "## Steps\n\n1. **Build** `R1`\n   - Deliverable: module\n   - Acceptance: tests\n\n## Test matrix\n\n| Case | Type | Proves | Covers | Step |\n|------|------|--------|--------|------|\n| T1 | happy | R1 | R1 | 1 |\n\n## Coverage matrix\n\n| Aspect | Steps | Cases |\n|---------|-------|-------|\n| R1 | 1 | T1 |";
   const results = runAllPasses(design, plan);
-  assert.equal(results.length, 5);
-  // P5 should be clean here because the plan has no trailing [hex6] ids
-  // (the R1 is in backtick format, not the lifecycle grammar)
+  assert.equal(results.length, 6);
   const p5 = results.find((r) => r.pass === "P5")!;
   assert.ok(p5.clean, JSON.stringify(p5.findings));
+  const p6 = results.find((r) => r.pass === "P6")!;
+  assert.ok(p6.clean, JSON.stringify(p6.findings));
 });
 
 // --- lifecycle heading deps ----------------------------------------------------------
@@ -720,4 +721,81 @@ test("seedPlan: lifecycle dep on missing step number records error, still succee
   const todos = listTodos(db, PROJECT);
   const s2 = todos.find((t) => t.title.startsWith("S2."))!;
   assert.deepEqual(s2.blockedBy, []);
+});
+
+// --- P6: reference hygiene -----------------------------------------------------------
+
+test("P6: section sign in prose fails with line number", () => {
+  const body = "heading line\n\nprose with §2 violation here\n\nclean line";
+  const r = passReferenceHygiene(body);
+  assert.ok(!r.clean);
+  assert.equal(r.pass, "P6");
+  assert.ok(r.findings.some((f) => f.includes("sigil §")));
+  assert.ok(r.findings.some((f) => f.includes("line 3")));
+});
+
+test("P6: backtick-wrapped R1 in code span is clean", () => {
+  const body = "step references `R1` in a code span\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(r.clean, JSON.stringify(r.findings));
+});
+
+test("P6: bare R1 without code span fails", () => {
+  const body = "requirement R1 is cited here\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(!r.clean);
+  assert.ok(r.findings.some((f) => f.includes("R1")));
+  assert.ok(r.findings.some((f) => f.includes("line 1")));
+});
+
+test("P6: todo needle in prose fails", () => {
+  const body = "see todo:blueberry/ab12cd for the card\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(!r.clean);
+  assert.ok(
+    r.findings.some((f) => f.includes("todo needle")),
+  );
+  assert.ok(r.findings.some((f) => f.includes("todo:blueberry/ab12cd")));
+});
+
+test("P6: filename with 005 followed by dash is clean", () => {
+  const body = "see docs/design/005-lifecycle-coverage-map.md for context\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(r.clean, JSON.stringify(r.findings));
+});
+
+test("P6: bare 005 as document reference fails", () => {
+  const body = "as specified in 005 which covers this\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(!r.clean);
+  assert.ok(r.findings.some((f) => f.includes("005")));
+  assert.ok(r.findings.some((f) => f.includes("bare document number")));
+});
+
+test("P6: fenced code block containing all sigils is clean", () => {
+  const body =
+    "prose before\n\n```\n§2 violation\nR1 bare\ntodo:blueberry/ab12cd needle\n005 document number\n```\n\nprose after\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(r.clean, JSON.stringify(r.findings));
+});
+
+test("P6: table row with id column is clean", () => {
+  const body = "## Test matrix\n\n| Case | Type | Covers |\n|------|------|--------|\n| T1 | happy | a01d2e |\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(r.clean, JSON.stringify(r.findings));
+});
+
+test("P6: clean modern plan body with trailing ids passes", () => {
+  const body =
+    "## Steps\n" +
+    "\n" +
+    "### Step 1 — Build the reference grammar [1a2b3c]\n" +
+    "\n" +
+    "### Step 2 — Wire the deep link handler [2b3c4d]\n" +
+    "\n" +
+    "## Verification\n" +
+    "\n" +
+    "Link to [design 005](docs/design/005-lifecycle-coverage-map.md) for coverage. [3c4d5e]\n";
+  const r = passReferenceHygiene(body);
+  assert.ok(r.clean, JSON.stringify(r.findings));
 });
