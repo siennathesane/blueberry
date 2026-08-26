@@ -47,6 +47,10 @@ export function composeIdentity(probe: IdentityProbe): string {
   );
   // communication directive (user, v0.3.0): own paragraph for prominence
   lines.push("You will speak with the user in simplified technical English.");
+  // reference grammar (design 006): references are spoken names with links
+  lines.push(
+    "References are spoken names with working links: write [plain-English name](path) for documents and sections, bb://todo/<slug>/<hex6> for cards. Never write sigil shorthand (section marks, bare requirement numbers, lone document numbers) in prose — those forms belong to machines at line ends only. When no link can live, put the referenced content in-line instead of pointing at it.",
+  );
 
   // Cross-tool orchestration — capability-gated: never mention a tool whose
   // surface isn't actually present.

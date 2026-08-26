@@ -273,8 +273,10 @@ test("seedPlan: steps become tasks, deps become DAG edges, status building", () 
   const s1 = todos.find((t) => t.title.startsWith("S1."))!;
   const s2 = todos.find((t) => t.title.startsWith("S2."))!;
   const s3 = todos.find((t) => t.title.startsWith("S3."))!;
-  assert.ok(s1.title.includes("[R1]"));
-  assert.ok(s3.title.includes("[R1,R2]"));
+  // reqTag suffix dropped (design 006 grammar): ids live in metadata, not titles
+  assert.ok(!s1.title.includes("["), "card titles carry no tag suffix");
+  assert.ok(s1.title.startsWith("S1."), "step prefix retained");
+  assert.ok(!s3.title.includes("["), "s3 title carries no tag suffix");
 
   // deps: s2 ⟵ s1, s3 ⟵ s2
   assert.deepEqual(s2.blockedBy, [s1.hex6]);
@@ -609,11 +611,18 @@ test("passIdInheritance: plan cites design-owned id is clean", () => {
 
 test("passIdInheritance: unowned id fails with id named and line number", () => {
   const design = "## MUST\n\nA requirement. [abc123]\n";
-  const plan = "## Steps\n\ncontext line\n1. **Build** [abc123]\n\n2. **Wire** [deadbe]\n";
+  const plan =
+    "## Steps\n\ncontext line\n1. **Build** [abc123]\n\n2. **Wire** [deadbe]\n";
   const r = passIdInheritance(plan, design, new Set());
   assert.ok(!r.clean);
-  assert.ok(r.findings.some((f) => f.includes("deadbe")), JSON.stringify(r.findings));
-  assert.ok(r.findings.some((f) => f.includes("line 6")), JSON.stringify(r.findings));
+  assert.ok(
+    r.findings.some((f) => f.includes("deadbe")),
+    JSON.stringify(r.findings),
+  );
+  assert.ok(
+    r.findings.some((f) => f.includes("line 6")),
+    JSON.stringify(r.findings),
+  );
 });
 
 test("passIdInheritance: registry counts as ownership", () => {
@@ -629,7 +638,11 @@ test("passIdInheritance: no ids in plan is clean even with null designBody", () 
 });
 
 test("passIdInheritance: ids in plan with null designBody fires finding", () => {
-  const r = passIdInheritance("## Steps\n\n1. **Build** [abc123]\n", null, new Set());
+  const r = passIdInheritance(
+    "## Steps\n\n1. **Build** [abc123]\n",
+    null,
+    new Set(),
+  );
   assert.ok(!r.clean);
   assert.ok(r.findings[0]!.includes("no parent design"));
 });
@@ -702,7 +715,11 @@ test("seedPlan: edge-free lifecycle plan gets serial default deps", () => {
   const s1 = todos.find((t) => t.title.startsWith("S1."))!;
   const s2 = todos.find((t) => t.title.startsWith("S2."))!;
   assert.deepEqual(s1.blockedBy, []);
-  assert.deepEqual(s2.blockedBy, [s1.hex6], "serial default: step 2 blocked by step 1");
+  assert.deepEqual(
+    s2.blockedBy,
+    [s1.hex6],
+    "serial default: step 2 blocked by step 1",
+  );
 });
 
 test("seedPlan: lifecycle dep on missing step number records error, still succeeds", () => {
@@ -780,14 +797,14 @@ test("P6: fenced code block containing all sigils is clean", () => {
 });
 
 test("P6: table row with id column is clean", () => {
-  const body = "## Test matrix\n\n| Case | Type | Covers |\n|------|------|--------|\n| T1 | happy | a01d2e |\n";
+  const body =
+    "## Test matrix\n\n| Case | Type | Covers |\n|------|------|--------|\n| T1 | happy | a01d2e |\n";
   const r = passReferenceHygiene(body);
   assert.ok(r.clean, JSON.stringify(r.findings));
 });
 
 test("P6: clean modern plan body with trailing ids passes", () => {
-  const body =
-    "## Steps\n" +
+  const body = "## Steps\n" +
     "\n" +
     "### Step 1 — Build the reference grammar [1a2b3c]\n" +
     "\n" +

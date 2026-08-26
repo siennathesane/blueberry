@@ -230,13 +230,10 @@ export function seedPlan(
   const stepToHex = new Map<number, string>();
 
   for (const step of steps) {
-    const reqTag = step.requirements.length > 0
-      ? ` [${step.requirements.join(",")}]`
-      : "";
     const created = createTodo(
       db,
       plan.project_id,
-      `S${step.n}. ${step.title}${reqTag}`,
+      `S${step.n}. ${step.title}`,
       {
         sessionId,
       },
