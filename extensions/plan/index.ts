@@ -534,7 +534,16 @@ export default function (pi: ExtensionAPI) {
                 details: {},
               };
             }
-            const passes = runAllPasses(design ? design.body : null, plan.body);
+            const regIds = new Set(
+              (db.prepare("SELECT id FROM lifecycle_ids").all() as Array<
+                { id: string }
+              >).map((r) => r.id),
+            );
+            const passes = runAllPasses(
+              design ? design.body : null,
+              plan.body,
+              regIds,
+            );
             const prog = planProgress(db, plan);
             const lines = [
               `plan ${hex6Of(plan.id)} — ${plan.status} (rev ${plan.rev})`,
@@ -554,7 +563,16 @@ export default function (pi: ExtensionAPI) {
           case "passes": {
             const plan = activePlan(db, proj.id);
             if (!plan) throw new Error("no active plan");
-            const passes = runAllPasses(design ? design.body : null, plan.body);
+            const regIds = new Set(
+              (db.prepare("SELECT id FROM lifecycle_ids").all() as Array<
+                { id: string }
+              >).map((r) => r.id),
+            );
+            const passes = runAllPasses(
+              design ? design.body : null,
+              plan.body,
+              regIds,
+            );
             return {
               content: [
                 {
@@ -572,7 +590,16 @@ export default function (pi: ExtensionAPI) {
           case "approve": {
             const plan = activePlan(db, proj.id);
             if (!plan) throw new Error("no active plan");
-            const passes = runAllPasses(design ? design.body : null, plan.body);
+            const regIds = new Set(
+              (db.prepare("SELECT id FROM lifecycle_ids").all() as Array<
+                { id: string }
+              >).map((r) => r.id),
+            );
+            const passes = runAllPasses(
+              design ? design.body : null,
+              plan.body,
+              regIds,
+            );
             const dirty = passes.filter((p) => !p.clean);
             if (dirty.length > 0 && !params.force) {
               const summary = dirty
@@ -681,7 +708,16 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("no active plan — bb_plan draft or shift+tab", "info");
           return;
         }
-        const passes = runAllPasses(design ? design.body : null, plan.body);
+        const regIds = new Set(
+          (db.prepare("SELECT id FROM lifecycle_ids").all() as Array<
+            { id: string }
+          >).map((r) => r.id),
+        );
+        const passes = runAllPasses(
+          design ? design.body : null,
+          plan.body,
+          regIds,
+        );
         const prog = planProgress(db, plan);
         ctx.ui.notify(
           `⬡ plan ${

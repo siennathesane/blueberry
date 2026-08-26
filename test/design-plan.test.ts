@@ -25,6 +25,7 @@ import {
   parseSteps,
   passDependencySanity,
   passDesignCompleteness,
+  passIdInheritance,
   passPlanPurity,
   passTestCompleteness,
   planBreadcrumb,
@@ -379,7 +380,7 @@ test("runAllPasses: full pipeline on a good design+plan", () => {
   const plan =
     `## Steps\n\n1. **Build** \`R1\`\n   - Deliverable: module\n   - Acceptance: tests\n\n## Test matrix\n\n| Case | Type | Proves | Covers | Step |\n|------|------|--------|--------|------|\n| T1 | happy | R1 | R1 | 1 |\n\n## Coverage matrix\n\n| Aspect | Steps | Cases |\n|---------|-------|-------|\n| R1 | 1 | T1 |`;
   const results = runAllPasses(design, plan);
-  assert.equal(results.length, 4);
+  assert.equal(results.length, 5);
   for (const r of results) {
     assert.ok(r.clean, `${r.pass}: ${r.findings.join("; ")}`);
   }
@@ -593,4 +594,53 @@ test("doc-index: ingest dir with CRLF frontmatter parses", () => {
   const r = ingestDesignDocs(db, area, PROJECT);
   assert.equal(r.ingested, 1);
   assert.ok(searchDocs(db, "windows authored").length >= 1);
+});
+
+// --- P5: id inheritance --------------------------------------------------------------
+
+test("passIdInheritance: plan cites design-owned id is clean", () => {
+  const design = "## MUST\n\nA real requirement. [abc123]\n";
+  const plan = "## Steps\n\n1. **Build** [abc123]\n";
+  const r = passIdInheritance(plan, design, new Set());
+  assert.ok(r.clean, JSON.stringify(r.findings));
+  assert.equal(r.pass, "P5");
+});
+
+test("passIdInheritance: unowned id fails with id named and line number", () => {
+  const design = "## MUST\n\nA requirement. [abc123]\n";
+  const plan = "## Steps\n\ncontext line\n1. **Build** [abc123]\n\n2. **Wire** [deadbe]\n";
+  const r = passIdInheritance(plan, design, new Set());
+  assert.ok(!r.clean);
+  assert.ok(r.findings.some((f) => f.includes("deadbe")), JSON.stringify(r.findings));
+  assert.ok(r.findings.some((f) => f.includes("line 6")), JSON.stringify(r.findings));
+});
+
+test("passIdInheritance: registry counts as ownership", () => {
+  const design = "## MUST\n\nA requirement. [abc123]\n";
+  const plan = "## Steps\n\n1. **Build** [abc123]\n2. **Wire** [reg1st]\n";
+  const r = passIdInheritance(plan, design, new Set(["reg1st"]));
+  assert.ok(r.clean, JSON.stringify(r.findings));
+});
+
+test("passIdInheritance: no ids in plan is clean even with null designBody", () => {
+  const r = passIdInheritance("just some text", null, new Set());
+  assert.ok(r.clean);
+});
+
+test("passIdInheritance: ids in plan with null designBody fires finding", () => {
+  const r = passIdInheritance("## Steps\n\n1. **Build** [abc123]\n", null, new Set());
+  assert.ok(!r.clean);
+  assert.ok(r.findings[0]!.includes("no parent design"));
+});
+
+test("runAllPasses: 2-arg call returns 5 passes (back-compat, default registry)", () => {
+  const design = designWithRequirements("R1. The system MUST sync fast.");
+  const plan =
+    "## Steps\n\n1. **Build** `R1`\n   - Deliverable: module\n   - Acceptance: tests\n\n## Test matrix\n\n| Case | Type | Proves | Covers | Step |\n|------|------|--------|--------|------|\n| T1 | happy | R1 | R1 | 1 |\n\n## Coverage matrix\n\n| Aspect | Steps | Cases |\n|---------|-------|-------|\n| R1 | 1 | T1 |";
+  const results = runAllPasses(design, plan);
+  assert.equal(results.length, 5);
+  // P5 should be clean here because the plan has no trailing [hex6] ids
+  // (the R1 is in backtick format, not the lifecycle grammar)
+  const p5 = results.find((r) => r.pass === "P5")!;
+  assert.ok(p5.clean, JSON.stringify(p5.findings));
 });

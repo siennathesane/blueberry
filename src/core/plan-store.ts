@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { hex6Of } from "./todo-store.ts";
 import { addDep, createTodo, listTodos } from "./todo-store.ts";
 import { indexPlanDoc, planUri } from "./doc-index.ts";
+import { ID_LINE_PATTERN } from "./lifecycle.ts";
 
 export type PlanStatus =
   | "draft"
@@ -422,9 +423,56 @@ export function passDependencySanity(planBody: string): PassResult {
   return { pass: "P4", clean: findings.length === 0, findings };
 }
 
+/** P5: id inheritance — every trailing id in the plan is owned by the
+ * parent design body or registered in lifecycle_ids. */
+export function passIdInheritance(
+  planBody: string,
+  designBody: string | null,
+  registryIds: Set<string>,
+): PassResult {
+  const findings: string[] = [];
+  const globalPat = new RegExp(ID_LINE_PATTERN.source, "gm");
+
+  // Collect plan ids with first-occurrence line numbers
+  const planIds = new Map<string, number>(); // id → 1-based line
+  const lines = planBody.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const m = ID_LINE_PATTERN.exec(lines[i]!);
+    if (m && !planIds.has(m[1]!)) {
+      planIds.set(m[1]!, i + 1);
+    }
+  }
+
+  if (planIds.size === 0) return { pass: "P5", clean: true, findings: [] };
+
+  if (designBody === null) {
+    findings.push(
+      "plan carries ids but no parent design — cannot verify inheritance",
+    );
+    return { pass: "P5", clean: false, findings };
+  }
+
+  // Collect design-owned ids
+  const designIds = new Set<string>();
+  for (const m of designBody.matchAll(globalPat)) {
+    designIds.add(m[1]!);
+  }
+
+  const owned = new Set([...designIds, ...registryIds]);
+  for (const [id, line] of planIds) {
+    if (!owned.has(id)) {
+      findings.push(
+        `plan cites unowned id '${id}' — no design paragraph or registry entry owns it (line ${line})`,
+      );
+    }
+  }
+  return { pass: "P5", clean: findings.length === 0, findings };
+}
+
 export function runAllPasses(
   designBody: string | null,
   planBody: string,
+  registryIds: Set<string> = new Set(),
 ): PassResult[] {
   const passes: PassResult[] = [];
   if (designBody !== null) {
@@ -435,6 +483,7 @@ export function runAllPasses(
     passes.push(passTestCompleteness(designBody, planBody));
   }
   passes.push(passDependencySanity(planBody));
+  passes.push(passIdInheritance(planBody, designBody, registryIds));
   return passes;
 }
 
