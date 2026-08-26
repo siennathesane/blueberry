@@ -391,7 +391,7 @@ test("buildFailureBlock: seeded registry entry with open child card", () => {
 
   const block = buildFailureBlock(db, "aa11bb");
   assert.ok(block.includes("The requirement text."), "contains paragraph");
-  assert.ok(block.includes("design: 005-x.md"), "contains design doc path");
+  assert.ok(block.includes("[005-x.md](docs/design/005-x.md)"), "contains design doc link");
   assert.ok(block.includes("anchor title"), "contains the anchor card title");
   assert.ok(block.includes("open:"), "contains open prefix");
   db.close();
@@ -681,5 +681,149 @@ test("buildFailureBlock with cap inline renders inline card form", () => {
   // Must NOT contain old "open:" prefix for the child card
   assert.ok(!block.includes("open: " + childHex), "no old open: prefix for card ref");
 
+  db.close();
+});
+
+// --- Failure block link grammar (design 006 §Failure blocks) ----------------
+
+test("failure block design line is a markdown link", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p-link', 's', '/s', ?, ?)",
+    )
+    .run(now, now);
+  registerId(db, "eeff00", {
+    designDoc: "004-feature-lifecycle-template.md",
+    paragraph: "Reproduce before fixing. [eeff00]",
+  });
+  const block = buildFailureBlock(db, "eeff00");
+  assert.ok(
+    block.includes("[004-feature-lifecycle-template.md](docs/design/004-feature-lifecycle-template.md)"),
+    "design doc is a markdown link",
+  );
+  db.close();
+});
+
+test("failure block with slug and cap scheme non-tty renders markdown card link", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p-scheme', 'myproj', '/s', ?, ?)",
+    )
+    .run(now, now);
+  registerId(db, "aabb01", {
+    designDoc: "004-feature-lifecycle-template.md",
+    paragraph: "Req text. [aabb01]",
+  });
+  const anchorRes = seedAnchor(db, "p-scheme", "aabb01", "anchor card");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+  const hex = anchorRes.todo.hex6;
+
+  const block = buildFailureBlock(db, "aabb01", {
+    cap: "scheme",
+    slug: "myproj",
+    tty: false,
+  });
+  assert.ok(
+    block.includes(`[${hex} anchor card](bb://todo/myproj/${hex})`),
+    "card is a markdown bb:// link",
+  );
+  assert.ok(
+    block.includes("[004-feature-lifecycle-template.md](docs/design/004-feature-lifecycle-template.md)"),
+    "design doc is a markdown link",
+  );
+  db.close();
+});
+
+test("failure block with cap scheme and tty renders OSC 8 escape", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p-osc8', 'oslug', '/o', ?, ?)",
+    )
+    .run(now, now);
+  registerId(db, "ccdd02", {
+    designDoc: "006-ref.md",
+    paragraph: "OSC 8 in terminals. [ccdd02]",
+  });
+  const anchorRes = seedAnchor(db, "p-osc8", "ccdd02", "osc8 card");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+  const hex = anchorRes.todo.hex6;
+
+  const block = buildFailureBlock(db, "ccdd02", {
+    cap: "scheme",
+    slug: "oslug",
+    tty: true,
+  });
+  assert.ok(
+    block.includes("\x1b]8;;bb://todo/oslug/"),
+    "card line contains OSC 8 escape",
+  );
+  assert.ok(
+    block.includes("\x07"),
+    "card line contains OSC 8 ST",
+  );
+  db.close();
+});
+
+test("failure block with cap inline renders show command", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p-inl', 'islug', '/i', ?, ?)",
+    )
+    .run(now, now);
+  registerId(db, "eeff03", {
+    designDoc: "006-ref.md",
+    paragraph: "Inline fallback. [eeff03]",
+  });
+  const anchorRes = seedAnchor(db, "p-inl", "eeff03", "inline card");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+  const hex = anchorRes.todo.hex6;
+
+  const block = buildFailureBlock(db, "eeff03", {
+    cap: "inline",
+    slug: "islug",
+  });
+  assert.ok(
+    block.includes(`blueberry todo show islug ${hex}`),
+    "card line contains show command",
+  );
+  db.close();
+});
+
+test("failure block without slug falls back to plain open form", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('p-noslug', 'x', '/x', ?, ?)",
+    )
+    .run(now, now);
+  registerId(db, "ffaa04", {
+    designDoc: "006-ref.md",
+    paragraph: "No slug available. [ffaa04]",
+  });
+  const anchorRes = seedAnchor(db, "p-noslug", "ffaa04", "noslug card");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+  const hex = anchorRes.todo.hex6;
+
+  // cap is provided but slug is not — must fall back to plain open: form
+  const block = buildFailureBlock(db, "ffaa04", {
+    cap: "scheme",
+  });
+  assert.ok(
+    block.includes(`open: ${hex} noslug card`),
+    "card line is plain open: form",
+  );
+  assert.ok(
+    !block.includes("bb://"),
+    "no bb:// deep link without slug",
+  );
   db.close();
 });

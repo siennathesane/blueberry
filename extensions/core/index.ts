@@ -275,7 +275,7 @@ export default function (pi: ExtensionAPI) {
           db,
           pendingFailureIds,
           3,
-          { linkCap, slug: failSlug },
+          { linkCap, slug: failSlug, tty: process.stdout.isTTY === true },
         );
         const content = "[lifecycle]" + "\n" + blocks.join("\n\n") +
           (overflowIds.length

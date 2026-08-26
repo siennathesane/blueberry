@@ -210,7 +210,7 @@ export function parseJunit(xml: string): JunitCase[] {
 export function buildFailureBlock(
   db: DatabaseSync,
   id: string,
-  opts?: { cap?: LinkCapability; slug?: string },
+  opts?: { cap?: LinkCapability; slug?: string; tty?: boolean },
 ): string {
   const row = db
     .prepare(
@@ -225,7 +225,7 @@ export function buildFailureBlock(
   const lines: string[] = [
     `[${id}] requirement failed`,
     row.paragraph,
-    `design: ${row.design_doc}`,
+    `[${row.design_doc}](docs/design/${row.design_doc})`,
   ];
   const openCards = db
     .prepare(
@@ -241,7 +241,7 @@ export function buildFailureBlock(
   for (const card of openCards) {
     const h = hex6Of(card.id);
     if (opts?.cap && opts.slug) {
-      lines.push(renderCardRef({ hex6: h, title: card.title, stage: card.stage, slug: opts.slug }, opts.cap));
+      lines.push(renderCardRef({ hex6: h, title: card.title, stage: card.stage, slug: opts.slug }, opts.cap, { tty: opts.tty ?? false }));
     } else {
       lines.push(`open: ${h} ${card.title}`);
     }
@@ -260,7 +260,7 @@ export function collectFailureBlocks(
   db: DatabaseSync,
   ids: string[],
   cap = 3,
-  opts?: { linkCap?: LinkCapability; slug?: string },
+  opts?: { linkCap?: LinkCapability; slug?: string; tty?: boolean },
 ): { blocks: string[]; overflowIds: string[] } {
   if (ids.length === 0) return { blocks: [], overflowIds: [] };
   // Dedupe preserving first occurrence
@@ -273,7 +273,7 @@ export function collectFailureBlocks(
     }
   }
   const blocks = unique.slice(0, cap).map((id) =>
-    buildFailureBlock(db, id, opts?.linkCap ? { cap: opts.linkCap, slug: opts.slug } : undefined),
+    buildFailureBlock(db, id, opts?.linkCap ? { cap: opts.linkCap, slug: opts.slug, tty: opts.tty } : undefined),
   );
   const overflowIds = unique.slice(cap);
   return { blocks, overflowIds };
