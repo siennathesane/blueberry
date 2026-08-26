@@ -54,6 +54,7 @@ import {
   searchCode,
   searchSessionsWithContext,
 } from "../core/search.ts";
+import { listTodos, getTodo, ageString, toCards } from "../core/todo-store.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -617,6 +618,8 @@ export async function main(
       return cmdCmd(rest, deps);
     case "import":
       return importCmd(rest, deps);
+    case "todo":
+      return todoCmd(rest, deps);
     default:
       // anything that isn't a known subcommand is treated as pi launch
       return launchMode(argv, deps);
@@ -1176,6 +1179,106 @@ async function lifecycleCmd(rest: string[], deps: CliDeps): Promise<number> {
     }
     default:
       return usageErr(deps, "lifecycle junit <path> | lcov <path>");
+  }
+}
+
+// --- todo -----------------------------------------------------------------
+
+function todoCmd(rest: string[], deps: CliDeps): number {
+  const [sub, ...args] = rest;
+  switch (sub) {
+    case "show": {
+      const slug = args[0];
+      const hex6 = args[1];
+      if (!slug || !hex6) {
+        return usageErr(deps, "todo show <slug> <hex6>");
+      }
+      const registry = loadRegistrySync(deps.agentDir);
+      const project = findBySlug(registry, slug);
+      if (!project) {
+        deps.err(`no project '${slug}'`);
+        return 1;
+      }
+      const db = openDb(deps.agentDir);
+      try {
+        const todo = getTodo(db, project.id, hex6);
+        if (!todo) {
+          deps.err(`no todo '${hex6}' in project '${slug}'`);
+          return 1;
+        }
+        const all = listTodos(db, project.id);
+        const row = all.find((t) => t.hex6 === hex6);
+        const designId = row?.designId ?? null;
+        const isAnchor = row?.isAnchor ?? false;
+        const deps_hex = row?.deps.map((d) =>
+          all.find((a) => a.id === d)?.hex6 ?? d
+        ) ?? [];
+        const blockedBy = row?.blockedBy ?? [];
+
+        deps.out(`${hex6}  [${todo.stage}]  ${todo.title}`);
+        deps.out(`  created:  ${todo.created_at}`);
+        deps.out(`  updated:  ${todo.updated_at}`);
+        if (designId) {
+          deps.out(`  design:   ${designId}${isAnchor ? " (anchor)" : ""}`);
+        } else if (isAnchor) {
+          deps.out("  anchor:   true");
+        }
+        if (deps_hex.length > 0) {
+          deps.out(`  deps:     ${deps_hex.join(", ")}`);
+        }
+        if (blockedBy.length > 0) {
+          deps.out(`  blocked:  ${blockedBy.join(", ")}`);
+        }
+
+        const events = db
+          .prepare(
+            "SELECT kind, ts, note FROM todo_events WHERE todo_id = ? ORDER BY seq",
+          )
+          .all(todo.id) as Array<Record<string, unknown>>;
+        if (events.length > 0) {
+          deps.out("  events:");
+          for (const ev of events) {
+            const note = ev["note"] !== null ? ` ${ev["note"]}` : "";
+            deps.out(`    ${ev["ts"]}  ${ev["kind"]}${note}`);
+          }
+        }
+        return 0;
+      } finally {
+        db.close();
+      }
+    }
+    case "list": {
+      const slug = args[0];
+      if (!slug) {
+        return usageErr(deps, "todo list <slug>");
+      }
+      const registry = loadRegistrySync(deps.agentDir);
+      const project = findBySlug(registry, slug);
+      if (!project) {
+        deps.err(`no project '${slug}'`);
+        return 1;
+      }
+      const db = openDb(deps.agentDir);
+      try {
+        const rows = listTodos(db, project.id);
+        const cards = toCards(rows);
+        if (cards.length === 0) {
+          deps.out(`no todos for '${slug}'`);
+          return 0;
+        }
+        for (const c of cards) {
+          const blocked = (c.blockedBy?.length ?? 0) > 0
+            ? ` (blocked: ${c.blockedBy!.join(", ")})`
+            : "";
+          deps.out(`${c.id}  [${c.stage}]  ${c.title} (${c.age})${blocked}`);
+        }
+        return 0;
+      } finally {
+        db.close();
+      }
+    }
+    default:
+      return usageErr(deps, "todo show <slug> <hex6> | list <slug>");
   }
 }
 
