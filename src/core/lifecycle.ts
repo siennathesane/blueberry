@@ -223,9 +223,15 @@ export function buildFailureBlock(db: DatabaseSync, id: string): string {
   ];
   const openCards = db
     .prepare(
-      "SELECT id, title, stage FROM todos WHERE design_id = ? AND stage NOT IN ('done','dropped')",
+      `SELECT t.id, t.title, t.stage FROM todos t
+       WHERE t.design_id = ? AND t.stage NOT IN ('done','dropped')
+       UNION
+       SELECT c.id, c.title, c.stage FROM todos c
+       JOIN todo_deps d ON d.todo_id = c.id
+       JOIN todos a ON a.id = d.dep_id
+       WHERE a.design_id = ? AND c.stage NOT IN ('done','dropped')`,
     )
-    .all(id) as Array<{ id: string; title: string; stage: string }>;
+    .all(id, id) as Array<{ id: string; title: string; stage: string }>;
   for (const card of openCards) {
     lines.push(`open: ${hex6Of(card.id)} ${card.title}`);
   }
