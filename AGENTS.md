@@ -36,6 +36,12 @@ exists only for the `pi` manifest, the version source of truth, and npm deps
 4. Test: `env -u BLUEBERRY_DB deno task test` — the `env -u` matters when testing
    from inside a live blueberry session (the launcher exports `BLUEBERRY_DB`, which
    breaks one launcher handover test that asserts it's unset).
+5. Inspect the composed system prompt:
+   `env -u BLUEBERRY_DB deno run -A --config deno.json scripts/dump-prompt.ts`
+   renders the exact prompt a session boots with (all probe options enabled:
+   lsp, design lifecycle, todos). Use it before and after any prompt-surface
+   change — it composes from live sources, so it doubles as a preview canvas
+   for proposed prompt edits.
 
 **Never run bare `node --test`** — it sweeps 607 vendored test files under the
 in-tree `pi/` fork source and wedges. The npm `test` script delegates to deno for
