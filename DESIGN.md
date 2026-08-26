@@ -1194,3 +1194,63 @@ Contract with `bin/compile.sh` artifacts:
 Pure core in `src/core/updater.ts` (injectable IO, offline-tested); CLI layer
 supplies deno-real fetch/fs. Tests pin the security branches: tamper =
 refuse, no-sidecar = refuse, deno-on-PATH = refuse, rc = not newer.
+
+---
+
+## §Lifecycle — design ids, coverage map, failure-only context (shipped 2026-08-26)
+
+**Status: implemented and tested.** Design `005-lifecycle-coverage-map.md`
+(decided), plan `23fb77`, steps S1–S10 all done. The machinery is live on this
+repo's own docs — the retrofit of `004-feature-lifecycle-template.md` was its
+first customer, and this suite's JUnit output carries seven tagged contracts
+that prove it.
+
+### The grammar
+
+One pattern, everywhere — design paragraphs, plan GWT rows, DAG anchors,
+acceptance-test names:
+
+    /\[([0-9a-f]{6})\]\s*$/
+
+A trailing `[hex6]` at end of line. Present = requirement; absent = context.
+Ids are minted at design-decide time (`mintId` — collision-checked against
+every live todo-card hex6 and every registered id, retired ids never
+re-minted), immutable, and retired with their design. Plans inherit ids and
+never create them: `bb_plan passes` P5 fails a plan row whose trailing id no
+design paragraph or registry entry owns. Live ids in this repo: 004's seven
+(9d01aa 8e02bb 7f03cc 6a04dd 5b05ee 4c06ff 3d0711), 005's eight (a01d2e
+b02e3f c03e4b d04f5c e05f6d f06a7e 07b8fa 18c9ab).
+
+### The map
+
+`src/core/lifecycle.ts` holds extraction (`extractIds`,
+`extractIdParagraphs`), the registry (`lifecycle_ids` table), and ingestion:
+`parseJunit` (dependency-free — Deno ships no DOMParser) reads
+`deno test --junit-path` output, joining each testcase's trailing id to its
+requirement; `readLcovIfPresent` reads an lcov file opportunistically when
+one exists (absence is not an error — nothing gates on it). Every decided id
+gets exactly one uniform DAG anchor (`seedAnchor` — idempotent, stage-locked
+to todo/dropped: anchors are links, not work); impl cards hang beneath as
+plain leaves and carry no id. CLI verbs: `blueberry lifecycle junit <path>`,
+`blueberry lifecycle lcov <path>`.
+
+### Failure-only context
+
+Silence is the healthy state. The core extension watches bash tool results
+for gate commands (`deno test`, `deno task test`), reads
+`.blueberry/lifecycle-junit.xml` when present, and on the next turn emits one
+ephemeral `[lifecycle]` tail message: per failing tagged id (capped at 3 full
+blocks, overflow listed bare) the requirement paragraph verbatim, the design
+doc path, and open cards under the anchor — now walked anchor→dependents via
+`todo_deps`. Green tagged tests render nothing. The system prompt (Rail 1,
+frozen, gated on `docs/design` existing) explains the contract: a tagged test
+failing is a decided requirement broken, its block is harness-generated truth.
+
+### Verification
+
+Tagged acceptance tests live in `test/lifecycle.test.ts` (the seven
+`dogfood:` tests) and prove extraction → registry → anchor → JUnit join
+against the real docs. Gate emission: `env -u BLUEBERRY_DB deno test -A
+test/ --junit-path .blueberry/lifecycle-junit.xml`. Proven on this suite's
+own output: 605 cases, 7 tagged, all green; synthetic failure-path renders
+the block. Interior tests cover the pure functions (601 total green).
