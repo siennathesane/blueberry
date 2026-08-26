@@ -173,6 +173,13 @@ CREATE TABLE IF NOT EXISTS cmd_templates (
 CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(
   text, source UNINDEXED, uri UNINDEXED
 );
+CREATE TABLE IF NOT EXISTS lifecycle_ids (
+  id TEXT PRIMARY KEY,
+  design_doc TEXT,
+  paragraph TEXT,
+  minted_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'live'
+);
 CREATE TABLE IF NOT EXISTS config (
   key TEXT PRIMARY KEY,
   json TEXT NOT NULL

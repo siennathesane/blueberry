@@ -1,11 +1,15 @@
 /**
- * Lifecycle coverage map: design-id extraction (design 005 — the identifier
- * grammar and design-prose sections).
+ * Lifecycle coverage map: design-id extraction and registry (design 005).
  *
- * Pure functions, no side effects. The one pattern the harness ever needs,
- * applied at line-ends across design docs, plan rows, DAG anchors, and JUnit
- * testcase names. A mid-line bracketed hex never matches.
+ * Pure extraction functions plus stateful registry operations backed by
+ * blueberry.db. The one pattern the harness ever needs, applied at line-ends
+ * across design docs, plan rows, DAG anchors, and JUnit testcase names.
+ * A mid-line bracketed hex never matches.
  */
+
+import type { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
+import { hex6Of } from "./todo-store.ts";
 
 /** Trailing six-lowercase-hex id at end of line — the single join pattern. */
 export const ID_LINE_PATTERN = /\[([0-9a-f]{6})\]\s*$/;
@@ -49,4 +53,92 @@ export function extractIdParagraphs(
     if (id) out.push({ id, text: trimmed });
   }
   return out;
+}
+
+// --- registry ----------------------------------------------------------------
+
+export interface MintedId {
+  id: string;
+}
+
+/**
+ * Draw a collision-free six-lowercase-hex id.
+ *
+ * Collides against: lifecycle_ids (any status), todo-card hex6s, and
+ * opts.exclude. Retries up to 50 draws; throws if all collide.
+ */
+export function mintId(
+  db: DatabaseSync,
+  opts: { exclude?: string[]; rng?: () => string } = {},
+): string {
+  const todoHexes = new Set(
+    (db.prepare("SELECT id FROM todos").all() as Array<{ id: string }>)
+      .map((r) => hex6Of(r.id)),
+  );
+  const regIds = new Set(
+    (db
+      .prepare("SELECT id FROM lifecycle_ids")
+      .all() as Array<{ id: string }>).map((r) => r.id),
+  );
+  const excludeSet = new Set(opts.exclude ?? []);
+
+  const rng = opts.rng ?? (() => randomUUID());
+  for (let i = 0; i < 50; i++) {
+    const hex6 = hex6Of(rng());
+    if (
+      !regIds.has(hex6) &&
+      !todoHexes.has(hex6) &&
+      !excludeSet.has(hex6)
+    ) {
+      return hex6;
+    }
+  }
+  throw new Error("lifecycle: mintId exhausted 50 attempts without a free id");
+}
+
+/**
+ * Record a minted id into lifecycle_ids. Throws on duplicate (UNIQUE).
+ */
+export function registerId(
+  db: DatabaseSync,
+  id: string,
+  meta: { designDoc: string; paragraph: string },
+): void {
+  db
+    .prepare(
+      "INSERT INTO lifecycle_ids (id, design_doc, paragraph, minted_at) VALUES (?, ?, ?, ?)",
+    )
+    .run(id, meta.designDoc, meta.paragraph, new Date().toISOString());
+}
+
+/** Mark an id as retired. Retired ids are never re-minted. */
+export function retireId(db: DatabaseSync, id: string): void {
+  db.prepare("UPDATE lifecycle_ids SET status = 'retired' WHERE id = ?").run(
+    id,
+  );
+}
+
+/**
+ * True iff the id is absent from lifecycle_ids (any status, including retired)
+ * and absent from todo-card hex6s and not in exclude.
+ */
+export function idIsFree(
+  db: DatabaseSync,
+  id: string,
+  exclude: string[] = [],
+): boolean {
+  const row = db
+    .prepare("SELECT 1 FROM lifecycle_ids WHERE id = ? LIMIT 1")
+    .get(id) as Record<string, unknown> | undefined;
+  if (row) return false;
+
+  const todos = db
+    .prepare("SELECT id FROM todos")
+    .all() as Array<{ id: string }>;
+  for (const r of todos) {
+    if (hex6Of(r.id) === id) return false;
+  }
+
+  if (exclude.includes(id)) return false;
+  return true;
 }
