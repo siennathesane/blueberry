@@ -282,11 +282,34 @@ export function findOpenDesign(
   db: DatabaseSync,
   projectId: string,
 ): DesignDoc | null {
+  return findLatestDesign(db, projectId, "open");
+}
+
+/**
+ * The design a plan decomposes — open designs first, else the latest
+ * decided design (plans legitimately follow decide; a decided parent is
+ * the normal case, not an error).
+ */
+export function findPlanParentDesign(
+  db: DatabaseSync,
+  projectId: string,
+): DesignDoc | null {
+  return (
+    findLatestDesign(db, projectId, "open") ??
+      findLatestDesign(db, projectId, "decided")
+  );
+}
+
+function findLatestDesign(
+  db: DatabaseSync,
+  projectId: string,
+  status: string,
+): DesignDoc | null {
   const row = db
     .prepare(
-      "SELECT path FROM designs WHERE project_id = ? AND status = 'open' ORDER BY ingested_at DESC LIMIT 1",
+      "SELECT path FROM designs WHERE project_id = ? AND status = ? ORDER BY ingested_at DESC LIMIT 1",
     )
-    .get(projectId) as { path: string } | undefined;
+    .get(projectId, status) as { path: string } | undefined;
   if (!row) return null;
   return readDesignDoc(row.path);
 }

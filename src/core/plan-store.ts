@@ -110,6 +110,20 @@ export function createPlan(
   return getPlan(db, id)!;
 }
 
+/** Repoint a plan's design linkage (draft-time grabs the open design;
+ * the plan's own parent declaration is authoritative once set). */
+export function setPlanDesignId(
+  db: DatabaseSync,
+  planId: string,
+  designId: string,
+): void {
+  db
+    .prepare(
+      "UPDATE plans SET design_id = ?, updated_at = ? WHERE id = ?",
+    )
+    .run(designId, new Date().toISOString(), planId);
+}
+
 export function getPlan(db: DatabaseSync, id: string): PlanRow | null {
   const row = db.prepare("SELECT * FROM plans WHERE id = ?").get(id) as
     | Record<string, unknown>
@@ -272,40 +286,53 @@ export interface PassResult {
   findings: string[];
 }
 
-/** P1: design completeness — every MUST covered by ≥1 step AND ≥1 case. */
+/**
+ * Requirement extraction — dual grammar.
+ *
+ * Legacy: `## Requirements` section with `R#.` numbered MUST lines.
+ * 005+: any section; requirement = paragraph whose final line ends with
+ * a minted design id ` [hex6]`. Returns ids each grammar finds, preferring
+ * the id grammar when both are present.
+ */
+export function extractRequirementIds(
+  designBody: string,
+): { ids: string[]; grammar: "legacy" | "lifecycle" } {
+  const stripped = designBody.replace(/<!--[\s\S]*?-->/g, "");
+  const trailing = [...stripped.matchAll(/\[([0-9a-f]{6})\]\s*$/gm)].map((m) =>
+    m[1]!
+  );
+  if (trailing.length > 0) {
+    return { ids: [...new Set(trailing)], grammar: "lifecycle" };
+  }
+
+  const reqSection = /^##\s+Requirements\s*$/m.exec(stripped);
+  if (!reqSection) return { ids: [], grammar: "legacy" };
+  const after = stripped.slice(reqSection.index + reqSection[0].length);
+  const reqContent = (
+    /^##\s/m.exec(after) ? after.slice(0, /^##\s/m.exec(after)!.index!) : after
+  ).trim();
+  const legacy = [
+    ...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm),
+  ].map((m) => m[1]!);
+  return { ids: legacy, grammar: "legacy" };
+}
+
+/** P1: design completeness — every requirement covered by ≥1 step. */
 export function passDesignCompleteness(
   designBody: string,
   planBody: string,
 ): PassResult {
   const findings: string[] = [];
-  const stripped = designBody.replace(/<!--[\s\S]*?-->/g, "");
-  const reqSection = /^##\s+Requirements\s*$/m.exec(stripped);
-  if (!reqSection) {
-    return {
-      pass: "P1",
-      clean: false,
-      findings: ["design has no Requirements section"],
-    };
-  }
-  const after = stripped.slice(reqSection.index + reqSection[0].length);
-  const reqContent = (
-    /^##\s/m.exec(after) ? after.slice(0, /^##\s/m.exec(after)!.index!) : after
-  ).trim();
-
-  const musts = [...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm)]
-    .map(
-      (m) => m[1]!,
-    );
-  if (musts.length === 0) {
+  const { ids, grammar } = extractRequirementIds(designBody);
+  if (ids.length === 0) {
     findings.push("no MUST requirements found — design has no hard contract");
   }
-  for (const rid of musts) {
-    if (
-      !new RegExp(`\`${rid}(,\\d+)?\``).test(planBody) &&
-      !planBody.includes(`\`${rid}`)
-    ) {
-      findings.push(`${rid}: MUST with no covering step`);
-    }
+  for (const rid of ids) {
+    const cited = grammar === "lifecycle"
+      ? planBody.includes(`[${rid}]`)
+      : new RegExp(`\`${rid}(,\\d+)?\``).test(planBody) ||
+        planBody.includes(`\`${rid}`);
+    if (!cited) findings.push(`${rid}: MUST with no covering step`);
   }
   return { pass: "P1", clean: findings.length === 0, findings };
 }
@@ -324,33 +351,21 @@ export function passPlanPurity(planBody: string): PassResult {
   return { pass: "P2", clean: findings.length === 0, findings };
 }
 
-/** P3: test completeness — every MUST has ≥1 test case; matrix exists. */
+/** P3: test completeness — every requirement has ≥1 test case; matrix exists. */
 export function passTestCompleteness(
   designBody: string,
   planBody: string,
 ): PassResult {
   const findings: string[] = [];
-  if (!/^##\s+Test matrix\s*$/m.test(planBody)) {
+  if (!/^##\s+Test matrix/m.test(planBody)) {
     findings.push("no Test matrix section");
   }
-  const stripped = designBody.replace(/<!--[\s\S]*?-->/g, "");
-  const reqSection = /^##\s+Requirements\s*$/m.exec(stripped);
-  if (reqSection) {
-    const after = stripped.slice(reqSection.index + reqSection[0].length);
-    const reqContent = (
-      /^##\s/m.exec(after)
-        ? after.slice(0, /^##\s/m.exec(after)!.index!)
-        : after
-    ).trim();
-    const musts = [
-      ...reqContent.matchAll(/^(R\d+)\.\s+.*\bMUST\b(?! NOT)/gm),
-    ].map((m) => m[1]!);
-    const matrixMatch = /^##\s+Test matrix\s*$/m.exec(planBody);
-    const matrixBody = matrixMatch ? planBody.slice(matrixMatch.index) : "";
-    for (const rid of musts) {
-      if (!matrixBody.includes(rid)) {
-        findings.push(`${rid}: no test case in matrix`);
-      }
+  const { ids } = extractRequirementIds(designBody);
+  const matrixMatch = /^##\s+Test matrix/m.exec(planBody);
+  const matrixBody = matrixMatch ? planBody.slice(matrixMatch.index) : "";
+  for (const rid of ids) {
+    if (!matrixBody.includes(rid)) {
+      findings.push(`${rid}: no test case in matrix`);
     }
   }
   return { pass: "P3", clean: findings.length === 0, findings };
