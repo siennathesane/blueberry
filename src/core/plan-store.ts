@@ -56,10 +56,24 @@ export function parseSteps(body: string): PlanStep[] {
   const section = nextSection ? after.slice(0, nextSection.index) : after;
 
   const steps: PlanStep[] = [];
-  // split on numbered list items at line starts
+  // split on numbered list items at line starts (legacy) or
+  // `### Step N — Title [hex6]` headings (lifecycle grammar)
   const lines = section.split("\n");
   let current: Partial<PlanStep> | null = null;
   for (const line of lines) {
+    const headingMatch =
+      /^###\s+Step\s+(\d+)\s+[—–-]\s+(.+?)\s*(?:\[([0-9a-f]{6})\])?\s*$/
+        .exec(line.trim());
+    if (headingMatch) {
+      if (current && current.n !== undefined) steps.push(current as PlanStep);
+      current = {
+        n: Number(headingMatch[1]),
+        title: headingMatch[2]!,
+        requirements: headingMatch[3] ? [headingMatch[3]] : [],
+        dependsOn: [],
+      };
+      continue;
+    }
     const headMatch =
       /^(\d+)\.\s+\*\*(.+?)\*\*(?:\s+`([R\d,\s]+)`)?(?:\s+⟵\s*([\d,\s]+))?\s*$/
         .exec(
@@ -86,6 +100,11 @@ export function parseSteps(body: string): PlanStep[] {
       if (del) current.deliverable = del[1]!;
       const acc = /^-\s+Acceptance:\s*(.+)$/.exec(line.trim());
       if (acc) current.acceptance = acc[1]!;
+      // lifecycle grammar: `Acceptance GWT [id]: given… when… then…`
+      const gwt = /^Acceptance GWT \[([0-9a-f]{6})\]:\s*(.+)$/.exec(
+        line.trim(),
+      );
+      if (gwt) current.acceptance = gwt[2]!;
     }
   }
   if (current && current.n !== undefined) steps.push(current as PlanStep);
