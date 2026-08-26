@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildFailureBlock,
+  collectFailureBlocks,
   extractIdParagraphs,
   extractIds,
   ID_LINE_PATTERN,
@@ -16,6 +18,7 @@ import {
   registerId,
   retireId,
 } from "../src/core/lifecycle.ts";
+import { seedAnchor } from "../src/core/todo-store.ts";
 import { openDb } from "../src/core/db.ts";
 import { cleanup, tmpAgentDir, tmpDir } from "./helpers.ts";
 import { join } from "node:path";
@@ -329,13 +332,94 @@ test("lcov_snapshot upsert: second INSERT OR REPLACE overwrites first", () => {
   const upsert = db.prepare(
     "INSERT OR REPLACE INTO lcov_snapshot (path, lines_hit, lines_found, mtime, read_at) VALUES (?, ?, ?, ?, ?)",
   );
-  upsert.run("/a.lcov", 8, 10, "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
-  upsert.run("/a.lcov", 9, 10, "2026-01-02T00:00:00.000Z", "2026-01-02T00:00:00.000Z");
+  upsert.run(
+    "/a.lcov",
+    8,
+    10,
+    "2026-01-01T00:00:00.000Z",
+    "2026-01-01T00:00:00.000Z",
+  );
+  upsert.run(
+    "/a.lcov",
+    9,
+    10,
+    "2026-01-02T00:00:00.000Z",
+    "2026-01-02T00:00:00.000Z",
+  );
   const rows = db
     .prepare("SELECT lines_hit, lines_found, mtime FROM lcov_snapshot")
     .all() as Array<{ lines_hit: number; lines_found: number; mtime: string }>;
   assert.equal(rows.length, 1);
   assert.equal(rows[0]!.lines_hit, 9);
   assert.equal(rows[0]!.mtime, "2026-01-02T00:00:00.000Z");
+  db.close();
+});
+
+// --- Failure-only context injection (design 005 §Failure-only context) ---
+
+test("buildFailureBlock: unknown id returns single-line fallback", () => {
+  const db = openDb(agentDir);
+  const block = buildFailureBlock(db, "zzzzzz");
+  assert.ok(block.includes("zzzzzz"), "contains the id");
+  assert.ok(block.includes("no registry entry"), "contains fallback message");
+  assert.equal(block.split("\n").length, 1, "exactly one line");
+  db.close();
+});
+
+test("buildFailureBlock: seeded registry entry with open child card", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  const projectId = "proj-failblock";
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, 'p', '/x/p', ?, ?)",
+    )
+    .run(projectId, now, now);
+
+  registerId(db, "aa11bb", {
+    designDoc: "005-x.md",
+    paragraph: "The requirement text. [aa11bb]",
+  });
+  const anchorRes = seedAnchor(db, projectId, "aa11bb", "anchor title");
+  assert.ok(anchorRes.ok && anchorRes.todo);
+
+  const block = buildFailureBlock(db, "aa11bb");
+  assert.ok(block.includes("The requirement text."), "contains paragraph");
+  assert.ok(block.includes("design: 005-x.md"), "contains design doc path");
+  assert.ok(block.includes("anchor title"), "contains the anchor card title");
+  assert.ok(block.includes("open:"), "contains open prefix");
+  db.close();
+});
+
+test("collectFailureBlocks: cap limits blocks, remainder overflows", () => {
+  const db = openDb(agentDir);
+  const now = new Date().toISOString();
+  db
+    .prepare(
+      "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES ('cap-proj', 'c', '/c', ?, ?)",
+    )
+    .run(now, now);
+
+  for (const id of ["111111", "222222", "333333", "444444", "555555"]) {
+    registerId(db, id, {
+      designDoc: `${id}.md`,
+      paragraph: `req ${id}. [${id}]`,
+    });
+  }
+
+  const ids = ["111111", "222222", "333333", "444444", "555555"];
+  const { blocks, overflowIds } = collectFailureBlocks(db, ids, 3);
+  assert.equal(blocks.length, 3);
+  assert.equal(overflowIds.length, 2);
+  assert.ok(blocks[0]!.includes("111111"), "first block is first id");
+  assert.deepEqual(overflowIds, ["444444", "555555"]);
+  db.close();
+});
+
+test("collectFailureBlocks: empty input yields empty output", () => {
+  const db = openDb(agentDir);
+  const { blocks, overflowIds } = collectFailureBlocks(db, []);
+  assert.equal(blocks.length, 0);
+  assert.equal(overflowIds.length, 0);
   db.close();
 });

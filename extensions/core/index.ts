@@ -21,309 +21,380 @@ import { getVersion } from "../../src/core/version.ts";
 import { projectNameFor, terminalTitle } from "../../src/core/identity.ts";
 import { installInterceptor } from "../../src/core/title-guard.ts";
 import {
-	composeDatetimeLine,
-	composeIdentity,
-	composeStateBlock,
-	type IdentityProbe,
-	type LiveState,
+  composeDatetimeLine,
+  composeIdentity,
+  composeStateBlock,
+  type IdentityProbe,
+  type LiveState,
 } from "../../src/core/context-composer.ts";
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { collectFailureBlocks, parseJunit } from "../../src/core/lifecycle.ts";
 
 /** Current branch name from .git/HEAD; null when not a git repo / unreadable. */
 function gitBranch(root: string): string | null {
-	try {
-		const head = readFileSync(join(root, ".git", "HEAD"), "utf8").trim();
-		const match = /^ref: refs\/heads\/(.+)$/.exec(head);
-		if (match) return match[1]!;
-		if (head !== "") return "detached";
-	} catch {
-		// no .git (lore repos, plain dirs): no branch segment
-	}
-	return null;
+  try {
+    const head = readFileSync(join(root, ".git", "HEAD"), "utf8").trim();
+    const match = /^ref: refs\/heads\/(.+)$/.exec(head);
+    if (match) return match[1]!;
+    if (head !== "") return "detached";
+  } catch {
+    // no .git (lore repos, plain dirs): no branch segment
+  }
+  return null;
 }
 
 function lastSegment(path: string): string {
-	return path.split("/").filter(Boolean).pop() ?? path;
+  return path.split("/").filter(Boolean).pop() ?? path;
 }
 
 export default function (pi: ExtensionAPI) {
-	// ── §Context: the two rails ─────────────────────────────────
-	// Rail 1 (system prompt): identity, FROZEN at first use — the prompt is
-	// the cache-prefix root; our bytes never change mid-session (zero-
-	// eviction). Rail 2 (context event): state + datetime, rebuilt fresh per
-	// turn at the tail — never persisted, never cache-hostile.
-	let frozenIdentity: string | null = null;
+  // ── §Failure-only context injection (design 005) ───────────
+  let pendingFailureIds: string[] = [];
 
-	const probeIdentity = async (cwd: string): Promise<IdentityProbe> => {
-		const boundary = findProjectBoundary(resolve(cwd));
-		const root = boundary ? boundary.root : resolve(cwd);
-		const probe: IdentityProbe = {
-			cwd,
-			lspLanguages: [],
-			hasDesignLifecycle: existsSync(join(root, "docs", "design")),
-			hasTodos: false,
-		};
-		try {
-			const { defaultServers } = await import("../../src/core/lsp-manager.ts");
-			probe.lspLanguages = defaultServers().flatMap((s) => s.languageIds);
-		} catch {
-			// no servers installed = no bb_lsp surface in identity
-		}
-		const agentDir = process.env["PI_CODING_AGENT_DIR"];
-		if (agentDir) {
-			try {
-				const { openDb } = await import("../../src/core/db.ts");
-				const db = openDb(agentDir);
-				try {
-					probe.hasTodos =
-						(db.prepare("SELECT COUNT(*) AS n FROM todos").get() as { n: number }).n >
-						0;
-				} finally {
-					db.close();
-				}
-			} catch {
-				// probe failure = minimal identity, never a broken session
-			}
-		}
-		return probe;
-	};
+  // ── §Context: the two rails ─────────────────────────────────
+  // Rail 1 (system prompt): identity, FROZEN at first use — the prompt is
+  // the cache-prefix root; our bytes never change mid-session (zero-
+  // eviction). Rail 2 (context event): state + datetime, rebuilt fresh per
+  // turn at the tail — never persisted, never cache-hostile.
+  let frozenIdentity: string | null = null;
 
-	const ensureIdentity = async (cwd: string): Promise<string> => {
-		if (frozenIdentity === null) {
-			frozenIdentity = composeIdentity(await probeIdentity(cwd));
-		}
-		return frozenIdentity;
-	};
+  const probeIdentity = async (cwd: string): Promise<IdentityProbe> => {
+    const boundary = findProjectBoundary(resolve(cwd));
+    const root = boundary ? boundary.root : resolve(cwd);
+    const probe: IdentityProbe = {
+      cwd,
+      lspLanguages: [],
+      hasDesignLifecycle: existsSync(join(root, "docs", "design")),
+      hasTodos: false,
+    };
+    try {
+      const { defaultServers } = await import("../../src/core/lsp-manager.ts");
+      probe.lspLanguages = defaultServers().flatMap((s) => s.languageIds);
+    } catch {
+      // no servers installed = no bb_lsp surface in identity
+    }
+    const agentDir = process.env["PI_CODING_AGENT_DIR"];
+    if (agentDir) {
+      try {
+        const { openDb } = await import("../../src/core/db.ts");
+        const db = openDb(agentDir);
+        try {
+          probe.hasTodos =
+            (db.prepare("SELECT COUNT(*) AS n FROM todos").get() as {
+              n: number;
+            }).n >
+              0;
+        } finally {
+          db.close();
+        }
+      } catch {
+        // probe failure = minimal identity, never a broken session
+      }
+    }
+    return probe;
+  };
 
-	pi.on("before_agent_start", async (event, ctx) => {
-		// Rail 1 — frozen identity, byte-identical every turn (zero-eviction)
-		const identity = await ensureIdentity(ctx.cwd);
-		event.systemPrompt = `${event.systemPrompt}\n\n${identity}`;
-	});
+  const ensureIdentity = async (cwd: string): Promise<string> => {
+    if (frozenIdentity === null) {
+      frozenIdentity = composeIdentity(await probeIdentity(cwd));
+    }
+    return frozenIdentity;
+  };
 
-	// Derive the live state snapshot from the DB (never stale, never cached).
-	const readLiveState = async (cwd: string): Promise<LiveState> => {
-		const state: LiveState = { mode: "normal" };
-		const agentDir = process.env["PI_CODING_AGENT_DIR"];
-		if (!agentDir) return state;
-		const boundary = findProjectBoundary(resolve(cwd));
-		const root = boundary ? boundary.root : resolve(cwd);
-		try {
-			const { openDb, loadRegistryDb } = await import("../../src/core/db.ts");
-			const { normalizePathForCompare } = await import("../../src/core/util.ts");
-			const db = openDb(agentDir);
-			try {
-				const modeRow = db
-					.prepare("SELECT json FROM config WHERE key = 'mode'")
-					.get() as { json: string } | undefined;
-				if (modeRow) {
-					const mode = (JSON.parse(modeRow.json) as { mode?: string }).mode;
-					if (mode === "design" || mode === "plan") state.mode = mode;
-				}
-				const registry = loadRegistryDb(db);
-				const project = registry.projects.find(
-					(p) =>
-						normalizePathForCompare(p.canonicalPath) ===
-						normalizePathForCompare(root),
-				);
-				if (project) {
-					if (state.mode === "design") {
-						const { findOpenDesign, checkCompleteness } = await import(
-							"../../src/core/design-store.ts"
-						);
-						const open = findOpenDesign(db, project.id);
-						if (open) {
-							state.designTitle = open.title;
-							state.missingSections = checkCompleteness(open.body).unanswered;
-						}
-					} else if (state.mode === "plan") {
-						const row = db
-							.prepare(
-								"SELECT rev, status FROM plans WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1",
-							)
-							.get(project.id) as { rev: number; status: string } | undefined;
-						if (row) state.planRev = row.rev;
-					} else {
-						// building: DAG progress (NOW/NEXT from ready todos)
-						const { listTodos } = await import("../../src/core/todo-store.ts");
-						const todos = listTodos(db, project.id);
-						const done = todos.filter((t) => t.stage === "done");
-						const ready = todos.filter(
-							(t) => t.stage !== "done" && t.blockedBy.length === 0,
-						);
-						if (todos.length > 0 && done.length < todos.length) {
-							state.buildingTitle = "current work";
-							state.doneCount = done.length;
-							state.totalCount = todos.length;
-							state.nowTask = ready[0]?.title ?? undefined;
-							state.nextTask = ready[1]?.title ?? undefined;
-						}
-					}
-				}
-			} finally {
-				db.close();
-			}
-		} catch {
-			// state derivation is best-effort; broken DB read degrades to normal
-		}
-		return state;
-	};
+  pi.on("before_agent_start", async (event, ctx) => {
+    // Rail 1 — frozen identity, byte-identical every turn (zero-eviction)
+    const identity = await ensureIdentity(ctx.cwd);
+    event.systemPrompt = `${event.systemPrompt}\n\n${identity}`;
+  });
 
-	pi.on("context", async (event, ctx) => {
-		// Rail 2 — ephemeral tail: state (DB-derived) + datetime (fresh clock)
-		const lines: string[] = [];
-		const block = composeStateBlock(await readLiveState(ctx.cwd));
-		if (block !== "") lines.push(block);
-		lines.push(composeDatetimeLine(new Date()));
-		event.messages = [
-			...event.messages,
-			{ role: "user", content: lines.join("\n"), timestamp: Date.now() },
-		];
-	});
+  // Derive the live state snapshot from the DB (never stale, never cached).
+  const readLiveState = async (cwd: string): Promise<LiveState> => {
+    const state: LiveState = { mode: "normal" };
+    const agentDir = process.env["PI_CODING_AGENT_DIR"];
+    if (!agentDir) return state;
+    const boundary = findProjectBoundary(resolve(cwd));
+    const root = boundary ? boundary.root : resolve(cwd);
+    try {
+      const { openDb, loadRegistryDb } = await import("../../src/core/db.ts");
+      const { normalizePathForCompare } = await import(
+        "../../src/core/util.ts"
+      );
+      const db = openDb(agentDir);
+      try {
+        const modeRow = db
+          .prepare("SELECT json FROM config WHERE key = 'mode'")
+          .get() as { json: string } | undefined;
+        if (modeRow) {
+          const mode = (JSON.parse(modeRow.json) as { mode?: string }).mode;
+          if (mode === "design" || mode === "plan") state.mode = mode;
+        }
+        const registry = loadRegistryDb(db);
+        const project = registry.projects.find(
+          (p) =>
+            normalizePathForCompare(p.canonicalPath) ===
+              normalizePathForCompare(root),
+        );
+        if (project) {
+          if (state.mode === "design") {
+            const { findOpenDesign, checkCompleteness } = await import(
+              "../../src/core/design-store.ts"
+            );
+            const open = findOpenDesign(db, project.id);
+            if (open) {
+              state.designTitle = open.title;
+              state.missingSections = checkCompleteness(open.body).unanswered;
+            }
+          } else if (state.mode === "plan") {
+            const row = db
+              .prepare(
+                "SELECT rev, status FROM plans WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1",
+              )
+              .get(project.id) as { rev: number; status: string } | undefined;
+            if (row) state.planRev = row.rev;
+          } else {
+            // building: DAG progress (NOW/NEXT from ready todos)
+            const { listTodos } = await import("../../src/core/todo-store.ts");
+            const todos = listTodos(db, project.id);
+            const done = todos.filter((t) => t.stage === "done");
+            const ready = todos.filter(
+              (t) => t.stage !== "done" && t.blockedBy.length === 0,
+            );
+            if (todos.length > 0 && done.length < todos.length) {
+              state.buildingTitle = "current work";
+              state.doneCount = done.length;
+              state.totalCount = todos.length;
+              state.nowTask = ready[0]?.title ?? undefined;
+              state.nextTask = ready[1]?.title ?? undefined;
+            }
+          }
+        }
+      } finally {
+        db.close();
+      }
+    } catch {
+      // state derivation is best-effort; broken DB read degrades to normal
+    }
+    return state;
+  };
 
-	// /exit — the muscle-memory command pi never shipped. Graceful: defers
-	// until the agent is idle (queued messages drain first) and emits
-	// session_shutdown, so every cleanup hook runs.
-	pi.registerCommand("exit", {
-		description: "Quit blueberry",
-		// deno-lint-ignore require-await
-		handler: async (_args, ctx) => {
-			ctx.shutdown();
-		},
-	});
+  pi.on("context", async (event, ctx) => {
+    // Rail 2 — ephemeral tail: state (DB-derived) + datetime (fresh clock)
+    const lines: string[] = [];
+    const block = composeStateBlock(await readLiveState(ctx.cwd));
+    if (block !== "") lines.push(block);
+    lines.push(composeDatetimeLine(new Date()));
+    event.messages = [
+      ...event.messages,
+      { role: "user", content: lines.join("\n"), timestamp: Date.now() },
+    ];
+  });
 
-	const applyIdentity = (
-		ctx: Parameters<Parameters<typeof pi.on>[1]>[1],
-		reason: string,
-	) => {
-		const cwd = resolve(ctx.cwd);
-		const boundary = findProjectBoundary(cwd);
-		const root = boundary ? boundary.root : cwd;
-		const name = lastSegment(root);
-		const branch = boundary ? gitBranch(root) : null;
-		const sessionId = ctx.sessionManager.getSessionId().slice(0, 8);
-		const resumed = reason === "resume" || reason === "fork";
+  // ── §Failure-only context: detect test runs and inject on next turn ──
+  pi.on("tool_result", (event, ctx) => {
+    try {
+      if (event.toolName !== "bash") return;
+      const input = event.input as { command?: string } | undefined;
+      const cmd = input?.command ?? "";
+      if (!cmd.includes("deno test") && !cmd.includes("deno task test")) return;
+      const junitPath = join(ctx.cwd, ".blueberry", "lifecycle-junit.xml");
+      if (!existsSync(junitPath)) return;
+      const xml = readFileSync(junitPath, "utf8");
+      const cases = parseJunit(xml);
+      const failing = cases.filter((c) =>
+        c.outcome === "fail" && c.id !== null
+      );
+      if (failing.length === 0) return;
+      const seen = new Set<string>();
+      pendingFailureIds = [];
+      for (const c of failing) {
+        if (c.id && !seen.has(c.id)) {
+          seen.add(c.id);
+          pendingFailureIds.push(c.id);
+        }
+      }
+    } catch {
+      // never throw from the hook
+    }
+  });
 
-		if (ctx.mode === "tui") {
-			ctx.ui.setHeader((_tui, theme) => ({
-				render(_width: number): string[] {
-					const line1 =
-						theme.fg("accent", theme.bold("🫐 blueberry")) +
-						theme.fg("muted", ` ${getVersion()}`) +
-						theme.fg("dim", " · orange juice");
-					const segments = [name];
-					if (branch) segments.push(branch);
-					segments.push(`session ${sessionId}`);
-					if (resumed) segments.push("resumed");
-					const line2 = theme.fg("muted", segments.join(" · "));
-					const line3 = theme.fg(
-						"dim",
-						"esc interrupt · / commands · ctrl+o everything else",
-					);
-					return [line1, line2, line3];
-				},
-				invalidate() {},
-			}));
-			ctx.ui.setTitle(terminalTitle(name));
-		}
-		return { cwd, boundary };
-	};
+  pi.on("context", async (event) => {
+    if (pendingFailureIds.length === 0) return undefined;
+    const agentDir = process.env["PI_CODING_AGENT_DIR"];
+    if (!agentDir) {
+      pendingFailureIds = [];
+      return undefined;
+    }
+    try {
+      const { openDb } = await import("../../src/core/db.ts");
+      const db = openDb(agentDir);
+      try {
+        const { blocks, overflowIds } = collectFailureBlocks(
+          db,
+          pendingFailureIds,
+        );
+        const content = "[lifecycle]" + "\n" + blocks.join("\n\n") +
+          (overflowIds.length
+            ? "\nmore: " + overflowIds.map((i) => `[${i}]`).join(" ")
+            : "");
+        event.messages = [
+          ...event.messages,
+          { role: "user", content, timestamp: Date.now() },
+        ];
+      } finally {
+        db.close();
+      }
+    } catch {
+      // best-effort
+    } finally {
+      pendingFailureIds = [];
+    }
+    return { messages: event.messages };
+  });
 
-	pi.on("session_start", (event, ctx) => {
-		// §Title-guard: transport-level claim. pi writes OSC 0 titles from 8
-		// internal call sites (incl. async paths no event can observe) — we
-		// rewrite every non-ours title at the byte level instead of racing
-		// events. Also rewrites pi's exit resume hint to the bb surface.
-		if (ctx.mode === "tui") {
-			const boundary0 = findProjectBoundary(resolve(ctx.cwd));
-			// SAFETY: process.stdout satisfies the structural write(...args)
-			// surface; the cast bridges Node's overloaded stream typing only.
-			installInterceptor(
-				process.stdout as unknown as {
-					write(...args: unknown[]): boolean;
-				} & object,
-				terminalTitle(projectNameFor(boundary0 ? boundary0.root : ctx.cwd)),
-			);
-		}
+  // /exit — the muscle-memory command pi never shipped. Graceful: defers
+  // until the agent is idle (queued messages drain first) and emits
+  // session_shutdown, so every cleanup hook runs.
+  pi.registerCommand("exit", {
+    description: "Quit blueberry",
+    // deno-lint-ignore require-await
+    handler: async (_args, ctx) => {
+      ctx.shutdown();
+    },
+  });
 
-		const { cwd, boundary } = applyIdentity(ctx, event.reason);
+  const applyIdentity = (
+    ctx: Parameters<Parameters<typeof pi.on>[1]>[1],
+    reason: string,
+  ) => {
+    const cwd = resolve(ctx.cwd);
+    const boundary = findProjectBoundary(cwd);
+    const root = boundary ? boundary.root : cwd;
+    const name = lastSegment(root);
+    const branch = boundary ? gitBranch(root) : null;
+    const sessionId = ctx.sessionManager.getSessionId().slice(0, 8);
+    const resumed = reason === "resume" || reason === "fork";
 
-		// Fragmentation guard (§Sessions): warn when this session is NOT
-		// anchored at a project root — the one startup interrupt that matters.
-		if (!ctx.hasUI) return;
-		if (!boundary) {
-			if (process.env["PI_CODING_AGENT_SESSION_DIR"] === undefined) {
-				ctx.ui.notify(
-					"blueberry guard: no project boundary above this directory and no blueberry session dir — this looks like a bare `pi` launch. History may fragment; use `bb`.",
-					"warning",
-				);
-			}
-			return;
-		}
-		if (boundary.root !== cwd) {
-			ctx.ui.notify(
-				`blueberry guard: session cwd is '${cwd}', not the project root '${boundary.root}'. Use bb (canonicalizes automatically) or bb --here (intentional).`,
-				"warning",
-			);
-		}
-	});
+    if (ctx.mode === "tui") {
+      ctx.ui.setHeader((_tui, theme) => ({
+        render(_width: number): string[] {
+          const line1 = theme.fg("accent", theme.bold("🫐 blueberry")) +
+            theme.fg("muted", ` ${getVersion()}`) +
+            theme.fg("dim", " · orange juice");
+          const segments = [name];
+          if (branch) segments.push(branch);
+          segments.push(`session ${sessionId}`);
+          if (resumed) segments.push("resumed");
+          const line2 = theme.fg("muted", segments.join(" · "));
+          const line3 = theme.fg(
+            "dim",
+            "esc interrupt · / commands · ctrl+o everything else",
+          );
+          return [line1, line2, line3];
+        },
+        invalidate() {},
+      }));
+      ctx.ui.setTitle(terminalTitle(name));
+    }
+    return { cwd, boundary };
+  };
 
-	// pi re-asserts its title from several internal events (startup .finally,
-	// session switch, model change...). Self-healing: re-claim on every event
-	// we can see — worst case the title is wrong for one sub-turn.
-	const claimTitle = (ctx: {
-		cwd: string;
-		mode: string;
-		ui: { setTitle(t: string): void };
-	}) => {
-		if (ctx.mode !== "tui") return;
-		const boundary = findProjectBoundary(resolve(ctx.cwd));
-		const name = projectNameFor(boundary ? boundary.root : ctx.cwd);
-		ctx.ui.setTitle(terminalTitle(name));
-	};
-	pi.on("session_info_changed", (_event, ctx) => claimTitle(ctx));
-	pi.on("model_select", (_event, ctx) => claimTitle(ctx));
-	pi.on("agent_start", (_event, ctx) => claimTitle(ctx));
+  pi.on("session_start", (event, ctx) => {
+    // §Title-guard: transport-level claim. pi writes OSC 0 titles from 8
+    // internal call sites (incl. async paths no event can observe) — we
+    // rewrite every non-ours title at the byte level instead of racing
+    // events. Also rewrites pi's exit resume hint to the bb surface.
+    if (ctx.mode === "tui") {
+      const boundary0 = findProjectBoundary(resolve(ctx.cwd));
+      // SAFETY: process.stdout satisfies the structural write(...args)
+      // surface; the cast bridges Node's overloaded stream typing only.
+      installInterceptor(
+        process.stdout as unknown as {
+          write(...args: unknown[]): boolean;
+        } & object,
+        terminalTitle(projectNameFor(boundary0 ? boundary0.root : ctx.cwd)),
+      );
+    }
 
-	// §Data sync: ingest this session's JSONL into blueberry.db at compaction
-	// and shutdown. Fire-and-forget — sync failures must never disturb the
-	// session; bb sync catches anything missed (e.g. crashes).
-	const syncThisSession = (ctx: {
-		sessionManager: { getSessionFile(): string | undefined };
-	}) => {
-		try {
-			const file = ctx.sessionManager.getSessionFile();
-			if (!file) return;
-			const agentDir = process.env["PI_CODING_AGENT_DIR"] ?? "";
-			if (agentDir === "") return;
-			// inline dynamic import to keep module load light under jiti
-			void import("../../src/core/db.ts")
-				.then(async ({ openDb, loadRegistryDb }) => {
-					const { ingestSessionFile } = await import("../../src/core/sync.ts");
-					const db = openDb(agentDir);
-					try {
-						const registry = loadRegistryDb(db);
-						const byPath = new Map<string, string>();
-						for (const p of registry.projects) {
-							byPath.set(p.canonicalPath, p.id);
-							for (const a of p.aliases) byPath.set(a, p.id);
-						}
-						ingestSessionFile(db, file, (cwd) =>
-							cwd ? (byPath.get(cwd) ?? null) : null,
-						);
-					} finally {
-						db.close();
-					}
-				})
-				.catch(() => {
-					// best-effort only
-				});
-		} catch {
-			// best-effort only
-		}
-	};
-	pi.on("session_compact", (_event, ctx) => syncThisSession(ctx));
-	pi.on("session_shutdown", (_event, ctx) => syncThisSession(ctx));
+    const { cwd, boundary } = applyIdentity(ctx, event.reason);
+
+    // Fragmentation guard (§Sessions): warn when this session is NOT
+    // anchored at a project root — the one startup interrupt that matters.
+    if (!ctx.hasUI) return;
+    if (!boundary) {
+      if (process.env["PI_CODING_AGENT_SESSION_DIR"] === undefined) {
+        ctx.ui.notify(
+          "blueberry guard: no project boundary above this directory and no blueberry session dir — this looks like a bare `pi` launch. History may fragment; use `bb`.",
+          "warning",
+        );
+      }
+      return;
+    }
+    if (boundary.root !== cwd) {
+      ctx.ui.notify(
+        `blueberry guard: session cwd is '${cwd}', not the project root '${boundary.root}'. Use bb (canonicalizes automatically) or bb --here (intentional).`,
+        "warning",
+      );
+    }
+  });
+
+  // pi re-asserts its title from several internal events (startup .finally,
+  // session switch, model change...). Self-healing: re-claim on every event
+  // we can see — worst case the title is wrong for one sub-turn.
+  const claimTitle = (ctx: {
+    cwd: string;
+    mode: string;
+    ui: { setTitle(t: string): void };
+  }) => {
+    if (ctx.mode !== "tui") return;
+    const boundary = findProjectBoundary(resolve(ctx.cwd));
+    const name = projectNameFor(boundary ? boundary.root : ctx.cwd);
+    ctx.ui.setTitle(terminalTitle(name));
+  };
+  pi.on("session_info_changed", (_event, ctx) => claimTitle(ctx));
+  pi.on("model_select", (_event, ctx) => claimTitle(ctx));
+  pi.on("agent_start", (_event, ctx) => claimTitle(ctx));
+
+  // §Data sync: ingest this session's JSONL into blueberry.db at compaction
+  // and shutdown. Fire-and-forget — sync failures must never disturb the
+  // session; bb sync catches anything missed (e.g. crashes).
+  const syncThisSession = (ctx: {
+    sessionManager: { getSessionFile(): string | undefined };
+  }) => {
+    try {
+      const file = ctx.sessionManager.getSessionFile();
+      if (!file) return;
+      const agentDir = process.env["PI_CODING_AGENT_DIR"] ?? "";
+      if (agentDir === "") return;
+      // inline dynamic import to keep module load light under jiti
+      void import("../../src/core/db.ts")
+        .then(async ({ openDb, loadRegistryDb }) => {
+          const { ingestSessionFile } = await import("../../src/core/sync.ts");
+          const db = openDb(agentDir);
+          try {
+            const registry = loadRegistryDb(db);
+            const byPath = new Map<string, string>();
+            for (const p of registry.projects) {
+              byPath.set(p.canonicalPath, p.id);
+              for (const a of p.aliases) byPath.set(a, p.id);
+            }
+            ingestSessionFile(
+              db,
+              file,
+              (cwd) => cwd ? (byPath.get(cwd) ?? null) : null,
+            );
+          } finally {
+            db.close();
+          }
+        })
+        .catch(() => {
+          // best-effort only
+        });
+    } catch {
+      // best-effort only
+    }
+  };
+  pi.on("session_compact", (_event, ctx) => syncThisSession(ctx));
+  pi.on("session_shutdown", (_event, ctx) => syncThisSession(ctx));
 }

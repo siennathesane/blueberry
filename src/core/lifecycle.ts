@@ -197,6 +197,68 @@ export function parseJunit(xml: string): JunitCase[] {
   return out;
 }
 
+// --- Failure-only context injection (design 005 §Failure-only context) -----
+
+/**
+ * Build a plain-text failure block for one design id.
+ *
+ * Looks up the id in the lifecycle_ids registry, fetches open (non-done/dropped)
+ * cards under its anchor, and composes a compact block.
+ */
+export function buildFailureBlock(db: DatabaseSync, id: string): string {
+  const row = db
+    .prepare(
+      "SELECT design_doc, paragraph, status FROM lifecycle_ids WHERE id = ?",
+    )
+    .get(id) as
+      | { design_doc: string; paragraph: string; status: string }
+      | undefined;
+  if (!row) {
+    return `[${id}] no registry entry — unregistered id in a failing test`;
+  }
+  const lines: string[] = [
+    `[${id}] requirement failed`,
+    row.paragraph,
+    `design: ${row.design_doc}`,
+  ];
+  const openCards = db
+    .prepare(
+      "SELECT id, title, stage FROM todos WHERE design_id = ? AND stage NOT IN ('done','dropped')",
+    )
+    .all(id) as Array<{ id: string; title: string; stage: string }>;
+  for (const card of openCards) {
+    lines.push(`open: ${hex6Of(card.id)} ${card.title}`);
+  }
+  lines.push(`status: ${row.status}`);
+  return lines.join("\n");
+}
+
+/**
+ * Collect failure blocks for a list of ids, with a cap on full blocks.
+ *
+ * First `cap` unique ids (preserving first-occurrence order) get full blocks;
+ * remaining ids go to overflowIds. Empty input → empty everything.
+ */
+export function collectFailureBlocks(
+  db: DatabaseSync,
+  ids: string[],
+  cap = 3,
+): { blocks: string[]; overflowIds: string[] } {
+  if (ids.length === 0) return { blocks: [], overflowIds: [] };
+  // Dedupe preserving first occurrence
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const id of ids) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  const blocks = unique.slice(0, cap).map((id) => buildFailureBlock(db, id));
+  const overflowIds = unique.slice(cap);
+  return { blocks, overflowIds };
+}
+
 // --- Lcov opportunistic read (design 005 §Ingestion) --------------------------
 
 export interface LcovSummary {
