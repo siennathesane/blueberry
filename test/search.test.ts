@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadRegistryDb, openDb, saveRegistrySync } from "../src/core/db.ts";
 import { ingestSessionFile } from "../src/core/sync.ts";
 import { loadRegistry, mutations } from "../src/core/registry.ts";
 import {
+  filterBySlug,
   formatSessionHits,
   indexFileLines,
   indexProject,
@@ -362,4 +363,69 @@ test("indexProject: walks a project, indexes changed files only, skips SKIP_DIRS
   );
   assert.ok(indexProject(db, root) >= 1, "changed file re-indexed");
   assert.ok(searchCode(db, "v2").length >= 1, "new content searchable");
+});
+
+test("sessions search: excludeSessionId down-ranks the live session, never filters it", () => {
+  const store = getCentralStoreDir(agentDir, "searchproj");
+  const root = fakeRepo(area, "scopefix1", "git");
+  const s1 = fakeSession(store, {
+    cwd: root,
+    firstUserText: "the downrank needle lives here",
+  });
+  const s2 = fakeSession(store, {
+    cwd: root,
+    firstUserText: "also mentions downrank needle plus more words",
+  });
+  const db = openDb(agentDir);
+  const pid = "pid-searchproj";
+  const resolver = () => pid;
+  ingestSessionFile(db, s1, resolver);
+  ingestSessionFile(db, s2, resolver);
+  const s1id = JSON.parse(readFileSync(s1, "utf8").split("\n")[0]!).id;
+  const all = searchSessionsWithContext(db, "downrank needle", { limit: 5 });
+  assert.equal(all.length, 2);
+  const deranked = searchSessionsWithContext(db, "downrank needle", {
+    limit: 5,
+    excludeSessionId: s1id,
+  });
+  assert.equal(deranked.length, 2, "down-rank is not a filter");
+  assert.notEqual(deranked[0]!.sessionId, s1id, "live session sorts last");
+  assert.equal(deranked[1]!.sessionId, s1id);
+  db.close();
+});
+
+test("filterBySlug keeps only hits from the named project", () => {
+  const storeA = getCentralStoreDir(agentDir, "alpha");
+  const root = fakeRepo(area, "scopefix2", "git");
+  const sa = fakeSession(storeA, {
+    cwd: root,
+    firstUserText: "scope filter target alpha",
+  });
+  const storeB = getCentralStoreDir(agentDir, "beta");
+  const sb = fakeSession(storeB, {
+    cwd: root,
+    firstUserText: "scope filter target beta",
+  });
+  const db = openDb(agentDir);
+  for (
+    const [pid, slug] of [["pid-alpha", "alpha"], [
+      "pid-beta",
+      "beta",
+    ]] as const
+  ) {
+    db
+      .prepare(
+        "INSERT INTO projects (id, slug, canonical_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(pid, slug, root, new Date().toISOString(), new Date().toISOString());
+  }
+  ingestSessionFile(db, sa, () => "pid-alpha");
+  ingestSessionFile(db, sb, () => "pid-beta");
+  const hits = searchSessionsWithContext(db, "scope filter target", {
+    limit: 5,
+  });
+  const alphaOnly = filterBySlug(hits, "alpha");
+  assert.equal(alphaOnly.length, 1);
+  assert.ok(alphaOnly[0]!.messages.some((m) => m.text.includes("alpha")));
+  db.close();
 });

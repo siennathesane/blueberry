@@ -74,7 +74,12 @@ export function entrySummary(json: string): {
 export function searchSessionsWithContext(
   db: DatabaseSync,
   query: string,
-  opts: { contextBefore?: number; contextAfter?: number; limit?: number } = {},
+  opts: {
+    contextBefore?: number;
+    contextAfter?: number;
+    limit?: number;
+    excludeSessionId?: string;
+  } = {},
 ): SessionHit[] {
   const before = opts.contextBefore ?? 3;
   const after = opts.contextAfter ?? 5; // 3-5 rule: prefer showing more after
@@ -129,7 +134,23 @@ export function searchSessionsWithContext(
       messages,
     });
   }
+  // Self-echo down-rank: the live session's hits sort last, never filtered.
+  if (opts.excludeSessionId) {
+    const live = hits.filter((h) => h.sessionId === opts.excludeSessionId);
+    if (live.length > 0) {
+      const rest = hits.filter((h) => h.sessionId !== opts.excludeSessionId);
+      return [...rest, ...live];
+    }
+  }
   return hits;
+}
+
+/** Keep only hits whose project slug matches (scope: project). */
+export function filterBySlug(
+  hits: SessionHit[],
+  slug: string,
+): SessionHit[] {
+  return hits.filter((h) => h.projectSlug === slug);
 }
 
 function fmtTs(ts: string | null): string {

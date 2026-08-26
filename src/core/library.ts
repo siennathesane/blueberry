@@ -215,7 +215,13 @@ export function resolveAddress(
 
 // --- views ------------------------------------------------------------------------
 
-export type ViewKind = "summary" | "tree" | "messages" | "message";
+export type ViewKind =
+  | "summary"
+  | "tree"
+  | "messages"
+  | "message"
+  | "conclusions"
+  | "conversation";
 
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -521,6 +527,57 @@ export function renderMessage(
   }
   const capped = capTail(out.join("\n"));
   return capped.truncated ? capped.text + "\n… [truncated]" : capped.text;
+}
+
+// --- conclusions view --------------------------------------------------------------
+
+/**
+ * Last up to 3 assistant text entries — the reorientation payload.
+ * seq is 1-based over ALL entries (not just messages).
+ */
+export function renderConclusions(
+  _session: SessionInfo,
+  parsed: ParsedSession,
+): string {
+  const candidates: Array<{ seq: number; text: string }> = [];
+  for (let i = 0; i < parsed.entries.length; i++) {
+    const e = parsed.entries[i]!;
+    const m = messageEntry(e);
+    if (!m || m.role !== "assistant") continue;
+    const text = textOf(m.content);
+    if (text === "") continue;
+    candidates.push({ seq: i + 1, text });
+  }
+  if (candidates.length === 0) {
+    return "no conclusions — no assistant text in session";
+  }
+  const last3 = candidates.slice(-3);
+  return last3.map((c) => `--- #${c.seq} ---\n${c.text}`).join("\n\n");
+}
+
+// --- conversation view -----------------------------------------------------------
+
+/**
+ * User + assistant text only (tool calls dropped), last 200 lines.
+ */
+export function renderConversation(
+  _session: SessionInfo,
+  parsed: ParsedSession,
+): string {
+  const lines: string[] = [];
+  for (const e of parsed.entries) {
+    const m = messageEntry(e);
+    if (!m) continue;
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    const text = textOf(m.content);
+    if (text === "") continue;
+    lines.push(`${m.role}: ${text}`);
+  }
+  if (lines.length === 0) return "no conversation messages";
+  if (lines.length > 200) {
+    return `… (older messages trimmed)\n${lines.slice(-200).join("\n")}`;
+  }
+  return lines.join("\n");
 }
 
 // --- search ------------------------------------------------------------------------

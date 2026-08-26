@@ -15,6 +15,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { loadRegistryDb, openDb } from "../db.ts";
 import { resolveProject } from "../resolution.ts";
 import {
+  filterBySlug,
   formatSessionHits,
   indexProject,
   searchCode,
@@ -46,6 +47,12 @@ export default function (pi: ExtensionAPI) {
         Type.String({ description: "sessions/code: search text" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+      scope: Type.Optional(
+        Type.String({
+          description:
+            "sessions: project (current project only) or global (default)",
+        }),
+      ),
     }),
     // deno-lint-ignore require-await
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -74,12 +81,34 @@ export default function (pi: ExtensionAPI) {
           throw new Error("query required");
         }
         if (params.action === "sessions") {
+          const sessionDir = process.env["PI_CODING_AGENT_SESSION_DIR"] ?? "";
+          // live-session file name: <ts>_<uuid>.jsonl → id = uuid stem
+          const liveId = sessionDir === ""
+            ? undefined
+            : (sessionDir.split("/").pop() ?? "").replace(/\.jsonl$/, "");
           const hits = searchSessionsWithContext(db, params.query, {
             limit: params.limit ?? 20,
+            excludeSessionId: liveId || undefined,
           });
+          if (params.scope === "project") {
+            const registry = loadRegistryDb(db);
+            const res = resolveProject({ cwd: ctx.cwd, registry });
+            const scoped = filterBySlug(hits, res.project.slug);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: scoped.length > 0
+                    ? formatSessionHits(scoped)
+                    : `no matches in ${res.project.slug} (global may have more)`,
+                },
+              ],
+              details: { count: scoped.length, scope: "project" },
+            };
+          }
           return {
             content: [{ type: "text", text: formatSessionHits(hits) }],
-            details: { count: hits.length },
+            details: { count: hits.length, scope: "global" },
           };
         }
 
