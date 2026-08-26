@@ -18,6 +18,7 @@ import {
   registerId,
   retireId,
 } from "../src/core/lifecycle.ts";
+import { mintAndRegister } from "../src/core/tools/mint-id.ts";
 import {
   addDep,
   createTodo,
@@ -827,3 +828,49 @@ test("failure block without slug falls back to plain open form", () => {
   );
   db.close();
 });
+
+// --- bb_mint_id tool: mintAndRegister helper --------------------------------
+
+test("mintAndRegister returns six-lowercase-hex id and registers it", () => {
+  const db = openDb(agentDir);
+  const { id } = mintAndRegister(db);
+  assert.match(id, /^[0-9a-f]{6}$/, "id is six lowercase hex");
+  assert.equal(idIsFree(db, id), false, "id is no longer free after register");
+  const row = db
+    .prepare("SELECT paragraph FROM lifecycle_ids WHERE id = ?")
+    .get(id) as { paragraph: string } | undefined;
+  assert.ok(row, "row exists in lifecycle_ids");
+  assert.equal(
+    row!.paragraph,
+    "(minted via bb_mint_id)",
+    "default paragraph when no note",
+  );
+  db.close();
+});
+
+test("mintAndRegister records the provided note in the registry", () => {
+  const db = openDb(agentDir);
+  const { id } = mintAndRegister(db, "acceptance test for new feature");
+  const row = db
+    .prepare("SELECT paragraph FROM lifecycle_ids WHERE id = ?")
+    .get(id) as { paragraph: string } | undefined;
+  assert.equal(
+    row!.paragraph,
+    "acceptance test for new feature",
+    "paragraph is the note",
+  );
+  db.close();
+});
+
+test("two consecutive mintAndRegister calls never collide", () => {
+  const db = openDb(agentDir);
+  const first = mintAndRegister(db);
+  const second = mintAndRegister(db);
+  assert.notEqual(
+    first.id,
+    second.id,
+    "consecutive mints produce different ids",
+  );
+  db.close();
+});
+

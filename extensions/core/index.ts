@@ -102,6 +102,7 @@ export default function (pi: ExtensionAPI) {
 
   const TOOL_SOURCES = [
     "src/core/tools/search.ts",
+    "src/core/tools/mint-id.ts",
     "extensions/library/index.ts",
     "extensions/lsp/index.ts",
     "extensions/todo/index.ts",

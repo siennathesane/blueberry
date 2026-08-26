@@ -23,6 +23,7 @@
 			"./extensions/lsp/index.ts",
 			"./extensions/plan/index.ts",
 			"./src/core/tools/search.ts",
+			"./src/core/tools/mint-id.ts",
 			"./extensions/todo/index.ts"
 		],
 		"skills": [
