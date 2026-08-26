@@ -182,6 +182,13 @@ CREATE TABLE IF NOT EXISTS lifecycle_ids (
   minted_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'live'
 );
+CREATE TABLE IF NOT EXISTS junit_results (
+  test_name TEXT NOT NULL,
+  class_name TEXT,
+  outcome TEXT NOT NULL,
+  id TEXT,
+  ts TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS config (
   key TEXT PRIMARY KEY,
   json TEXT NOT NULL

@@ -142,3 +142,56 @@ export function idIsFree(
   if (exclude.includes(id)) return false;
   return true;
 }
+
+// --- JUnit ingestion (design 005 §Ingestion) ----------------------------------
+
+export interface JunitCase {
+  testName: string;
+  className: string | null;
+  outcome: "pass" | "fail";
+  id: string | null;
+}
+
+/** Decode the XML escapes JUnit names can carry. */
+function xmlUnescape(v: string): string {
+  return v
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/** Extract a double-quoted attribute value from a tag string. Raw quotes
+ * never appear inside the value (they arrive as &quot;). */
+function attrOf(tag: string, key: string): string | null {
+  const m = new RegExp(`${key}="([^"]*)"`).exec(tag);
+  return m ? xmlUnescape(m[1]!) : null;
+}
+
+/**
+ * Minimal JUnit testcase scanner. No DOMParser in Deno; no deps — the
+ * flat `<testcase …>` shape from `deno test --junit-path` is regular enough
+ * to scan by fragment. Self-closing cases pass; `<failure`/`<error` children
+ * fail. The trailing [hex6] of a tagged name is joined via ID_LINE_PATTERN.
+ */
+export function parseJunit(xml: string): JunitCase[] {
+  const out: JunitCase[] = [];
+  const parts = xml.split(/<testcase\b/).slice(1);
+  for (const part of parts) {
+    const openEnd = part.indexOf(">");
+    if (openEnd < 0) continue;
+    const tag = part.slice(0, openEnd);
+    const selfClosing = tag.endsWith("/");
+    const name = attrOf(tag, "name");
+    if (!name) continue;
+    const className = attrOf(tag, "classname");
+    const body = selfClosing ? "" : part.slice(openEnd + 1);
+    const outcome: "pass" | "fail" = /<(failure|error)\b/.test(body)
+      ? "fail"
+      : "pass";
+    const id = ID_LINE_PATTERN.exec(name)?.[1] ?? null;
+    out.push({ testName: name, className, outcome, id });
+  }
+  return out;
+}

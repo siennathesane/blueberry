@@ -12,7 +12,7 @@
  * main() is dependency-injected (cwd, io, spawn) so the command layer is
  * fully testable; bin/blueberry supplies the real process bindings.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { findBySlug, mutations } from "../core/registry.ts";
 import { loadRegistrySync, saveRegistrySync } from "../core/db.ts";
 import { getAgentDir, getTrashDir } from "../core/agent-dir.ts";
@@ -44,6 +44,7 @@ import {
   type ViewKind,
 } from "../core/library.ts";
 import { getVersion } from "../core/version.ts";
+import { parseJunit } from "../core/lifecycle.ts";
 import type { UpdaterIO } from "../core/updater.ts";
 import { loadRegistryDb, openDb } from "../core/db.ts";
 import { restoreMissing, syncStores } from "../core/sync.ts";
@@ -608,6 +609,8 @@ export async function main(
       return restoreCmd(deps);
     case "search":
       return searchCmd(rest, deps);
+    case "lifecycle":
+      return lifecycleCmd(rest, deps);
     case "update":
       return updateCmd(rest, deps);
     case "cmd":
@@ -1108,6 +1111,50 @@ function syncCmd(deps: CliDeps): number {
   } catch (err) {
     deps.err(`blueberry: ${(err as Error).message}`);
     return 1;
+  }
+}
+
+// --- lifecycle ----------------------------------------------------------------
+
+async function lifecycleCmd(rest: string[], deps: CliDeps): Promise<number> {
+  const [sub, ...args] = rest;
+  switch (sub) {
+    case "junit": {
+      const path = args[0];
+      if (!path) return usageErr(deps, "lifecycle junit <path>");
+      let xml: string;
+      try {
+        xml = readFileSync(path, "utf8");
+      } catch {
+        deps.err(`cannot read junit file: ${path}`);
+        return 1;
+      }
+      const cases = parseJunit(xml);
+      const db = openDb(deps.agentDir);
+      try {
+        const ins = db.prepare(
+          "INSERT INTO junit_results (test_name, class_name, outcome, id, ts) VALUES (?, ?, ?, ?, ?)",
+        );
+        const ts = new Date().toISOString();
+        for (const c of cases) {
+          ins.run(c.testName, c.className, c.outcome, c.id, ts);
+        }
+      } finally {
+        db.close();
+      }
+      const tagged = cases.filter((c) => c.id !== null).length;
+      const failed = cases.filter((c) => c.outcome === "fail").length;
+      deps.out(
+        `ingested ${cases.length} cases (${tagged} tagged, ${failed} failed)`,
+      );
+      return 0;
+    }
+    case "lcov": {
+      deps.err("not yet implemented");
+      return 1;
+    }
+    default:
+      return usageErr(deps, "lifecycle junit <path> | lcov <path>");
   }
 }
 

@@ -11,6 +11,7 @@ import {
   ID_LINE_PATTERN,
   idIsFree,
   mintId,
+  parseJunit,
   registerId,
   retireId,
 } from "../src/core/lifecycle.ts";
@@ -216,5 +217,64 @@ test("registered id stays occupied even if not drawn by rng", () => {
     paragraph: "p",
   });
   assert.equal(idIsFree(db, "beef01"), false);
+  db.close();
+});
+
+// --- JUnit ingestion (design 005 §Ingestion) --------------------------------
+
+test("parseJunit: tagged pass, failing untagged, self-closing, classname, escapes", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="4" failures="1" errors="0">
+  <testsuite name="test/lifecycle.test.ts" tests="4" failures="1" errors="0">
+    <testcase name="code search: first query works [a1b2c3]" classname="test/lifecycle.test.ts" time="0.003"/>
+    <testcase name="untagged interior test" classname="test/lifecycle.test.ts" time="0.001">
+      <failure message="AssertionError">boom
+stack line</failure>
+    </testcase>
+    <testcase name="passes &amp; quotes &quot;ok&quot;" classname="suite.two" time="0.002"/>
+    <testcase name="plain" time="0.000"/>
+  </testsuite>
+</testsuites>`;
+  const cases = parseJunit(xml);
+  assert.equal(cases.length, 4);
+  assert.deepEqual(cases[0], {
+    testName: "code search: first query works [a1b2c3]",
+    className: "test/lifecycle.test.ts",
+    outcome: "pass",
+    id: "a1b2c3",
+  });
+  assert.equal(cases[1]!.outcome, "fail");
+  assert.equal(cases[1]!.id, null);
+  assert.equal(cases[1]!.testName, "untagged interior test");
+  assert.equal(cases[2]!.className, "suite.two");
+  assert.equal(cases[2]!.testName, 'passes & quotes "ok"');
+  assert.equal(cases[3]!.className, null);
+  assert.equal(cases[3]!.outcome, "pass");
+});
+
+test("parseJunit: empty and no-testcase documents", () => {
+  assert.deepEqual(parseJunit(""), []);
+  assert.deepEqual(parseJunit("<testsuites></testsuites>"), []);
+});
+
+test("junit_results round-trip: parsed cases persist with ids and outcomes", () => {
+  const db = openDb(agentDir);
+  const cases = parseJunit(
+    `<testsuites><testsuite name="s">
+      <testcase name="accept [abc123]" classname="s" time="1"/>
+      <testcase name="broken [def456]" classname="s" time="1"><failure>x</failure></testcase>
+    </testsuite></testsuites>`,
+  );
+  const ins = db.prepare(
+    "INSERT INTO junit_results (test_name, class_name, outcome, id, ts) VALUES (?, ?, ?, ?, ?)",
+  );
+  for (const c of cases) ins.run(c.testName, c.className, c.outcome, c.id, "t");
+  const rows = db
+    .prepare("SELECT test_name, outcome, id FROM junit_results ORDER BY rowid")
+    .all() as Array<{ test_name: string; outcome: string; id: string | null }>;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]!.id, "abc123");
+  assert.equal(rows[1]!.outcome, "fail");
+  assert.equal(rows[1]!.id, "def456");
   db.close();
 });
