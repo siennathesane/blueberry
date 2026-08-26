@@ -211,27 +211,36 @@ tweaks rather than proposing new machinery.
 
 ## MUSTs
 
-1. **MUST reproduce reported breakage against a live system before
-   designing a fix** (Phase 1) — non-reproducible findings are dropped and
-   recorded, never "fixed" speculatively.
-2. **MUST prove gate commands from the driver's own shell before any
-   agent brief contains them** (Phase 2) — agents receive fixed gate text,
-   not script names to discover.
-3. **MUST re-verify every agent claim independently** — diff, gate re-run,
-   `git log` — before a commit exists (Phase 3). Agent reports are
-   testimony, not evidence.
-4. **MUST keep delegation enumerated** when used: defect list,
-   allowed-files list, forbidden zones, turn budget, reproduce-first,
-   fixed gate text (Phase 3).
-5. **MUST escalate to driver-implements after two stalled delegations on
-   one card** — debris reverted, work taken in-house (Phase 3).
-6. **MUST tag releases fix-forward on `mainline`** — never re-tag, never
-   rewrite; CI/field verdicts land with the next tag (Phase 4).
-7. **MUST verify MUST coverage through the harness, mechanically:** every
-   design MUST maps to ≥1 GWT acceptance test in the plan's Test matrix,
-   seeded as todo cards directly from the plan (Phase 2), and the testing
-   harness — the gate the driver runs — passes against those GWT tests
-   before any card is `done` (Phase 3). No GWT row, no plan approval; no
-   green GWT, no done card. Unit tests are how MUSTs are proven fleshed
-   out; todos and tests come from the planning, not from improvisation
-   mid-implementation.
+*(Retrofitted 2026-08-26 at design 005's decide — the numbered list became
+requirement paragraphs with minted trailing ids, per the 005 grammar.
+Ids: 9d01aa 8e02bb 7f03cc 6a04dd 5b05ee 4c06ff 3d0711.)*
+
+Reported breakage is reproduced against a live system before any fix is
+designed. Findings that do not reproduce are dropped and recorded, never
+fixed speculatively. [9d01aa]
+
+Gate commands are proven from the driver's own shell before any agent
+brief contains them; agents receive fixed gate text, never script names
+to discover for themselves. [8e02bb]
+
+Every agent claim is re-verified independently — diff review, gate
+re-run, git log — before a commit exists. An agent's report is
+testimony, not evidence. [7f03cc]
+
+Delegation, when used, is enumerated: a defect list, an allowed-files
+list, forbidden zones, a turn budget, reproduce-first instructions, and
+fixed gate text. [6a04dd]
+
+After two stalled delegations on one card the work escalates to
+driver-implements: debris reverted, the card taken in-house. [5b05ee]
+
+Releases tag fix-forward on mainline: never re-tag, never rewrite; CI
+and field verdicts land with the next tag. [4c06ff]
+
+Requirement coverage is verified through the harness, mechanically:
+every design requirement maps to at least one GWT acceptance test in the
+plan's test matrix, seeded as todo cards directly from the plan, and the
+gate the driver runs passes against those GWT tests before any card is
+done. No GWT row, no plan approval; no green GWT, no done card. Unit
+tests are how requirements are proven fleshed out; todos and tests come
+from the planning, not from improvisation mid-implementation. [3d0711]
