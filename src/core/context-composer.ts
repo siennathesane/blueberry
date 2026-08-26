@@ -83,6 +83,9 @@ export function composeIdentity(probe: IdentityProbe): string {
     lines.push(
       "Designs are files under docs/design/ with required sections (Requirements with RFC 2119 keywords, each MUST carrying Verification); plans are reviewed rows consumed into the todo DAG. Shift+tab moves normal → design → plan; the completeness gate blocks half-written designs.",
     );
+    lines.push(
+      "## Feature lifecycle\n\nA test whose name ends in [hex6] is an acceptance contract for a design requirement — not an ordinary test. When one fails, a decided requirement is broken, not merely red. Before editing what such a test covers, read its requirement: the [lifecycle] block that appears after a failing gate run carries the requirement paragraph, the design doc path, and open cards. That block is harness-generated — trust it like git status. A tagged test's meaning may change only after its design doc changes. Untagged tests are interiors: refactor freely.",
+    );
   }
 
   return lines.join("\n\n");

@@ -107,6 +107,26 @@ test("identity: needles convention always present", () => {
 	assert.ok(composeIdentity(baseProbe).includes("design:<slug>"));
 });
 
+test("identity: lifecycle section present when hasDesignLifecycle is true", () => {
+	const id = composeIdentity(baseProbe);
+	assert.ok(id.includes("## Feature lifecycle"), "lifecycle heading present");
+	assert.ok(id.includes("acceptance contract"), "acceptance contract phrase present");
+});
+
+test("identity: lifecycle section absent when hasDesignLifecycle is false", () => {
+	const id = composeIdentity({ ...baseProbe, hasDesignLifecycle: false });
+	assert.ok(!id.includes("## Feature lifecycle"), "lifecycle heading absent");
+});
+
+test("identity: lifecycle section is static (no per-session state)", () => {
+	const a = composeIdentity(baseProbe);
+	const b = composeIdentity(baseProbe);
+	assert.equal(a, b, "lifecycle identity is byte-stable across calls");
+	assert.ok(!/\d{4}-\d{2}-\d{2}/.test(a), "no dates in lifecycle section");
+	const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+	assert.ok(!uuidPattern.test(a), "no UUIDs in lifecycle section");
+});
+
 // ─── Layer 2: state block (message rail — volatile by design) ──────────────
 
 test("state: design mode carries missing section NAMES (steering)", () => {
