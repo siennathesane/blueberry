@@ -55,6 +55,12 @@ import {
   searchSessionsWithContext,
 } from "../core/search.ts";
 import { listTodos, getTodo, ageString, toCards } from "../core/todo-store.ts";
+import {
+  parseDeeplink,
+  registerScheme,
+  unregisterScheme,
+  shimAppDir,
+} from "../core/deeplink.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -620,6 +626,8 @@ export async function main(
       return importCmd(rest, deps);
     case "todo":
       return todoCmd(rest, deps);
+    case "deeplink":
+      return deeplinkCmd(rest, deps);
     default:
       // anything that isn't a known subcommand is treated as pi launch
       return launchMode(argv, deps);
@@ -1279,6 +1287,90 @@ function todoCmd(rest: string[], deps: CliDeps): number {
     }
     default:
       return usageErr(deps, "todo show <slug> <hex6> | list <slug>");
+  }
+}
+
+// --- deeplink ----------------------------------------------------------------
+
+function deeplinkCmd(rest: string[], deps: CliDeps): number {
+  const [sub, ...args] = rest;
+  switch (sub) {
+    case "open": {
+      const url = args[0];
+      if (!url) return usageErr(deps, "deeplink open <url>");
+      const parsed = parseDeeplink(url);
+      if (!parsed) {
+        deps.err(`blueberry: cannot parse deeplink '${url}'`);
+        return 1;
+      }
+      if (parsed.kind === "todo") {
+        return todoCmd(["show", parsed.slug, parsed.hex6], deps);
+      }
+      deps.err(`blueberry: unhandled deeplink kind '${parsed.kind}'`);
+      return 1;
+    }
+    case "register": {
+      const platform = args[0] ?? process.platform;
+      const home = args[1] ?? homedir();
+      const result = registerScheme(home, platform);
+      if (result.ok) {
+        deps.out(result.detail);
+      } else {
+        deps.err(result.detail);
+        return 1;
+      }
+      return 0;
+    }
+    case "unregister": {
+      const platform = args[0] ?? process.platform;
+      const home = args[1] ?? homedir();
+      const result = unregisterScheme(home, platform);
+      if (result.ok) {
+        deps.out(result.detail);
+      } else {
+        deps.err(result.detail);
+        return 1;
+      }
+      return 0;
+    }
+    case "status": {
+      const platform = args[0] ?? process.platform;
+      const home = args[1] ?? homedir();
+      switch (platform) {
+        case "darwin": {
+          const dir = shimAppDir(home);
+          if (existsSync(dir)) {
+            deps.out("scheme: registered (macOS shim)");
+          } else {
+            deps.out("scheme: not registered");
+          }
+          return 0;
+        }
+        case "linux": {
+          const desktopPath = join(
+            home,
+            ".local",
+            "share",
+            "applications",
+            "blueberry-deeplink.desktop",
+          );
+          if (existsSync(desktopPath)) {
+            deps.out("scheme: registered (Linux .desktop)");
+          } else {
+            deps.out("scheme: not registered");
+          }
+          return 0;
+        }
+        default:
+          deps.out("scheme: not registered");
+          return 0;
+      }
+    }
+    default:
+      return usageErr(
+        deps,
+        "deeplink open <url> | register [platform] [home] | unregister [platform] [home] | status [platform] [home]",
+      );
   }
 }
 

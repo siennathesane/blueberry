@@ -84,4 +84,7 @@ else
   echo "blueberry: 'pi' not on PATH — skip package installs" >&2
 fi
 
+# Register bb:// deep-link scheme handler (best-effort)
+"$REPO_ROOT/bin/blueberry" deeplink register || true
+
 echo "blueberry: setup complete — launch with $REPO_ROOT/bin/blueberry"
