@@ -63,7 +63,7 @@ export function parseSteps(body: string): PlanStep[] {
   let current: Partial<PlanStep> | null = null;
   for (const line of lines) {
     const headingMatch =
-      /^###\s+Step\s+(\d+)\s+[—–-]\s+(.+?)\s*(?:\[([0-9a-f]{6})\])?\s*$/
+      /^###\s+Step\s+(\d+)\s+[—–-]\s+(.+?)\s*(?:\[([0-9a-f]{6})\])?\s*(?:⟵\s*([\d,\s]+))?\s*$/
         .exec(line.trim());
     if (headingMatch) {
       if (current && current.n !== undefined) steps.push(current as PlanStep);
@@ -71,7 +71,10 @@ export function parseSteps(body: string): PlanStep[] {
         n: Number(headingMatch[1]),
         title: headingMatch[2]!,
         requirements: headingMatch[3] ? [headingMatch[3]] : [],
-        dependsOn: [],
+        dependsOn: (headingMatch[4] ?? "")
+          .split(",")
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isInteger(n) && n > 0),
       };
       continue;
     }
@@ -247,11 +250,20 @@ export function seedPlan(
     result.count++;
   }
 
+  // determine if any step declares explicit deps
+  const anyExplicitDeps = steps.some((s) => s.dependsOn.length > 0);
+
   // deps: after all tasks exist (avoids ordering sensitivity)
   for (const step of steps) {
     const myHex = stepToHex.get(step.n);
     if (!myHex) continue;
-    for (const dep of step.dependsOn) {
+    // serial-chain default: when no step declares any dependsOn,
+    // wire each card to its predecessor in step-number order
+    let deps = step.dependsOn;
+    if (!anyExplicitDeps && step.n > 1) {
+      deps = [step.n - 1];
+    }
+    for (const dep of deps) {
       const depHex = stepToHex.get(dep);
       if (!depHex) {
         result.errors.push(`step ${step.n}: dep on missing step ${dep}`);

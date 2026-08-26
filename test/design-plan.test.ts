@@ -644,3 +644,80 @@ test("runAllPasses: 2-arg call returns 5 passes (back-compat, default registry)"
   const p5 = results.find((r) => r.pass === "P5")!;
   assert.ok(p5.clean, JSON.stringify(p5.findings));
 });
+
+// --- lifecycle heading deps ----------------------------------------------------------
+
+test("parseSteps: lifecycle heading with trailing dep arrow", () => {
+  const body = `## Steps
+
+### Step 1 — First
+
+### Step 2 — Second ⟵ 1
+
+### Step 3 — Third ⟵ 1,3
+
+`;
+  const steps = parseSteps(body);
+  assert.equal(steps.length, 3);
+  assert.deepEqual(steps[0]!.dependsOn, []);
+  assert.deepEqual(steps[1]!.dependsOn, [1]);
+  assert.deepEqual(steps[2]!.dependsOn, [1, 3]);
+});
+
+test("seedPlan: lifecycle two-step plan with explicit dep wires DAG edge", () => {
+  const body = `## Steps
+
+### Step 1 — Foundation
+
+### Step 2 — Roof ⟵ 1
+
+`;
+  const plan = createPlan(db, PROJECT, body);
+  const result = seedPlan(db, plan, "p", "sess");
+  assert.equal(result.count, 2);
+  assert.equal(result.errors.length, 0);
+
+  const todos = listTodos(db, PROJECT);
+  const s1 = todos.find((t) => t.title.startsWith("S1."))!;
+  const s2 = todos.find((t) => t.title.startsWith("S2."))!;
+  assert.deepEqual(s1.blockedBy, []);
+  assert.deepEqual(s2.blockedBy, [s1.hex6]);
+});
+
+test("seedPlan: edge-free lifecycle plan gets serial default deps", () => {
+  const body = `## Steps
+
+### Step 1 — Alpha
+
+### Step 2 — Beta
+
+`;
+  const plan = createPlan(db, PROJECT, body);
+  const result = seedPlan(db, plan, "p", null);
+  assert.equal(result.count, 2);
+  assert.equal(result.errors.length, 0);
+
+  const todos = listTodos(db, PROJECT);
+  const s1 = todos.find((t) => t.title.startsWith("S1."))!;
+  const s2 = todos.find((t) => t.title.startsWith("S2."))!;
+  assert.deepEqual(s1.blockedBy, []);
+  assert.deepEqual(s2.blockedBy, [s1.hex6], "serial default: step 2 blocked by step 1");
+});
+
+test("seedPlan: lifecycle dep on missing step number records error, still succeeds", () => {
+  const body = `## Steps
+
+### Step 1 — Exists
+
+### Step 2 — Points nowhere ⟵ 99
+
+`;
+  const plan = createPlan(db, PROJECT, body);
+  const result = seedPlan(db, plan, "p", null);
+  assert.equal(result.count, 2, "both cards created");
+  assert.ok(result.errors.some((e) => e.includes("missing step 99")));
+  // step 2 has no real dep wired (step 99 absent)
+  const todos = listTodos(db, PROJECT);
+  const s2 = todos.find((t) => t.title.startsWith("S2."))!;
+  assert.deepEqual(s2.blockedBy, []);
+});
