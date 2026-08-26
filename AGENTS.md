@@ -20,15 +20,26 @@ You are almost always developing extensions here, not using them.
 - `extensions/todo/` — todo system rewrite (flagship)
 - `extensions/search/` — embedded disk-based search engine (flagship)
 - `themes/` — `orange-juice.json` and friends
-- `bin/blueberry` — launcher: `PI_CODING_AGENT_DIR=~/.blueberry exec pi "$@"`
+- `bin/blueberry` — launcher: prefers the compiled binary (`deno task compile` → `dist/blueberry`), falls back to `deno run`
 - `bin/setup.sh` — writes `~/.blueberry/settings.json`, carries auth + packages
 - `DESIGN.md` — design notes for the flagship builds. Read before implementing.
 
 ## Dev loop
 
+This repo is **Deno-native**. The toolchain is `deno.json` tasks; `package.json`
+exists only for the `pi` manifest, the version source of truth, and npm deps
+(typescript-language-server) — it is not the build system.
+
 1. Edit extension/theme files in this repo (loaded live from disk — no install/copy step).
 2. In a running blueberry session: `/reload`. Theme files hot-reload without `/reload`.
-3. Type-check: `npm install && npm run typecheck` (vendored/ excluded).
+3. Type-check: `deno task check`
+4. Test: `env -u BLUEBERRY_DB deno task test` — the `env -u` matters when testing
+   from inside a live blueberry session (the launcher exports `BLUEBERRY_DB`, which
+   breaks one launcher handover test that asserts it's unset).
+
+**Never run bare `node --test`** — it sweeps 607 vendored test files under the
+in-tree `pi/` fork source and wedges. The npm `test` script delegates to deno for
+this reason.
 
 ## Testing a launcher change
 
