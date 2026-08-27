@@ -15,6 +15,12 @@
 #        SKIP_GATES=1 bash compile.sh   (iterate on build/smoke only)
 set -euo pipefail
 
+# Hermetic release environment: a release cut from inside a live blueberry
+# session inherits exported launcher env (BLUEBERRY_DB et al.) that breaks
+# the launcher handover test asserting those are unset. The pipeline must
+# not depend on its caller's environment — scrub it once, up front.
+unset BLUEBERRY_DB PI_CODING_AGENT_DIR PI_CODING_AGENT_SESSION_DIR PI_OFFLINE
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 OUT_DIR="$REPO_ROOT/dist"
