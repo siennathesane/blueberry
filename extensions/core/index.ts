@@ -33,7 +33,10 @@ import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { collectFailureBlocks, parseJunit } from "../../src/core/lifecycle.ts";
-import { probeLinkCapability, type LinkCapability } from "../../src/core/deeplink.ts";
+import {
+  type LinkCapability,
+  probeLinkCapability,
+} from "../../src/core/deeplink.ts";
 
 /** Current branch name from .git/HEAD; null when not a git repo / unreadable. */
 function gitBranch(root: string): string | null {
@@ -71,7 +74,6 @@ export default function (pi: ExtensionAPI) {
       lspLanguages: [],
       hasDesignLifecycle: existsSync(join(root, "docs", "design")),
       hasTodos: false,
-      isPiInternals: existsSync(join(root, "pi")),
     };
     try {
       const { defaultServers } = await import("../../src/core/lsp-manager.ts");
@@ -259,7 +261,9 @@ export default function (pi: ExtensionAPI) {
         let failSlug: string | undefined;
         try {
           const { loadRegistryDb } = await import("../../src/core/db.ts");
-          const { normalizePathForCompare } = await import("../../src/core/util.ts");
+          const { normalizePathForCompare } = await import(
+            "../../src/core/util.ts"
+          );
           const registry = loadRegistryDb(db);
           const boundary = findProjectBoundary(resolve(ctx.cwd));
           const root = boundary ? boundary.root : resolve(ctx.cwd);

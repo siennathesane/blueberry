@@ -30,8 +30,6 @@ export interface IdentityProbe {
   hasDesignLifecycle: boolean;
   /** Any todos exist in the DAG. */
   hasTodos: boolean;
-  /** Project boundary contains an in-tree pi/ fork. */
-  isPiInternals?: boolean;
 }
 
 /**
@@ -43,7 +41,7 @@ export interface IdentityProbe {
 export function composeIdentity(probe: IdentityProbe): string {
   const lines: string[] = [];
   lines.push(
-    "You are running inside blueberry — a personal pi distribution with a work lifecycle (design → plan → implement) and a searchable, database-backed history. Needles like todo:<slug>/<hex6>, design:<slug>, and plan:<slug> are stable search keys: write them into breadcrumbs and summaries so future sessions can find this work.",
+    "You are running inside blueberry — a coding harness with a work lifecycle (design → plan → implement) and a searchable, database-backed history. Needles like todo:<slug>/<hex6>, design:<slug>, and plan:<slug> are stable search keys: write them into breadcrumbs and summaries so future sessions can find this work.",
   );
   // communication directive (user, v0.3.0): own paragraph for prominence
   lines.push("You will speak with the user in simplified technical English.");
@@ -230,9 +228,9 @@ const STOCK_GUIDELINES = [
 /**
  * Compose the full system prompt, owning the base text end to end.
  *
- * Uses the fork's buildSystemPrompt assembler with customPrompt set to
- * blueberry's own identity + tool surfaces + guidelines. The pi-docs
- * routing block is shortened and gated on isPiInternals (design 006).
+ * Uses the assembler underneath with customPrompt set to blueberry's own
+ * identity + tool surfaces + guidelines. No third-party documentation
+ * routing ships in the prompt.
  */
 export function composeSystemPrompt(input: {
   cwd: string;
@@ -261,12 +259,7 @@ export function composeSystemPrompt(input: {
     ? "\n\nGuidelines:\n" + guidelines.map((g) => `- ${g}`).join("\n")
     : "";
 
-  // Pi-docs routing: only when the project actually contains the in-tree fork
-  const piDocsSection = probe.isPiInternals
-    ? "\n\nPi documentation lives under pi/packages/coding-agent/ (README, docs/, examples/) — read it only for pi-internals work, following .md cross-references."
-    : "";
-
-  const customPrompt = identity + toolsSection + guidelinesSection + piDocsSection;
+  const customPrompt = identity + toolsSection + guidelinesSection;
 
   return buildSystemPrompt({
     cwd,
