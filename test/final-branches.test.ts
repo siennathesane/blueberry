@@ -193,6 +193,7 @@ test("db: saveRegistryDb rollback on UNIQUE slug violation", () => {
 		sessionStore: "central" as const,
 		mergedInto: null as string | null,
 		trusted: true,
+		explicitClaim: false,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -228,6 +229,7 @@ function mkProj(id: string, root: string) {
 		sessionStore: "central" as const,
 		mergedInto: null as string | null,
 		trusted: true,
+		explicitClaim: false,
 		createdAt: now,
 		updatedAt: now,
 	};

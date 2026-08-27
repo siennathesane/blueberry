@@ -13,10 +13,18 @@
  * fully testable; bin/blueberry supplies the real process bindings.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { findBySlug, mutations } from "../core/registry.ts";
+import { findBySlug, findByPath, findById, mutations } from "../core/registry.ts";
 import { loadRegistrySync, saveRegistrySync } from "../core/db.ts";
 import { getAgentDir, getTrashDir } from "../core/agent-dir.ts";
 import { resolveProject, storeDirFor } from "../core/resolution.ts";
+import {
+  boundaryAt,
+  findProjectBoundary,
+  readMarkerId,
+  writeMarkerId,
+} from "../core/markers.ts";
+import { samePath } from "../core/util.ts";
+import { resolve } from "node:path";
 import {
   defaultRunPi,
   type PiRunner,
@@ -126,6 +134,7 @@ usage:
   blueberry sessions search <text> [--all]
   blueberry sessions fork <[project/]sel>
   blueberry adopt [dir] [--map <mangled-dir>=<root>] [--copy]
+  blueberry init [<path>]     mint a project here (explicit subtree claim)
   blueberry sync            ingest session stores into blueberry.db
   blueberry restore         rebuild missing session files from the DB
   blueberry search <text> [--code] [--context N]  FTS5 search (history + code)
@@ -614,6 +623,8 @@ export async function main(
       return sessionsCmd(rest, deps);
     case "adopt":
       return adoptCmd(rest, deps);
+    case "init":
+      return initCmd(rest, deps);
     case "fix":
       return fixCmd(rest, false, deps);
     case "doctor":
@@ -1046,7 +1057,84 @@ function fmtSession(
   }  ${date}  [${slug}] ${label} (${s.messageCount} msgs)${cwdNote}`;
 }
 
-// --- adopt / fix ----------------------------------------------------------------
+// --- adopt / init / fix --------------------------------------------------------
+
+/**
+ * blueberry init [<path>] — explicitly mint a project (design 007).
+ *
+ * Idempotent: an exact canonical-path match reports the existing project
+ * (marking it an explicit claim if it wasn't one). A marker whose id belongs
+ * to a registered project reattaches that identity to <path>. Refuses inside
+ * a foreign VCS boundary — that tree is already claimed. Every success prints
+ * the session-adoption commands (R4).
+ */
+function initCmd(rest: string[], deps: CliDeps): number {
+  const target = resolve(deps.cwd, rest[0] ?? ".");
+  const registry = loadRegistrySync(deps.agentDir);
+
+  const vcs = findProjectBoundary(target);
+  if (vcs && vcs.kind !== "plain" && !samePath(vcs.root, target)) {
+    const owner = findById(registry, readMarkerId(vcs) ?? "");
+    deps.err(
+      `blueberry: ${target} is inside a ${vcs.kind} boundary rooted at ${vcs.root}` +
+        (owner ? ` (project '${owner.slug}')` : "") +
+        " — init at that root, or use that project",
+    );
+    return 1;
+  }
+
+  const hint = (slug: string) =>
+    deps.out(
+      `adopt existing sessions:\n` +
+        `  blueberry sessions move <sel> ${slug}\n` +
+        `  blueberry projects merge <from> --into ${slug}`,
+    );
+
+  const exact = registry.projects.find((p) =>
+    samePath(p.canonicalPath, target),
+  );
+  if (exact) {
+    if (!exact.explicitClaim) {
+      exact.explicitClaim = true;
+      saveRegistrySync(deps.agentDir, registry);
+      deps.out(`marked '${exact.slug}' as an explicit subtree claim`);
+    } else {
+      deps.out(`project '${exact.slug}' already initialized at ${target}`);
+    }
+    hint(exact.slug);
+    return 0;
+  }
+
+  // Marker id owned by a registered project → reattach identity to <path>.
+  const boundary = boundaryAt(target);
+  const markerId = boundary ? readMarkerId(boundary) : null;
+  const owner = markerId ? findById(registry, markerId) : undefined;
+  const reattachTarget = owner ?? findByPath(registry, target);
+  if (reattachTarget) {
+    mutations.reattach(registry, reattachTarget, target);
+    reattachTarget.explicitClaim = true;
+    if (boundary) writeMarkerId(boundary, reattachTarget.id);
+    saveRegistrySync(deps.agentDir, registry);
+    deps.out(
+      `reattached '${reattachTarget.slug}' to ${target} (explicit subtree claim)`,
+    );
+    hint(reattachTarget.slug);
+    return 0;
+  }
+
+  const project = mutations.register(registry, {
+    root: target,
+    id: markerId ?? undefined,
+    explicitClaim: true,
+  });
+  if (boundary) writeMarkerId(boundary, project.id);
+  else writeMarkerId({ root: target, kind: "plain" }, project.id);
+  saveRegistrySync(deps.agentDir, registry);
+  deps.out(`initialized project '${project.slug}' at ${target}`);
+  hint(project.slug);
+  return 0;
+}
+
 
 function adoptCmd(rest: string[], deps: CliDeps): number {
   try {

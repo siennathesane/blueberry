@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS projects (
   session_store TEXT NOT NULL DEFAULT 'central',
   merged_into TEXT,
   trusted INTEGER NOT NULL DEFAULT 1,
+  explicit_claim INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -279,6 +280,14 @@ export function openDb(agentDir: string): DatabaseSync {
   } catch {
     /* column already present */
   }
+  // Migration: explicit-claim flag on projects (design 007; idempotent)
+  try {
+    db.exec(
+      "ALTER TABLE projects ADD COLUMN explicit_claim INTEGER NOT NULL DEFAULT 0",
+    );
+  } catch {
+    /* column already present */
+  }
 
   const existed = db
     .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
@@ -368,6 +377,7 @@ export function loadRegistryDb(db: DatabaseSync): Registry {
       : "central",
     mergedInto: (r["merged_into"] as string | null) ?? null,
     trusted: r["trusted"] === 0 ? false : true,
+    explicitClaim: r["explicit_claim"] === 0 ? false : true,
     createdAt: String(r["created_at"]),
     updatedAt: String(r["updated_at"]),
     aliases: aliasesByProject.get(String(r["id"])) ?? [],
@@ -391,8 +401,8 @@ export function saveRegistryDb(db: DatabaseSync, registry: Registry): void {
     for (const id of existingIds) if (!keptIds.has(id)) del.run(id);
 
     const up = db.prepare(
-      `INSERT INTO projects (id, slug, canonical_path, git_remote, session_store, merged_into, trusted, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO projects (id, slug, canonical_path, git_remote, session_store, merged_into, trusted, explicit_claim, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   slug = excluded.slug,
 			   canonical_path = excluded.canonical_path,
@@ -400,6 +410,7 @@ export function saveRegistryDb(db: DatabaseSync, registry: Registry): void {
 			   session_store = excluded.session_store,
 			   merged_into = excluded.merged_into,
 			   trusted = excluded.trusted,
+			   explicit_claim = excluded.explicit_claim,
 			   updated_at = excluded.updated_at`,
     );
     const insertAlias = db.prepare(
@@ -414,6 +425,7 @@ export function saveRegistryDb(db: DatabaseSync, registry: Registry): void {
         p.sessionStore,
         p.mergedInto ?? null,
         p.trusted === false ? 0 : 1,
+        p.explicitClaim ? 1 : 0,
         p.createdAt,
         p.updatedAt,
       );

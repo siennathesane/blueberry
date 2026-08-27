@@ -41,6 +41,7 @@ export interface Project {
   sessionStore: SessionStoreKind;
   mergedInto: string | null; // nested-project merge: this project's sessions belong to another project
   trusted: boolean; // whether blueberry auto-writes pi trust entries
+  explicitClaim: boolean; // blueberry init: this project explicitly claims unmarked descendant dirs (design 007)
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +77,7 @@ export function newProject(init: {
   gitRemote?: string | null;
   id?: string;
   sessionStore?: SessionStoreKind;
+  explicitClaim?: boolean;
 }): Project {
   const now = new Date().toISOString();
   return {
@@ -87,6 +89,7 @@ export function newProject(init: {
     sessionStore: init.sessionStore ?? "central",
     mergedInto: null,
     trusted: true,
+    explicitClaim: init.explicitClaim ?? false,
     createdAt: now,
     updatedAt: now,
   };
@@ -141,7 +144,12 @@ export interface RegistryMutations {
   /** Register a new project; returns it added to the registry. */
   register(
     registry: Registry,
-    init: { root: string; gitRemote?: string | null; id?: string },
+    init: {
+      root: string;
+      gitRemote?: string | null;
+      id?: string;
+      explicitClaim?: boolean;
+    },
   ): Project;
   /** Update a project in place (sets updatedAt). */
   touch(registry: Registry, project: Project): void;

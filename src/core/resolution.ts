@@ -29,6 +29,35 @@ import { existsSync } from "node:fs";
 
 export type ResolveStatus = "marker" | "remote" | "path" | "new";
 
+/**
+ * Plain-ancestor capture predicate (design 007): a plain-marked ancestor
+ * captures unmarked descendants only when its marker id resolves to a
+ * project minted by `blueberry init` (explicitClaim). Implicit session mints
+ * never capture.
+ */
+export function plainAncestorCaptures(
+  registry: Registry,
+): (boundary: Boundary) => boolean {
+  return (boundary) => {
+    const id = readMarkerId(boundary);
+    return id !== null && findById(registry, id)?.explicitClaim === true;
+  };
+}
+
+/**
+ * The effective boundary for a cwd, applying plain-marker scoping. Use this
+ * (not raw findProjectBoundary) wherever a root is derived for display or
+ * probing, so probes agree with resolveProject.
+ */
+export function effectiveBoundary(
+  cwd: string,
+  registry: Registry,
+): Boundary | null {
+  return findProjectBoundary(cwd, {
+    capturesSubtree: plainAncestorCaptures(registry),
+  });
+}
+
 export interface ResolveResult {
   /** The effective project (after following mergedInto). */
   project: Project;
@@ -59,7 +88,9 @@ export function resolveProject(opts: {
   let mutated = false;
 
   // 1. Find (or mint) the boundary.
-  let boundary = findProjectBoundary(cwd);
+  let boundary = findProjectBoundary(cwd, {
+    capturesSubtree: plainAncestorCaptures(registry),
+  });
   if (!boundary) {
     boundary = { root: cwd, kind: "plain" };
   }

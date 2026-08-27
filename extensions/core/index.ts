@@ -67,12 +67,13 @@ export default function (pi: ExtensionAPI) {
   let frozenPrompt: string | null = null;
 
   const probeIdentity = async (cwd: string): Promise<IdentityProbe> => {
-    const boundary = findProjectBoundary(resolve(cwd));
-    const root = boundary ? boundary.root : resolve(cwd);
+    // Pre-DB default: non-capturing walk (design 007 — plain markers resolve
+    // only their own dir; explicit capture needs the registry-aware walk below).
+    let root = findProjectBoundary(resolve(cwd))?.root ?? resolve(cwd);
     const probe: IdentityProbe = {
       cwd,
       lspLanguages: [],
-      hasDesignLifecycle: existsSync(join(root, "docs", "design")),
+      hasDesignLifecycle: false,
       hasTodos: false,
     };
     try {
@@ -84,9 +85,16 @@ export default function (pi: ExtensionAPI) {
     const agentDir = process.env["PI_CODING_AGENT_DIR"];
     if (agentDir) {
       try {
-        const { openDb } = await import("../../src/core/db.ts");
+        const { openDb, loadRegistryDb } = await import(
+          "../../src/core/db.ts"
+        );
+        const { effectiveBoundary } = await import(
+          "../../src/core/resolution.ts"
+        );
         const db = openDb(agentDir);
         try {
+          const registry = loadRegistryDb(db);
+          root = effectiveBoundary(resolve(cwd), registry)?.root ?? resolve(cwd);
           probe.hasTodos =
             (db.prepare("SELECT COUNT(*) AS n FROM todos").get() as {
               n: number;
@@ -99,6 +107,7 @@ export default function (pi: ExtensionAPI) {
         // probe failure = minimal identity, never a broken session
       }
     }
+    probe.hasDesignLifecycle = existsSync(join(root, "docs", "design"));
     return probe;
   };
 
@@ -140,10 +149,11 @@ export default function (pi: ExtensionAPI) {
     const state: LiveState = { mode: "normal" };
     const agentDir = process.env["PI_CODING_AGENT_DIR"];
     if (!agentDir) return state;
-    const boundary = findProjectBoundary(resolve(cwd));
-    const root = boundary ? boundary.root : resolve(cwd);
     try {
       const { openDb, loadRegistryDb } = await import("../../src/core/db.ts");
+      const { effectiveBoundary } = await import(
+        "../../src/core/resolution.ts"
+      );
       const { normalizePathForCompare } = await import(
         "../../src/core/util.ts"
       );
@@ -157,6 +167,8 @@ export default function (pi: ExtensionAPI) {
           if (mode === "design" || mode === "plan") state.mode = mode;
         }
         const registry = loadRegistryDb(db);
+        const root = effectiveBoundary(resolve(cwd), registry)?.root ??
+          resolve(cwd);
         const project = registry.projects.find(
           (p) =>
             normalizePathForCompare(p.canonicalPath) ===
@@ -265,8 +277,11 @@ export default function (pi: ExtensionAPI) {
             "../../src/core/util.ts"
           );
           const registry = loadRegistryDb(db);
-          const boundary = findProjectBoundary(resolve(ctx.cwd));
-          const root = boundary ? boundary.root : resolve(ctx.cwd);
+          const { effectiveBoundary } = await import(
+            "../../src/core/resolution.ts"
+          );
+          const root = effectiveBoundary(resolve(ctx.cwd), registry)?.root ??
+            resolve(ctx.cwd);
           const project = registry.projects.find(
             (p) =>
               normalizePathForCompare(p.canonicalPath) ===

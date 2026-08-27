@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { main, defaultDeps, type CliDeps } from "../src/cli/main.ts";
 import { findBySlug } from "../src/core/registry.ts";
 import { loadRegistrySync } from "../src/core/db.ts";
@@ -570,4 +570,54 @@ test("cli: adopt on empty source reports nothing to adopt", async () => {
 test("cli: doctor on clean state reports all clear", async () => {
 	assert.equal(await main(["doctor"], deps(area)), 0);
 	assert.ok(outLines.some((l) => l.includes("all clear")));
+});
+
+test("cli: init mints an explicit project and prints adoption commands", async () => {
+	const root = `${area}/workspace`;
+	mkdirSync(root);
+	const code = await main(["init"], deps(root));
+	assert.equal(code, 0);
+	const registry = loadRegistrySync(agentDir);
+	const project = findBySlug(registry, "workspace")!;
+	assert.ok(project, "project registered");
+	assert.equal(project.canonicalPath, root);
+	assert.equal(project.explicitClaim, true);
+	assert.ok(
+		existsSync(`${root}/.blueberry/id`),
+		"plain marker written",
+	);
+	const joined = outLines.join("\n");
+	assert.match(joined, /initialized project 'workspace'/);
+	assert.match(joined, /blueberry sessions move <sel> workspace/);
+	assert.match(joined, /blueberry projects merge <from> --into workspace/);
+});
+
+test("cli: init is idempotent and marks existing projects explicit", async () => {
+	const root = `${area}/plain-old`;
+	mkdirSync(root);
+	// implicit mint first (plain session resolution path)
+	await main([], deps(root));
+	const r1 = loadRegistrySync(agentDir);
+	const p1 = findBySlug(r1, "plain-old")!;
+	assert.equal(p1.explicitClaim, false);
+
+	const code = await main(["init"], deps(root));
+	assert.equal(code, 0);
+	const r2 = loadRegistrySync(agentDir);
+	assert.equal(r2.projects.length, 1, "no duplicate row");
+	assert.equal(findBySlug(r2, "plain-old")!.explicitClaim, true);
+
+	const code2 = await main(["init"], deps(root));
+	assert.equal(code2, 0);
+	assert.equal(loadRegistrySync(agentDir).projects.length, 1);
+	assert.match(outLines.join("\n"), /already initialized/);
+});
+
+test("cli: init refuses inside a foreign VCS boundary", async () => {
+	const repo = fakeRepo(area, "repo", "git");
+	const sub = `${repo}/pkg`;
+	mkdirSync(sub);
+	const code = await main(["init", sub], deps(area));
+	assert.equal(code, 1);
+	assert.match(errLines.join("\n"), /inside a git boundary/);
 });

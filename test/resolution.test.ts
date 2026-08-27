@@ -239,3 +239,33 @@ test("resolution: path-match with no reattach needed (canonical already root, ma
 		"already canonical: no reattach",
 	);
 });
+
+test("resolution: plain ancestor never captures an unmarked subdir (design 007)", () => {
+	const r = loadRegistry(agentDir);
+	const marked = fakeRepo(area, "marked", "plain", "P1");
+	const res = resolveProject({ cwd: marked, registry: r });
+	assert.equal(res.status, "new");
+	assert.equal(res.root, marked);
+
+	const sub = `${marked}/inner`;
+	mkdirSync(sub);
+	const resSub = resolveProject({ cwd: sub, registry: r });
+	assert.equal(resSub.root, sub, "implicit plain mint captures only itself");
+	assert.equal(resSub.project.slug, "inner");
+});
+
+test("resolution: explicit-claim plain ancestor captures unmarked descendants", () => {
+	const r = loadRegistry(agentDir);
+	const parent = fakeRepo(area, "worksp", "plain", "P1");
+	mutations.register(r, { root: parent, id: "P1", explicitClaim: true });
+
+	const sub = `${parent}/newdir`;
+	mkdirSync(sub);
+	const res = resolveProject({ cwd: sub, registry: r });
+	assert.equal(res.root, parent, "blueberry init claim captures the subdir");
+	assert.equal(res.project.id, "P1");
+	// VCS boundaries still win nearest-first inside the claimed subtree
+	const repo = fakeRepo(parent, "repo", "git");
+	const resRepo = resolveProject({ cwd: repo, registry: r });
+	assert.equal(resRepo.root, repo);
+});

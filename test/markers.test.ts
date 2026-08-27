@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	boundaryAt,
 	findProjectBoundary,
@@ -45,6 +46,34 @@ test("findProjectBoundary: nearest wins from nested dirs", () => {
 	assert.equal(findProjectBoundary(outer)?.root, outer);
 	// tmp itself has no boundary (tmpDir is under the system tmp root)
 	assert.equal(findProjectBoundary(tmp), null);
+	cleanup(tmp);
+});
+
+test("boundaryAt: plain marker detected anywhere (scoping is the walk's job)", () => {
+	const tmp = tmpDir("bb-markers-plain-");
+	const p = fakeRepo(tmp, "plain", "plain", "P1");
+	assert.equal(boundaryAt(p)?.kind, "plain");
+	cleanup(tmp);
+});
+
+test("findProjectBoundary: plain markers resolve only their own dir (design 007)", () => {
+	const tmp = tmpDir("bb-walk-plain-scope-");
+	const marked = fakeRepo(tmp, "marked", "plain", "P1");
+	const sub = join(marked, "sub", "deep");
+	mkdirSync(sub, { recursive: true });
+	// at the marked dir: resolves (session launched there owns it)
+	assert.equal(findProjectBoundary(marked)?.root, marked);
+	// from a descendant: plain ancestors are non-boundaries (HOME included —
+	// this subsumes the old home-trap emergency fix)
+	assert.equal(findProjectBoundary(sub), null);
+	// unless the caller confirms an explicit capture claim (blueberry init)
+	const captures = () => true;
+	assert.equal(findProjectBoundary(sub, { capturesSubtree: captures })?.root, marked);
+	// predicate consulted only for plain ancestors: git always wins
+	const outer = fakeRepo(tmp, "repo", "git");
+	const repoSub = join(outer, "pkg");
+	mkdirSync(repoSub);
+	assert.equal(findProjectBoundary(repoSub, { capturesSubtree: captures })?.root, outer);
 	cleanup(tmp);
 });
 

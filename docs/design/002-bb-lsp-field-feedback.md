@@ -1,7 +1,7 @@
 ---
 id: 26d07c
 title: bb_lsp — field feedback incorporation (Rust, sunbeam/crm)
-status: open
+status: abandoned
 date: 2026-08-25
 parent: none
 source: session retro, sunbeam/crm stack-overflow forensics + codegen-emitter edits

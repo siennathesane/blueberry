@@ -1,7 +1,7 @@
 ---
 id: c74f80
 title: Skills — curation, authoring, and the skills mode
-status: open
+status: abandoned
 date: 2026-08-25
 ---
 # Skills — curation, profiles, and the slash purge
