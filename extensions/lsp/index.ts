@@ -8,6 +8,7 @@
  * - edit/write tool_result hook: model-only diagnostics nudge (display:false)
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFileSync, writeFileSync } from "node:fs";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { LspManager } from "../../src/core/lsp-manager.ts";
@@ -154,6 +155,141 @@ function fmtDiagnostic(d: unknown): string {
     : "?";
   const line = (dd.range?.start?.line ?? 0) + 1;
   return `[${sev}] L${line}: ${(dd.message ?? "").split("\n")[0]}`;
+}
+
+/**
+ * Normalize a workspace edit across BOTH legal shapes: `changes`
+ * (uri → edits) and `documentChanges` (TextDocumentEdit entries). Servers
+ * pick either (typescript-language-server: changes; rust-analyzer:
+ * documentChanges) — reading one shape yields phantom "0 files" previews.
+ */
+export function normalizeWorkspaceEdit(edit: unknown): Record<
+  string,
+  Array<
+    {
+      range: {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+      };
+      newText: string;
+    }
+  >
+> {
+  const e = edit as {
+    changes?: Record<string, Array<Record<string, unknown>>>;
+    documentChanges?: Array<Record<string, unknown>>;
+  };
+  const changes: Record<
+    string,
+    Array<
+      {
+        range: {
+          start: { line: number; character: number };
+          end: { line: number; character: number };
+        };
+        newText: string;
+      }
+    >
+  > = {};
+  for (const [uri, edits] of Object.entries(e?.changes ?? {})) {
+    changes[uri] = (changes[uri] ?? []).concat(edits as never);
+  }
+  for (const dc of e?.documentChanges ?? []) {
+    const uri = (dc["textDocument"] as { uri?: string } | undefined)?.uri;
+    const edits = dc["edits"];
+    if (uri && Array.isArray(edits)) {
+      changes[uri] = (changes[uri] ?? []).concat(edits as never);
+    }
+  }
+  return changes;
+}
+
+/** Apply one file's text edits to its content: 0-based LSP positions,
+ * applied bottom-up so earlier offsets stay valid. Pure — no fs. */
+export function applyEditsInto(
+  content: string,
+  edits: Array<
+    {
+      range: {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+      };
+      newText: string;
+    }
+  >,
+): string {
+  const lines = content.split("\n");
+  const lineStart = (line: number): number =>
+    lines.slice(0, line).reduce((n, l) => n + l.length + 1, 0);
+  const offset = (p: { line: number; character: number }): number =>
+    lineStart(p.line) + p.character;
+  const sorted = [...edits].sort(
+    (a, b) => offset(b.range.start) - offset(a.range.start),
+  );
+  let text = content;
+  for (const e of sorted) {
+    text = text.slice(0, offset(e.range.start)) + e.newText +
+      text.slice(offset(e.range.end));
+  }
+  return text;
+}
+
+/** DocumentSymbolKind enum → readable name. */
+const SYMBOL_KINDS = [
+  "file",
+  "module",
+  "namespace",
+  "package",
+  "class",
+  "method",
+  "property",
+  "field",
+  "constructor",
+  "enum",
+  "interface",
+  "function",
+  "variable",
+  "const",
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+  "key",
+  "null",
+  "enumMember",
+  "struct",
+  "event",
+  "operator",
+  "typeParameter",
+];
+
+/** Render symbols from EITHER shape — SymbolInformation (location) or
+ * hierarchical DocumentSymbol (selectionRange + children) — kind names,
+ * 1-based positions, children indented. */
+export function docSymbolLines(
+  syms: unknown,
+  depth = 0,
+): string[] {
+  const out: string[] = [];
+  if (!Array.isArray(syms)) return out;
+  for (const raw of syms as Array<Record<string, unknown>>) {
+    const locRange = (raw["location"] as {
+      range?: { start?: { line: number; character: number } };
+    } | undefined)?.range;
+    const sel = (raw["selectionRange"] ?? raw["range"]) as {
+      start?: { line: number; character: number };
+    } | undefined;
+    const p = locRange?.start ?? sel?.start;
+    const pos = p ? `${p.line + 1}:${p.character + 1}` : "(none)";
+    const kind = SYMBOL_KINDS[Number(raw["kind"]) - 1] ??
+      `kind${String(raw["kind"])}`;
+    out.push(`${"  ".repeat(depth)}${kind} ${String(raw["name"])} @${pos}`);
+    if (Array.isArray(raw["children"])) {
+      out.push(...docSymbolLines(raw["children"], depth + 1));
+    }
+  }
+  return out;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -445,9 +581,7 @@ export default function (pi: ExtensionAPI) {
             const symbols = (Array.isArray(result) ? result : []) as Array<
               Record<string, unknown>
             >;
-            const lines = symbols.map(
-              (s) => `${s["kind"]}:${s["name"]} @${fmtLocation(s["location"])}`,
-            );
+            const lines = docSymbolLines(symbols);
             return {
               content: [{
                 type: "text",
@@ -534,7 +668,7 @@ export default function (pi: ExtensionAPI) {
                 {
                   type: "text",
                   text: sigs.map((s) => s.label ?? "").join("\n") ||
-                    emptyText(true),
+                    "no signature at position — cursor must sit inside a call's parentheses",
                 },
               ],
               details: {},
@@ -554,9 +688,38 @@ export default function (pi: ExtensionAPI) {
               },
               absPath,
             );
-            const changes =
-              (edit as { changes?: Record<string, unknown[]> })?.changes ?? {};
+            const changes = normalizeWorkspaceEdit(edit);
             const files = Object.keys(changes);
+            if (params.apply === true) {
+              if (files.length === 0) {
+                return {
+                  content: [{
+                    type: "text",
+                    text: "nothing to apply — no edits for this symbol",
+                  }],
+                  details: { applied: 0 },
+                };
+              }
+              let applied = 0;
+              for (const [uri, edits] of Object.entries(changes)) {
+                const path = uri.startsWith("file://")
+                  ? decodeURIComponent(new URL(uri).pathname)
+                  : uri;
+                const before = readFileSync(path, "utf8");
+                writeFileSync(path, applyEditsInto(before, edits));
+                applied += edits.length;
+              }
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      `rename applied: ${applied} edits across ${files.length} file(s) — run diagnostics on touched files`,
+                  },
+                ],
+                details: { applied, files },
+              };
+            }
             const summary = files.map(
               (f) => `${f.split("/").pop()}: ${changes[f]!.length} edits`,
             );

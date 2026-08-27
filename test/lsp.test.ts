@@ -25,6 +25,11 @@ import {
   whichBin,
 } from "../src/core/lsp-manager.ts";
 import { cleanup, tmpDir } from "./helpers.ts";
+import {
+  applyEditsInto,
+  docSymbolLines,
+  normalizeWorkspaceEdit,
+} from "../extensions/lsp/index.ts";
 
 // --- framing codec unit tests ---------------------------------------------------------
 
@@ -1596,4 +1601,160 @@ test("requestWithRetry: propagates error without retry on throw", async () => {
     () => retry(fakeMgr, "textDocument/definition", {}, "/tmp/x.ts"),
     /server dead/,
   );
+});
+
+// --- diagnosis-tier fixes (feedback §2 #1–#3) ----------------------------------
+
+test("normalizeWorkspaceEdit reads both changes and documentChanges shapes", () => {
+  const viaChanges = {
+    changes: {
+      "file:///a.ts": [{
+        newText: "x",
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        },
+      }],
+    },
+  };
+  const viaDocChanges = {
+    documentChanges: [{
+      textDocument: { uri: "file:///b.ts", version: 1 },
+      edits: [{
+        newText: "y",
+        range: {
+          start: { line: 1, character: 0 },
+          end: { line: 1, character: 2 },
+        },
+      }],
+    }],
+  };
+  const mixed = {
+    changes: {
+      "file:///a.ts": [{
+        newText: "x",
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        },
+      }],
+    },
+    documentChanges: [{
+      textDocument: { uri: "file:///a.ts", version: 1 },
+      edits: [{
+        newText: "z",
+        range: {
+          start: { line: 2, character: 0 },
+          end: { line: 2, character: 1 },
+        },
+      }],
+    }],
+  };
+  assert.equal(Object.keys(normalizeWorkspaceEdit(viaChanges)).length, 1);
+  assert.equal(
+    Object.keys(normalizeWorkspaceEdit(viaDocChanges)).length,
+    1,
+    "documentChanges shape yields files (the 0-files bug)",
+  );
+  assert.equal(
+    Object.keys(normalizeWorkspaceEdit(viaDocChanges))[0],
+    "file:///b.ts",
+  );
+  const merged = normalizeWorkspaceEdit(mixed);
+  assert.equal(
+    merged["file:///a.ts"]!.length,
+    2,
+    "both shapes merge into one file list",
+  );
+  assert.deepEqual(Object.keys(normalizeWorkspaceEdit({})), []);
+});
+
+test("applyEditsInto splices bottom-up, earlier offsets stay valid", () => {
+  const content = "alpha beta\ngamma delta\nepsilon";
+  const edits = [
+    {
+      newText: "BETA",
+      range: {
+        start: { line: 0, character: 6 },
+        end: { line: 0, character: 10 },
+      },
+    },
+    {
+      newText: "ALPHA",
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 5 },
+      },
+    },
+  ];
+  assert.equal(
+    applyEditsInto(content, edits),
+    "ALPHA BETA\ngamma delta\nepsilon",
+  );
+});
+
+test("docSymbolLines: hierarchical shape renders kind names, positions, nested children", () => {
+  const hierarchical = [
+    {
+      name: "MyClass",
+      kind: 5,
+      range: {
+        start: { line: 9, character: 0 },
+        end: { line: 40, character: 1 },
+      },
+      selectionRange: {
+        start: { line: 9, character: 6 },
+        end: { line: 9, character: 13 },
+      },
+      children: [
+        {
+          name: "method",
+          kind: 6,
+          range: {
+            start: { line: 11, character: 2 },
+            end: { line: 11, character: 10 },
+          },
+          selectionRange: {
+            start: { line: 11, character: 2 },
+            end: { line: 11, character: 8 },
+          },
+        },
+      ],
+    },
+    {
+      name: "helper",
+      kind: 12,
+      range: {
+        start: { line: 50, character: 0 },
+        end: { line: 52, character: 1 },
+      },
+      selectionRange: {
+        start: { line: 50, character: 9 },
+        end: { line: 50, character: 15 },
+      },
+    },
+  ];
+  const lines = docSymbolLines(hierarchical);
+  assert.ok(lines[0]!.includes("class MyClass @10:7"), `got: ${lines[0]}`);
+  assert.ok(lines[1]!.startsWith("  "), "child indented");
+  assert.ok(lines[1]!.includes("method method @12:3"));
+  assert.ok(lines[2]!.includes("function helper @51:10"));
+});
+
+test("docSymbolLines: flat SymbolInformation shape still renders via location", () => {
+  const flat = [
+    {
+      name: "old",
+      kind: 13,
+      location: {
+        uri: "file:///x.ts",
+        range: {
+          start: { line: 3, character: 6 },
+          end: { line: 3, character: 9 },
+        },
+      },
+    },
+  ];
+  const lines = docSymbolLines(flat);
+  assert.ok(lines[0]!.includes("variable old @4:7"), `got: ${lines[0]}`);
 });
