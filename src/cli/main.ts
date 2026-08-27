@@ -44,7 +44,12 @@ import {
   type ViewKind,
 } from "../core/library.ts";
 import { getVersion } from "../core/version.ts";
-import { parseJunit, readLcovIfPresent } from "../core/lifecycle.ts";
+import {
+  parseJunit,
+  readLcovIfPresent,
+  verifyDocs,
+  type VerifyReport,
+} from "../core/lifecycle.ts";
 import type { UpdaterIO } from "../core/updater.ts";
 import { loadRegistryDb, openDb } from "../core/db.ts";
 import { restoreMissing, syncStores } from "../core/sync.ts";
@@ -1188,8 +1193,34 @@ async function lifecycleCmd(rest: string[], deps: CliDeps): Promise<number> {
       deps.out(`lcov: ${summary.linesHit}/${summary.linesFound} lines (mtime ${summary.mtime})`);
       return 0;
     }
+    case "verify": {
+      const dir = join(deps.cwd, "docs", "design");
+      const db = openDb(deps.agentDir);
+      let report: VerifyReport;
+      try {
+        report = verifyDocs(dir, db);
+      } catch (err) {
+        deps.err(`cannot scan ${dir}: ${(err as Error).message}`);
+        return 1;
+      } finally {
+        db.close();
+      }
+      if (report.ok) {
+        deps.out(
+          `ok: ${report.totalIds} ids across ${report.docs} docs, all registered`,
+        );
+        return 0;
+      }
+      for (const u of report.unregistered) {
+        deps.err(`unregistered: [${u.id}] (${u.doc})`);
+      }
+      deps.err(
+        `not ok: ${report.unregistered.length} unregistered of ${report.totalIds} ids across ${report.docs} docs`,
+      );
+      return 1;
+    }
     default:
-      return usageErr(deps, "lifecycle junit <path> | lcov <path>");
+      return usageErr(deps, "lifecycle junit <path> | lcov <path> | verify");
   }
 }
 

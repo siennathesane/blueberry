@@ -9,8 +9,10 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import { hex6Of } from "./todo-store.ts";
+import { stripComments } from "./design-store.ts";
 import type { LinkCapability } from "./deeplink.ts";
 import { renderCardRef } from "./deeplink.ts";
 
@@ -144,6 +146,119 @@ export function idIsFree(
 
   if (exclude.includes(id)) return false;
   return true;
+}
+
+// --- decide-time minting (design 005 §Registry) --------------------------------
+
+/**
+ * Mint + register ids for every untagged requirement paragraph in the
+ * `## Requirements` section of a design body, returning the rewritten body
+ * with ` [hex6]` appended to each newly tagged paragraph.
+ *
+ * Already-tagged paragraphs stay verbatim and are registered if absent —
+ * re-running on a decided doc is idempotent (the UNIQUE duplicate is
+ * swallowed). Comment-only paragraphs are scaffold prompts, not
+ * requirements — never minted. No `## Requirements` section → nothing
+ * minted, body returned unchanged. Everything outside the section is
+ * byte-preserved.
+ */
+export function mintRequirementsFor(
+  db: DatabaseSync,
+  designDocPath: string,
+  body: string,
+  opts: { home?: string } = {},
+): { minted: string[]; rewritten: string } {
+  const heading = /^##[ \t]+Requirements[ \t]*$/m.exec(body);
+  if (!heading) return { minted: [], rewritten: body };
+  const contentStart = heading.index + heading[0].length;
+  const after = body.slice(contentStart);
+  const next = /^##\s/m.exec(after);
+  const tail = next ? next.index : after.length;
+  const docBasename = basename(designDocPath);
+
+  const minted: string[] = [];
+  const rebuilt: string[] = [];
+  // split keeping the blank-line separators, so untouched whitespace and
+  // paragraph-internal newlines round-trip verbatim
+  const parts = after.slice(0, tail).split(/(\n\s*\n)/);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+    if (i % 2 === 1) {
+      rebuilt.push(part); // separator — pass through
+      continue;
+    }
+    const trimmed = part.trim();
+    if (trimmed === "" || stripComments(trimmed).trim() === "") {
+      rebuilt.push(part); // context / scaffold comment — pass through
+      continue;
+    }
+    const existing = ID_LINE_PATTERN.exec(trimmed.split("\n").pop()!)?.[1];
+    if (existing) {
+      try {
+        registerId(db, existing, {
+          designDoc: docBasename,
+          paragraph: trimmed,
+        });
+      } catch {
+        // UNIQUE violation — already registered; idempotent re-decide
+      }
+      rebuilt.push(part);
+      continue;
+    }
+    const id = mintId(db, { exclude: minted });
+    registerId(db, id, {
+      designDoc: docBasename,
+      paragraph: `${trimmed} [${id}]`,
+    });
+    minted.push(id);
+    rebuilt.push(part.replace(/\s*$/, ` [${id}]`));
+  }
+  const rewritten = body.slice(0, contentStart) + rebuilt.join("") +
+    after.slice(tail);
+  return { minted, rewritten };
+}
+
+// --- verify seam (design 005 S9) -----------------------------------------------
+
+export interface VerifyReport {
+  /** True iff every extracted id has a registry row. */
+  ok: boolean;
+  /** Unique ids found across all docs (deduped, first occurrence kept). */
+  totalIds: number;
+  /** Number of .md docs scanned. */
+  docs: number;
+  /** Ids missing from lifecycle_ids, with the doc that carries them. */
+  unregistered: Array<{ id: string; doc: string }>;
+}
+
+/**
+ * Lifecycle integrity: every id-paragraph in every .md under dir must be
+ * registered in lifecycle_ids. Pure scan — reports, never mutates.
+ */
+export function verifyDocs(dir: string, db: DatabaseSync): VerifyReport {
+  const registered = new Set(
+    (db.prepare("SELECT id FROM lifecycle_ids").all() as Array<
+      { id: string }
+    >).map((r) => r.id),
+  );
+  const files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+  const seen = new Set<string>();
+  const unregistered: Array<{ id: string; doc: string }> = [];
+  for (const f of files) {
+    for (
+      const { id } of extractIdParagraphs(readFileSync(join(dir, f), "utf8"))
+    ) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!registered.has(id)) unregistered.push({ id, doc: f });
+    }
+  }
+  return {
+    ok: unregistered.length === 0,
+    totalIds: seen.size,
+    docs: files.length,
+    unregistered,
+  };
 }
 
 // --- JUnit ingestion (design 005 §Ingestion) ----------------------------------

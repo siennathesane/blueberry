@@ -27,6 +27,7 @@ import {
   scaffoldDesign,
   writeDesignStatus,
 } from "../../src/core/design-store.ts";
+import { mintRequirementsFor } from "../../src/core/lifecycle.ts";
 import {
   activePlan,
   createPlan,
@@ -357,6 +358,22 @@ export default function (pi: ExtensionAPI) {
                 }`,
               );
             }
+            // decide-time minting: every untagged Requirements paragraph
+            // gains its [hex6] and a registry row before the status flips
+            const { minted, rewritten } = mintRequirementsFor(
+              db,
+              open.path,
+              open.body,
+            );
+            if (rewritten !== open.body) {
+              const { readFileSync, writeFileSync } = await import("node:fs");
+              const raw = readFileSync(open.path, "utf8");
+              const fmBlock = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(raw);
+              writeFileSync(
+                open.path,
+                `${fmBlock ? fmBlock[0] : "---\n---\n\n"}${rewritten}`,
+              );
+            }
             writeDesignStatus(open.path, "decided");
             ingestDesignDocs(db, proj.root, proj.id);
             needle(
@@ -368,7 +385,9 @@ export default function (pi: ExtensionAPI) {
               content: [
                 {
                   type: "text",
-                  text: `decided ✓ — shift+tab or /plan to decompose`,
+                  text: `decided ✓${
+                    minted.length > 0 ? ` (minted ${minted.length} ids)` : ""
+                  } — shift+tab or /plan to decompose`,
                 },
               ],
               details: {},

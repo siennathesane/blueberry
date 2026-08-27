@@ -13,10 +13,12 @@ import {
   ID_LINE_PATTERN,
   idIsFree,
   mintId,
+  mintRequirementsFor,
   parseJunit,
   readLcovIfPresent,
   registerId,
   retireId,
+  verifyDocs,
 } from "../src/core/lifecycle.ts";
 import { mintAndRegister } from "../src/core/tools/mint-id.ts";
 import {
@@ -874,3 +876,135 @@ test("two consecutive mintAndRegister calls never collide", () => {
   db.close();
 });
 
+
+// --- decide-time auto-mint + verify seam --------------------------------------
+
+test("mintRequirementsFor tags untagged paragraphs, keeps tagged ones, registers all", () => {
+  const db = openDb(agentDir);
+  const dir = tmpDir();
+  const docPath = join(dir, "010-fixture.md");
+  const body = `# Fixture
+
+## Decision
+
+Keep everything outside Requirements byte-identical.
+
+## Requirements
+
+R1. The tool MUST tag untagged paragraphs at decide.
+
+R2. The tool SHOULD leave tagged paragraphs intact. [ab12cd]
+
+R3. The registry MUST gain one row per paragraph.
+
+## Verification
+
+Nothing here changes either.
+`;
+  const { minted, rewritten } = mintRequirementsFor(db, docPath, body);
+  assert.equal(minted.length, 2, "two untagged paragraphs minted");
+  assert.match(minted[0]!, /^[0-9a-f]{6}$/);
+  assert.match(minted[1]!, /^[0-9a-f]{6}$/);
+  // untagged paragraphs now end in their minted trailing id
+  assert.ok(
+    rewritten.includes(
+      `R1. The tool MUST tag untagged paragraphs at decide. [${minted[0]}]`,
+    ),
+  );
+  assert.ok(
+    rewritten.includes(
+      `R3. The registry MUST gain one row per paragraph. [${minted[1]}]`,
+    ),
+  );
+  // the already-tagged paragraph is unchanged
+  assert.ok(
+    rewritten.includes("R2. The tool SHOULD leave tagged paragraphs intact. [ab12cd]"),
+  );
+  // sections outside Requirements are preserved
+  assert.ok(rewritten.includes("Keep everything outside Requirements byte-identical."));
+  assert.ok(rewritten.includes("Nothing here changes either."));
+  // all three ids registered afterward
+  for (const id of [minted[0]!, minted[1]!, "ab12cd"]) {
+    assert.equal(idIsFree(db, id), false, `${id} registered`);
+  }
+  // registry rows point at the doc basename with the paragraph text
+  const row = db
+    .prepare("SELECT design_doc, paragraph FROM lifecycle_ids WHERE id = ?")
+    .get(minted[0]!) as { design_doc: string; paragraph: string };
+  assert.equal(row.design_doc, "010-fixture.md");
+  assert.equal(
+    row.paragraph,
+    `R1. The tool MUST tag untagged paragraphs at decide. [${minted[0]}]`,
+  );
+  // the rewritten body re-extracts to exactly three id paragraphs
+  assert.equal(extractIdParagraphs(rewritten).length, 3);
+  db.close();
+  cleanup(dir);
+});
+
+test("mintRequirementsFor with no Requirements section returns body unchanged", () => {
+  const db = openDb(agentDir);
+  const body = `# No requirements here
+
+## Decision
+
+Nothing to mint.
+`;
+  const result = mintRequirementsFor(db, join(agentDir, "none.md"), body);
+  assert.deepEqual(result, { minted: [], rewritten: body });
+  db.close();
+});
+
+test("mintRequirementsFor twice on a fully-tagged body registers nothing new", () => {
+  const db = openDb(agentDir);
+  const dir = tmpDir();
+  const body = `## Requirements
+
+R1. Already tagged. [aa1001]
+
+R2. Also tagged. [bb2002]
+`;
+  const first = mintRequirementsFor(db, join(dir, "011.md"), body);
+  assert.equal(first.minted.length, 0);
+  assert.equal(first.rewritten, body);
+  assert.equal(idIsFree(db, "aa1001"), false, "first call registers tagged ids");
+  assert.equal(idIsFree(db, "bb2002"), false, "first call registers tagged ids");
+
+  const count = () =>
+    (db.prepare("SELECT COUNT(*) AS n FROM lifecycle_ids").get() as { n: number })
+      .n;
+  const before = count();
+  const second = mintRequirementsFor(db, join(dir, "011.md"), first.rewritten);
+  assert.equal(second.minted.length, 0, "nothing minted on re-run");
+  assert.equal(second.rewritten, body);
+  assert.equal(count(), before, "no new registry rows on re-run");
+  db.close();
+  cleanup(dir);
+});
+
+test("verifyDocs reports ok for registered ids and flags an unregistered one", () => {
+  const db = openDb(agentDir);
+  const dir = tmpDir();
+  const doc = join(dir, "012-fixture.md");
+  writeFileSync(doc, "## Requirements\n\nR1. Registered requirement. [cc1003]\n");
+  registerId(db, "cc1003", {
+    designDoc: "012-fixture.md",
+    paragraph: "R1. Registered requirement. [cc1003]",
+  });
+  const okReport = verifyDocs(dir, db);
+  assert.equal(okReport.ok, true);
+  assert.equal(okReport.totalIds, 1);
+  assert.equal(okReport.docs, 1);
+  assert.deepEqual(okReport.unregistered, []);
+
+  writeFileSync(
+    doc,
+    "## Requirements\n\nR1. Registered requirement. [cc1003]\n\nR2. Never registered. [dd2004]\n",
+  );
+  const bad = verifyDocs(dir, db);
+  assert.equal(bad.ok, false);
+  assert.equal(bad.totalIds, 2);
+  assert.deepEqual(bad.unregistered, [{ id: "dd2004", doc: "012-fixture.md" }]);
+  db.close();
+  cleanup(dir);
+});

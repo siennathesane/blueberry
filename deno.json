@@ -3,6 +3,7 @@
 		"check": "deno check src/ test/ extensions/",
 		"test": "deno test -A test/",
 		"test:unit": "deno test -A --skip e2e test/",
+		"verify": "deno run -A src/cli/entry.ts lifecycle verify",
 		"coverage": "deno test -A --coverage --clean test/ && deno coverage --line --branch --function",
 		"run": "deno run -A src/cli/entry.ts",
 		"compile": "deno compile -A --include pi/packages/coding-agent/src/modes/interactive/theme --include pi/packages/coding-agent/src/modes/interactive/assets --include pi/packages/coding-agent/src/core/export-html --output dist/blueberry src/cli/entry.ts",
