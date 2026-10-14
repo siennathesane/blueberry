@@ -48,6 +48,6 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"typescript-language-server": "^6.0.0"
+		"typescript-language-server": "^6.0.2"
 	}
 }
